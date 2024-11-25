@@ -247,6 +247,30 @@ if __name__ == '__main__':
         def sample(self, t, y0, return_noise=False):
             """
             sample yt | y0
+            """
+
+            num_steps_tot = 1000
+            our_sde = OU_SDE(self, self.T).to(device)
+            y_allt = euler_maruyama_sampler(our_sde, y0, num_steps_tot, 0, True) # sample
+
+            num_steps_floats = num_steps_tot * t/self.T
+            num_steps_int = torch.trunc(num_steps_floats).to(torch.int)
+
+            # WARNING : this sampler is used (many times) for t=T 
+            # another method should be used here instead
+            for k in range(y0.shape[0]):
+                if t[k] >= self.T: 
+                    num_steps_int[k] = num_steps_tot - 1
+
+            yt = torch.zeros_like(y0)
+            for k in range(y0.shape[0]):
+                yt[k,:] = y_allt[num_steps_int[k]][k,:]
+
+            return yt
+
+        def slow_sample(self, t, y0, return_noise=False):
+            """
+            sample yt | y0
             if return_noise=True, also return std and g for reweighting the denoising score matching loss
             """
             # mu = self.mean_weight(t) * y0
