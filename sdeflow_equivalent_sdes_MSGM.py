@@ -7,11 +7,40 @@ Original file is located at
     https://colab.research.google.com/drive/1Tx_Yt90NRgHve--ocIXi6SGR-0ebwH0N
 """
 
+
+import time
+import numpy as np
+import torch
+import torch.nn as nn
+
+class OU_SDE(torch.nn.Module): 
+
+    def __init__(self, base_sde, T):
+        super().__init__()
+        self.base_sde = base_sde
+        self.T = T
+    
+    # Drift
+    def mu(self, s, y, lmbd=0.):
+        return self.base_sde.f(s, y) 
+    
+    # div(Sigma)
+    def div_Sigma(self, s, y, lmbd=0.):
+        return self.base_sde.div_Sigma(s, y)
+
+    # Diffusion
+    def sigma(self, s, y, lmbd=0.):
+        return self.base_sde.g(s, y)
+
+    # def mu(self, t, x): 
+    #     return - x 
+    
+    # def sigma(self, t, x): 
+    #     return -torch.sqrt(2.)*x**0
+
+
+
 if __name__ == '__main__':
-    import time
-    import numpy as np
-    import torch
-    import torch.nn as nn
     
     ## 1. Initialize dataset
     from sklearn.datasets import make_swiss_roll
@@ -71,6 +100,89 @@ if __name__ == '__main__':
                     pass
         return xs
     
+
+    def own_EM_sampler(sde, final_times, x_0s, dt):
+
+        x_ts = torch.zeros_like(x_0s)
+
+        # Build a common time grid for all path-samples with discretization smaller or equal to dt
+        #  
+        #  t^1   t^2 t^3     t^4   : finaltimes
+        # -o------o--o-------o
+
+        # ---d---d---d---d---d     : dt-linspace
+
+        # -x-x---xx--x---x---x     : commont time grid
+
+
+        dts = []    # common time points at worst with dt width 
+        sorted_final_times = sorted(final_times)
+        sorted_x_0s  = sorted(x_0s, key = sort(final_times))
+        curr_t = 0.
+        for t_final in sorted_final_times :
+            
+            if curr_t + dt > t_final: 
+                dts.append(curr_)
+
+            < dt : 
+    
+  
+        # EM Steps based on the common time grid in vectorized version only updating the batch of particles with respective final times 
+        # larger than the current time position 
+        k_update = 0 # initially all particles need to be updated
+        curr_t = 0   # current time step 
+        for dt in dts: 
+            
+            # if the current EM time is larger then the requested time horizon for k_updat-th  x_0 guy only continue to EM-update 
+            if curr_t > sorted_final_times[k_update]:
+                k_update +=1
+
+            xt[k_update,:] = EM_update
+
+            curr_t += dt
+
+
+    
+      ### 2.0 Define Euler Maruyama method with a step size $\Delta t$
+    def own_euler_maruyama_sampler(sde, x_0, num_steps, lmbd=0., keep_all_samples=True):
+        """
+        Euler Maruyama method with a step size delta
+        """
+        # init
+        device = sde.T.device
+        batch_size = x_0.size(0)
+        ndim = x_0.dim()-1
+        T_ = sde.T.cpu().item()
+        delta = T_ / num_steps
+
+
+        
+
+
+        #dt  -> num_steps vector 
+
+
+        ts = torch.linspace(0, 1, num_steps + 1) * T_
+
+        # sample
+        xs = []
+        x_t = x_0.detach().clone().to(device)
+        t = torch.zeros(batch_size, *([1]*ndim), device=device)
+
+
+        with torch.no_grad():
+            for i in range(num_steps):
+                t.fill_(ts[i].item())
+                mu = sde.mu(t, x_t, lmbd=lmbd)
+                sigma = sde.sigma(t, x_t, lmbd=lmbd)
+                x_t = x_t + delta * mu + delta ** 0.5 * sigma * torch.randn_like(x_t) # one step update of Euler Maruyama method with a step size delta
+                if keep_all_samples or i == num_steps-1:
+                    xs.append(x_t.to('cpu'))
+                else:
+                    xs = x_t
+                    pass
+        return xs
+    
     ### 2.1. Define SDEs
     Log2PI = float(np.log(2 * np.pi))
 
@@ -104,6 +216,7 @@ if __name__ == '__main__':
             self.beta_max = beta_max
             self.T = T
             self.t_epsilon = t_epsilon
+            #self.our_sde = OU_SDE(self,T).to(device)
 
         @property
         def logvar_mean_T(self):
@@ -132,6 +245,44 @@ if __name__ == '__main__':
             return torch.ones_like(y) * beta_t**0.5
 
         def sample(self, t, y0, return_noise=False):
+            """
+            sample yt | y0
+            if return_noise=True, also return std and g for reweighting the denoising score matching loss
+            """
+            # mu = self.mean_weight(t) * y0
+            # std = self.var(t) ** 0.5
+            # epsilon = torch.randn_like(y0)
+            # yt = epsilon * std + mu
+
+            #y_0 = torch.randn(num_samples, 2, device=device) # init from prior
+            dt =0.01
+
+            # # print(t.shape())
+            # print(y0)
+            # print(type(y0))
+            # print(y0.shape)
+            # exit()
+            num_steps_floats = t /dt 
+            yt = torch.zeros_like(y0)
+            #self.our_sde.T = t
+            # TODO: Make this in parallel
+            for k, discretization_info in enumerate(zip(t,num_steps_floats,y0)):  
+                print("k = ", k)
+                tt, ns, y0_k= discretization_info
+                if tt < dt: 
+                    ns = 1
+                else:
+                    ns = int(ns)
+                our_sde = OU_SDE(self, tt).to(device)
+                yt[k,:] = own_euler_maruyama_sampler(our_sde, y0_k, ns, 0,0)[-1] # sample
+                
+
+            if not return_noise:
+                return yt
+            else:
+                return yt, epsilon, std, self.g(t, yt)
+
+        def sample_Song_et_al(self, t, y0, return_noise=False):
             """
             sample yt | y0
             if return_noise=True, also return std and g for reweighting the denoising score matching loss
@@ -245,7 +396,7 @@ if __name__ == '__main__':
             qt = 1 / self.T
             y = self.base_sde.sample(t_, x).requires_grad_()
 
-            # Following lines to adapt since the latent space is not Gaussian(easier sampler for final time ?)
+            # TODO : Following lines to adapt since the latent space is not Gaussian(easier sampler for final time ?)
             yT = self.base_sde.sample(torch.ones_like(t_) * self.base_sde.T, x)
             lp = log_normal(yT, torch.zeros_like(yT), torch.zeros_like(yT)).view(x.size(0), -1).sum(1)
 
@@ -320,13 +471,16 @@ if __name__ == '__main__':
     vtype = 'rademacher'
     lr = 0.001
     batch_size = 256
-    iterations = 100000
-    print_every = 5000
+    #iterations = 100000
+    iterations = 10000
+    print_every = 50
 
     # init models
     drift_q = MLP(input_dim=2, index_dim=1, hidden_dim=128).to(device)
     T = torch.nn.Parameter(torch.FloatTensor([T0]), requires_grad=False)
-    inf_sde = VariancePreservingSDE(beta_min=0.1, beta_max=20.0, T=T).to(device)
+    inf_sde = VariancePreservingSDE(beta_min=1, beta_max=1, T=T).to(device)
+    # our_sde = OU_SDE(inf_sde, drift_q, T).to(device)
+    # inf_sde = VariancePreservingSDE(beta_min=0.1, beta_max=20.0, T=T).to(device)
     gen_sde = PluginReverseSDE(inf_sde, drift_q, T, vtype=vtype, debias=False).to(device)
 
     # init optimizer
@@ -456,4 +610,4 @@ if __name__ == '__main__':
         plt.show(block=False)
         plt.savefig("samples_lambda=" + str(lmbd) + ".png")
         plt.pause(1)
-        plt.close()
+        #plt.close()
