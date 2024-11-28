@@ -239,13 +239,21 @@ def new_G(n) :
         F = 0.5 * (F - F.T)
         G[:,:,k] = F
     
+    # normalisation to control how fast the dynamic is
+    L_G = 0.5*torch.einsum('ijk, jmk -> im', G, G)   # ito correction tensor
+    tr_L = torch.trace(L_G)
+    G = torch.sqrt( - 0.5 * n / tr_L ) * G
+    
     # check
-    for l in range(n): 
-        print("G[:,l,:] of rank d-1")
-        print(G[:,l,:])    
-    for k in range(n): 
-        print("G[:,:,k] skew sym")
-        print(G[:,:,k])
+    validate = False
+    if validate:
+        print(tr_L)
+        for l in range(n): 
+            print("G[:,l,:] of rank d-1 ?")
+            print(G[:,l,:])    
+        for k in range(n): 
+            print("G[:,:,k] skew sym ?")
+            print(G[:,:,k])
 
     return G.to(device)
 
@@ -263,12 +271,14 @@ def new_G_physics(n) :
             G[:,l,k] = G_k_e_l(alpha,F,n,k,l)
     
     # check
-    for l in range(n): 
-        print("G[:,l,:] of rank d-1")
-        print(G[:,l,:])
-    for k in range(n): 
-        print("G[:,:,k] skew sym")
-        print(G[:,:,k])
+    validate = False
+    if validate:
+        for l in range(n): 
+            print("G[:,l,:] of rank d-1 ?")
+            print(G[:,l,:])
+        for k in range(n): 
+            print("G[:,:,k] skew sym ?")
+            print(G[:,:,k])
 
     return G.to(device)
 
@@ -283,18 +293,19 @@ class multiplicativeNoise(SDE):
         super().__init__(T, t_epsilon)
         self.r_T = torch.linalg.norm(torch.tensor(y0), dim= 1)
         self.dim = y0.shape[1]
-        self.G = np.sqrt(beta/1.5) * new_G(self.dim)
+        self.G = np.sqrt(beta) * new_G(self.dim)
         self.L_G = 0.5*torch.einsum('ijk, jmk -> im', self.G, self.G).to(device)   # ito correction tensor
-        beta_G = - 2*torch.trace(self.L_G)/self.dim
-        print("G")
-        print(self.G[:,:,0])
-        print(self.G[:,:,1])
-        print("L_G")
-        print(self.L_G)
-        print("beta_G = " + str(beta_G))
         self.name_SDE = "multiplicativeNoise"
 
-        if plot_validate :        
+        if plot_validate :   
+            beta_G = - 2*torch.trace(self.L_G)/self.dim            
+            print("G")
+            print(self.G[:,:,0])
+            print(self.G[:,:,1])
+            print("L_G")
+            print(self.L_G)
+            print("beta_G = " + str(beta_G))
+                
             r_T = self.r_T.reshape(len(r_T),1)
             kde = KernelDensity(kernel='gaussian', bandwidth=0.002).fit(r_T)
             X_plot = torch.linspace(0,max(r_T[:,0]) + 0.1*abs(max(r_T[:,0])), 1000).reshape(1000,1)
