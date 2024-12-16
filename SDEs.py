@@ -448,22 +448,22 @@ class PluginReverseSDE(torch.nn.Module):
     def sigma(self, t, y, lmbd=0.):
         return (1. - lmbd) ** 0.5 * self.base_sde.g(self.T-t, y)
 
-    # WARNING : DSM is not relevant in MSGM
-    # SSM needs to be defined instead
-    @torch.enable_grad()
-    def dsm(self, x):
-        """
-        denoising score matching loss
-        """
-        if self.debias:
-            t_ = self.base_sde.sample_debiasing_t([x.size(0), ] + [1 for _ in range(x.ndim - 1)])
-        else:
-            t_ = torch.rand([x.size(0), ] + [1 for _ in range(x.ndim - 1)]).to(x) * self.T
-        y, target, std, g = self.base_sde.sample(t_, x, return_noise=True)
-        a = self.a(y, t_.squeeze())
+    # # WARNING : DSM is not relevant in MSGM
+    # # SSM needs to be defined instead
+    # @torch.enable_grad()
+    # def dsm(self, x):
+    #     """
+    #     denoising score matching loss
+    #     """
+    #     if self.debias:
+    #         t_ = self.base_sde.sample_debiasing_t([x.size(0), ] + [1 for _ in range(x.ndim - 1)])
+    #     else:
+    #         t_ = torch.rand([x.size(0), ] + [1 for _ in range(x.ndim - 1)]).to(x) * self.T
+    #     y, target, std, g = self.base_sde.sample(t_, x, return_noise=True)
+    #     a = self.a(y, t_.squeeze())
 
-        return ((a * std / g + target) ** 2).view(x.size(0), -1).sum(1, keepdim=False) / 2
-        # / g is not convenient for g being a dense matrix of rank d-1...
+    #     return ((a * std / g + target) ** 2).view(x.size(0), -1).sum(1, keepdim=False) / 2
+    #     # / g is not convenient for g being a dense matrix of rank d-1...
 
     @torch.enable_grad()
     def ssm(self, x):
