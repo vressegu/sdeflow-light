@@ -14,6 +14,7 @@ import torch
 import torch.nn as nn
 import sys
 import os
+import pandas as pd
 import matplotlib.pyplot as plt
 from sklearn.datasets import make_swiss_roll
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -25,24 +26,60 @@ from SDEs import VariancePreservingSDE,PluginReverseSDE,multiplicativeNoise
 if __name__ == '__main__':
     
     ## 1. Initialize dataset
+    class PODmodes:
+        def __init__(self):
+            self.dim = 8
+
+            pathData = '../MultiplicativeDiffusion/'
+            pathData = pathData + 'tempPODModes/LES_Re300/temporalModes_16modes'
+            # pathData = pathData + 'tempPODModes/LES_Re3900/temporalModes_16modes'
+            npdata = np.load(pathData + '/U.npy')
+            npdatatest = np.load(pathData + '_test/U.npy')
+            # npdata = np.load(pathData + 'tempPODModes/LES_Re3900/temporalModes_16modes/U.npy')
+            self.npdata = npdata[:,0:self.dim]
+            self.npdatatest = npdatatest[:,0:self.dim]
+
+            self.max_nsamples = npdatatest.shape[0]
+
+        def sample(self, n):               
+            assert (n <= self.npdata.shape[0])
+            idx = np.random.randint(0,self.npdata.shape[0], size = n)
+            return torch.from_numpy(self.npdata[idx,:])
+            # return torch.from_numpy( )
+                # make_swiss_roll(n)[0][:, [0, 2]].astype('float32') / 5.) # Changed: Pass noise as a keyword argument
+
+
     class SwissRoll:
         """
         Swiss roll distribution sampler.
         noise control the amount of noise injected to make a thicker swiss roll
         """
+        def __init__(self): 
+            self.dim = 2
         def sample(self, n, noise=0.5):
             if noise is None:
                 noise = 0.5
             return torch.from_numpy(
                 make_swiss_roll(n, noise=noise)[0][:, [0, 2]].astype('float32') / 5.) # Changed: Pass noise as a keyword argument
 
-    sampler = SwissRoll()
-    x = sampler.sample(100000).data.numpy()
+    # sampler = SwissRoll()
+    # x = sampler.sample(100000).data.numpy()
+    sampler = PODmodes()
+    x = sampler.sample(sampler.max_nsamples).data.numpy()
     plt.close('all')
     fig = plt.figure(figsize=(5, 5))
-    _ = plt.hist2d(x[:,0], x[:,1], 200, range=((-5,5), (-5,5)))
-    plt.axis('off')
+
+    # pddata = pd.DataFrame(npdata, columns=['A', 'B', 'C', 'D'])
+    pddata = pd.DataFrame(x, columns=range(1,1+x.shape[1]))
+
+    pd.plotting.scatter_matrix(pddata, diagonal="kde")
     plt.tight_layout()
+    # plt.show()
+
+    # _ = plt.hist2d(x[:,0], x[:,1], 200, range=((-5,5), (-5,5)))
+    # plt.axis('off')
+    # plt.tight_layout()
+
     plt.show(block=False)
     plt.savefig("swissroll.png")
     plt.pause(0.1)
@@ -114,86 +151,97 @@ if __name__ == '__main__':
         device = 'cpu'
         print('use cpu\n')
 
-    # arguments
-    T0 = 1
-    vtype = 'rademacher'
-    lr = 0.001
-    batch_size = 256
-    #iterations = 100000
-    iterations = 10000
-    print_every = 50
+    # iterationss = [100000, 10000, 1000, 100, 10]
+    iterationss = [10000]
+    # for iterations in iterationss:
+    batch_sizes = [256, 128, 64, 32, 16, 8, 4]
+    for batch_size in batch_sizes:
 
-    # init models
-    drift_q = MLP(input_dim=2, index_dim=1, hidden_dim=128).to(device)
-    T = torch.nn.Parameter(torch.FloatTensor([T0]), requires_grad=False)
-    inf_sde = multiplicativeNoise(x,beta=1, T=T).to(device)
-    # inf_sde = VariancePreservingSDE(beta_min=1, beta_max=1, T=T).to(device)
-    # # # inf_sde = VariancePreservingSDE(beta_min=0.1, beta_max=20.0, T=T).to(device)
-    gen_sde = PluginReverseSDE(inf_sde, drift_q, T, vtype=vtype, debias=False).to(device)
+        # arguments
+        T0 = 1
+        vtype = 'rademacher'
+        lr = 0.001
+        # batch_size = 256
+        # #iterations = 100000
+        iterations = 10000
+        # print_every = 50
+        print_every = 1000
 
-    print("name_SDE = " + inf_sde.name_SDE )
+        # init models
+        # drift_q = MLP(input_dim=2, index_dim=1, hidden_dim=128).to(device)
+        drift_q = MLP(input_dim=sampler.dim, index_dim=1, hidden_dim=128).to(device)
+        T = torch.nn.Parameter(torch.FloatTensor([T0]), requires_grad=False)
+        x_init = sampler.sample(iterations*batch_size).data.numpy()
+        # inf_sde = multiplicativeNoise(x_init,beta=1, T=T).to(device)
+        inf_sde = VariancePreservingSDE(beta_min=1, beta_max=1, T=T).to(device)
+        # # # inf_sde = VariancePreservingSDE(beta_min=0.1, beta_max=20.0, T=T).to(device)
+        gen_sde = PluginReverseSDE(inf_sde, drift_q, T, vtype=vtype, debias=False).to(device)
 
-    # init optimizer
-    optim = torch.optim.Adam(gen_sde.parameters(), lr=lr)
+        print("iterations = " + str(iterations) )
+        print("name_SDE = " + inf_sde.name_SDE )
 
-    # train
-    start_time = time.time()
-    for i in range(iterations):
-        optim.zero_grad() # init optimizer
-        x = sampler.sample(batch_size).to(device) # sample data
-        loss = gen_sde.ssm(x).mean() # forward and compute loss
-        loss.backward() # backward
-        optim.step() # update
+        # init optimizer
+        optim = torch.optim.Adam(gen_sde.parameters(), lr=lr)
 
-        # print
-        if (i+1) % print_every == 0:
-            # elbo
-            elbo, elbo_std = evaluate(gen_sde, x)
+        # train
+        start_time = time.time()
+        for i in range(iterations):
+            optim.zero_grad() # init optimizer
+            x = sampler.sample(batch_size).to(device) # sample data
+            loss = gen_sde.ssm(x).mean() # forward and compute loss
+            loss.backward() # backward
+            optim.step() # update
 
             # print
-            elapsed = time.time() - start_time
-            print('| iter {:6d} | {:5.2f} ms/step | loss {:8.3f} | elbo {:8.3f} | elbo std {:8.3f} '
-                .format(i+1, elapsed*1000/print_every, loss.item(), elbo.item(), elbo_std.item()))
-            start_time = time.time()
+            if (i == 0) or ((i+1) % print_every == 0):
+                # elbo
+                elbo, elbo_std = evaluate(gen_sde, x)
+
+                # print
+                elapsed = time.time() - start_time
+                print('| iter {:6d} | {:5.2f} ms/step | loss {:8.3f} | elbo {:8.3f} | elbo std {:8.3f} '
+                    .format(i+1, elapsed*1000/print_every, loss.item(), elbo.item(), elbo_std.item()))
+                start_time = time.time()
 
 
-    ## 4. Visualize
+        ## 4. Visualize
 
-    ### 4.3. Simulate SDEs
-    """
-    Simulate the generative SDE by using RK4 method
-    """
-    num_stepss = [1000, 100, 50, 20, 10, 5, 3, 2]
-    for num_steps in num_stepss:
-        print("Generation : num_steps = " + str(num_steps))
-        # init param
-        num_samples = 100000
+        ### 4.3. Simulate SDEs
+        """
+        Simulate the generative SDE by using RK4 method
+        """
+        num_stepss = [1000, 100, 50, 20, 10, 5, 3, 2]
+        for num_steps in num_stepss:
+            print("Generation : num_steps = " + str(num_steps))
+            # init param
+            num_samples = 100000
 
-        # lambdas
-        lmbds = [0.]
-        # lmbds = [0., 1.0]
+            # lambdas
+            lmbds = [0.]
+            # lmbds = [0., 1.0]
 
-        # indices to visualize
-        num_figs = 10
-        if num_figs > num_steps:
-            num_figs = num_steps
-        fig_step = int(num_steps/50) #100
-        if fig_step < 1:
-            fig_step = 1
-        inds = [i-1 for i in range(num_steps-(num_figs-1)*fig_step, num_steps+1, fig_step)]
+            # indices to visualize
+            num_figs = 10
+            if num_figs > num_steps:
+                num_figs = num_steps
+            fig_step = int(num_steps/50) #100
+            if fig_step < 1:
+                fig_step = 1
+            inds = [i-1 for i in range(num_steps-(num_figs-1)*fig_step, num_steps+1, fig_step)]
 
-        # sample and plot
-        plt.close('all')
-        for lmbd in lmbds:
-            x_0 = gen_sde.latent_sample(num_samples, 2, device=device) # init from prior
-            # xs = euler_maruyama_sampler(gen_sde, x_0, num_steps, lmbd=lmbd) # sample
-            # xs = heun_sampler(gen_sde, x_0, num_steps, lmbd=lmbd) # sample
-            xs = rk4_stratonovich_sampler(gen_sde, x_0, num_steps, lmbd=lmbd) # sample
-            plot_selected_inds(xs, inds, True, True, lmbd) # plot
-            time.sleep(0.5)
-            plt.show(block=False)
-            name_fig = gen_sde.base_sde.name_SDE + "_" + str(iterations) + "iteLearning_" \
-                + str(num_steps) + "stepsBack_lmbd=" + str(lmbd) + ".png" 
-            plt.savefig(name_fig)
-            plt.pause(1)
-            plt.close()
+            # sample and plot
+            plt.close('all')
+            for lmbd in lmbds:
+                x_0 = gen_sde.latent_sample(num_samples, 2, device=device) # init from prior
+                # xs = euler_maruyama_sampler(gen_sde, x_0, num_steps, lmbd=lmbd) # sample
+                # xs = heun_sampler(gen_sde, x_0, num_steps, lmbd=lmbd) # sample
+                xs = rk4_stratonovich_sampler(gen_sde, x_0, num_steps, lmbd=lmbd) # sample
+                plot_selected_inds(xs, inds, True, True, lmbd) # plot
+                time.sleep(0.5)
+                plt.show(block=False)
+                name_fig = gen_sde.base_sde.name_SDE + "_" + str(iterations) + "iteLearning_" \
+                    + str(batch_size) + "batchSize_" \
+                    + str(num_steps) + "stepsBack_lmbd=" + str(lmbd) + ".png" 
+                plt.savefig(name_fig)
+                plt.pause(1)
+                plt.close()
