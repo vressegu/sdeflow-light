@@ -292,6 +292,8 @@ class multiplicativeNoise(SDE):
     def __init__(self, y0, beta=1.0, T=1.0, t_epsilon=0.001, plot_validate = False):
         super().__init__(T, t_epsilon)
         self.r_T = torch.linalg.norm(torch.tensor(y0), dim= 1)
+        r_T = self.r_T.reshape(len(self.r_T),1)
+        self.kde = KernelDensity(kernel='gaussian', bandwidth=0.002).fit(r_T)
         self.dim = y0.shape[1]
         self.G = np.sqrt(beta) * new_G(self.dim)
         self.L_G = 0.5*torch.einsum('ijk, jmk -> im', self.G, self.G).to(device)   # ito correction tensor
@@ -386,11 +388,10 @@ class multiplicativeNoise(SDE):
     
     def log_latent_pdf(self,yT):
         r_T = self.r_T.reshape(len(self.r_T),1)
-        kde = KernelDensity(kernel='gaussian', bandwidth=0.002).fit(r_T)
         X_plot = torch.linspace(0,max(r_T[:,0]) + 0.1*abs(max(r_T[:,0])), 1000).reshape(1000,1)
         r_yT = torch.linalg.norm(yT.clone().detach(), dim= 1)
         r_yT = r_yT.reshape(len(r_yT),1)
-        log_dens_yT = torch.tensor(kde.score_samples(r_yT.cpu())) - np.log(2*np.pi)
+        log_dens_yT = torch.tensor(self.kde.score_samples(r_yT.cpu())) - np.log(2*np.pi)
         return log_dens_yT.to(torch.float32).to(device)
 
 ###################################################################################################
