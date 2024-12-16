@@ -46,7 +46,11 @@ def get_2d_histogram_plot(data, val=5, num=256, use_grid=False, origin='lower'):
     # draw to canvas
     fig.canvas.draw()  # draw the canvas, cache the renderer
     image = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
-    image = image.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+    tupl = fig.canvas.get_width_height()[::-1]
+    if ( tupl[0]*tupl[1]*3 == image.shape[0] ) :
+        image = image.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+    else:
+        image = image.reshape( (tupl[0]*2,tupl[1]*2,3) )
 
     plt.close()
     return image
