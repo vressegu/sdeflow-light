@@ -313,7 +313,12 @@ class multiplicativeNoise(SDE):
             X_plot = torch.linspace(0,max(r_T[:,0]) + 0.1*abs(max(r_T[:,0])), 1000).reshape(1000,1)
             log_dens = torch.tensor(kde.score_samples(X_plot))
             plt.plot(X_plot[:,0], torch.exp(log_dens))
+            time.sleep(0.5)
+            plt.show(block=False)
             plt.savefig("ecdf_n_kde.png")
+            plt.pause(1)
+            plt.close()
+
 
     def f(self, t, y):
         # return 0.5 * div_Sigma(t, y)
