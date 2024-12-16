@@ -361,21 +361,23 @@ class multiplicativeNoise(SDE):
         s = self.generate_uniform_on_sphere(num_samples)
         x0 = r * s 
 
-        x0_plot = x0.clone().detach().cpu()
-        if self.dim == 2: 
-            plt.plot(x0_plot[:,0], x0_plot[:,1], 'or', markersize = 1, alpha = 0.5)
-            plt.gca().set_aspect('equal', 'box')
-        elif self.dim == 3: 
-            #ax = plt.figure().add_subplot(projection='3d')
-            ax = plt.axes(projection='3d')
-            x_gen_plot = np.array(x0_plot)
-            ax.plot3D(x_gen_plot[:,0], x_gen_plot[:,1], x_gen_plot[:,2], 'or', markersize = 1, alpha = 0.5)
-            plt.gca().set_aspect('equal', 'box')
-        else: 
-            raise NotImplemented("dim = 2 and 3 supported")
-        plt.show()
-        plt.savefig("latent_sample_multNoise.png")
-        plt.close()
+        validate = False
+        if validate:
+            x0_plot = x0.clone().detach().cpu()
+            if self.dim == 2: 
+                plt.plot(x0_plot[:,0], x0_plot[:,1], 'or', markersize = 1, alpha = 0.5)
+                plt.gca().set_aspect('equal', 'box')
+            elif self.dim == 3: 
+                #ax = plt.figure().add_subplot(projection='3d')
+                ax = plt.axes(projection='3d')
+                x_gen_plot = np.array(x0_plot)
+                ax.plot3D(x_gen_plot[:,0], x_gen_plot[:,1], x_gen_plot[:,2], 'or', markersize = 1, alpha = 0.5)
+                plt.gca().set_aspect('equal', 'box')
+            else: 
+                raise NotImplemented("dim = 2 and 3 supported")
+            plt.show()
+            plt.savefig("latent_sample_multNoise.png")
+            plt.close()
 
         return x0
         
