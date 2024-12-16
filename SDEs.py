@@ -339,8 +339,8 @@ class multiplicativeNoise(SDE):
         return X
 
     def gen_radial_distribution(self,num_samples): 
-        Z = torch.randn(num_samples)
-        U = norm.cdf(Z)    # map gaussian to uniform 
+        U = torch.rand(num_samples)   # uniform         
+        # could be replaced by KS density
         r_gen = np.quantile(self.r_T, U).reshape(num_samples,1)
 
         validate = False
