@@ -22,7 +22,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from sde_scheme import euler_maruyama_sampler,heun_sampler,rk4_stratonovich_sampler
 from own_plotting import plot_selected_inds
 from SDEs import VariancePreservingSDE,PluginReverseSDE,multiplicativeNoise
-from data import eof_pressure,Lorenz96,PODmodes,SwissRoll
+from data import weather_station,eof_pressure,Lorenz96,PODmodes,SwissRoll
 
 
 np.random.seed(0)
