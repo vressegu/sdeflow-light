@@ -39,6 +39,7 @@ if __name__ == '__main__':
     # Res=[300,3900]
     Res=[100,1000,10000]
     # Res=[300]
+    MSGM = 1
     for dim in dims:
         
         for Re in Res:
@@ -178,9 +179,11 @@ if __name__ == '__main__':
                 # drift_q = MLP(input_dim=2, index_dim=1, hidden_dim=128).to(device)
                 drift_q = MLP(input_dim=sampler.dim, index_dim=1, hidden_dim=128).to(device)
                 T = torch.nn.Parameter(torch.FloatTensor([T0]), requires_grad=False)
-                x_init = sampler.sample(iterations*batch_size).data.numpy()
-                inf_sde = multiplicativeNoise(x_init,beta=1, T=T).to(device)
-                # inf_sde = VariancePreservingSDE(beta_min=1, beta_max=1, T=T).to(device)
+                if MSGM:
+                    x_init = sampler.sample(iterations*batch_size).data.numpy()
+                    inf_sde = multiplicativeNoise(x_init,beta=1, T=T).to(device)
+                else:
+                    inf_sde = VariancePreservingSDE(beta_min=1, beta_max=1, T=T).to(device)
                 gen_sde = PluginReverseSDE(inf_sde, drift_q, T, vtype=vtype, debias=False).to(device)
 
                 print("iterations = " + str(iterations) )
