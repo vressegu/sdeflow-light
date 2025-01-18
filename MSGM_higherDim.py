@@ -52,12 +52,12 @@ if __name__ == '__main__':
             plt.close('all')
             # # fig = plt.figure(figsize=(5, 5))
             # fig = plt.figure(figsize=(10, 10))
-
-            pddatatest = pd.DataFrame(xtest, columns=range(1,1+xtest.shape[1]))
+            dimplot = np.min([8,xtest.shape[1]])
+            pddatatest = pd.DataFrame(xtest[:,0:dimplot], columns=range(1,1+dimplot))
             # pd.plotting.scatter_matrix(pddata, diagonal='kde',s=1,hist_kwds={"bins": 20},
             # color='red') 
-            dim = pddatatest.shape[1]
-            fig, axes = plt.subplots(nrows=dim, ncols=dim, figsize=(2*dim,dim))
+            # dim = pddatatest.shape[1]
+            fig, axes = plt.subplots(nrows=dimplot, ncols=dimplot, figsize=(2*dimplot,dimplot))
             color='blue'
             ssize = 2
             scatter = pd.plotting.scatter_matrix(pddatatest, diagonal=None,s=ssize,hist_kwds={"bins": 20},
@@ -247,13 +247,12 @@ if __name__ == '__main__':
                         xs = rk4_stratonovich_sampler(gen_sde, x_0, num_steps, lmbd=lmbd) # sample
 
                         # pddata = pd.DataFrame(npdata, columns=['A', 'B', 'C', 'D'])
-                        pddatagen = pd.DataFrame(xs[num_steps-1], columns=range(1,1+x.shape[1]))
+                        pddatagen = pd.DataFrame(xs[num_steps-1][:,0:dimplot], columns=range(1,1+dimplot))
 
                         # pddatatest = pd.DataFrame(xtest, columns=range(1,1+xtest.shape[1]))
                         # # pd.plotting.scatter_matrix(pddata, diagonal='kde',s=1,hist_kwds={"bins": 20},
                         # # color='red') 
-                        dim = pddatatest.shape[1]
-                        fig, axes = plt.subplots(nrows=dim, ncols=dim, figsize=(2*dim,dim))
+                        fig, axes = plt.subplots(nrows=dimplot, ncols=dimplot, figsize=(2*dimplot,dimplot))
                         color='blue'
                         scatter = pd.plotting.scatter_matrix(pddatatest, diagonal=None,s=ssize,hist_kwds={"bins": 20},
                             color=color, ax=axes) 
