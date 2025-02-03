@@ -159,21 +159,27 @@ class Lorenz96:
         return torch.from_numpy(self.npdatatest[idx,:]).to(torch.float32)
 
 class PODmodes:
-    def __init__(self, Re = 300, dim = 8):
+    def __init__(self, Re = 300, dim = 8, normalized = False):
         self.dim = dim
         # self.dim = 16
         self.name='POD'
         # Re='300'
         Re = str(Re)
         self.name = self.name + Re + str(self.dim)
+        if normalized:
+            self.name = self.name + '_norm'
 
         pathData = '../MultiplicativeDiffusion/'
         pathData = pathData + 'tempPODModes/LES_Re' + Re + '/temporalModes_16modes'
-        # pathData = pathData + 'tempPODModes/LES_Re3900/temporalModes_16modes'
         npdata = np.load(pathData + '/U.npy')
         npdatatest = np.load(pathData + '_test/U.npy')
         npdata = npdata/10
         npdatatest = npdatatest/10
+        if normalized:
+            std = npdata.std(axis=0)
+            npdata = npdata/std
+            npdatatest = npdatatest/std
+
         self.npdata = npdata[:,0:self.dim]
         self.npdatatest = npdatatest[:,0:self.dim]
 
