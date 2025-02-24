@@ -26,6 +26,8 @@ from data import weather_station,eof_pressure,Lorenz96,PODmodes,SwissRoll
 
 
 np.random.seed(0)
+torch.manual_seed(0) 
+
 DISPLAY_MAX_ROWS = 20  # number of max rows to print for a DataFrame
 pd.set_option('display.max_rows', DISPLAY_MAX_ROWS)
 
