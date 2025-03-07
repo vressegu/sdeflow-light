@@ -33,8 +33,14 @@ pd.set_option('display.max_rows', DISPLAY_MAX_ROWS)
 scatter_plots = True
 denoising_plots = True
 save_results = True
+plot_xlim = 3.0
+plot_xlim = 2.0
+
 justLoad = False
 ssize = 1
+
+plot_ylim_row = plot_xlim
+plot_xlim_col = plot_xlim
 
 if __name__ == '__main__':
 
@@ -56,7 +62,8 @@ if __name__ == '__main__':
             # num_samples = 100000
             num_samples = 10000
             xtest = sampler.sampletest(num_samples).data.numpy()
-            
+            std_test = xtest.std(axis=0)
+
             plt.close('all')
             # # fig = plt.figure(figsize=(5, 5))
             # fig = plt.figure(figsize=(10, 10))
@@ -75,11 +82,11 @@ if __name__ == '__main__':
                 ax.clear()
                 pddatatest[col].plot.kde(ax=ax, color=color, label='test')
                 ax.legend(fontsize=8, loc='upper right')
-                if ~ normalized_data:
+                if not normalized_data:
                     plot_ylim_row = plot_xlim * std_test[i]
                 for j, col in enumerate(pddatatest.columns):
                     ax = scatter[i, j]
-                    if ~ normalized_data:
+                    if not normalized_data:
                         plot_xlim_col = plot_xlim * std_test[j]
                     ax.axis(xmin=-plot_xlim_col,xmax=plot_xlim_col)
                     if (i != j):
