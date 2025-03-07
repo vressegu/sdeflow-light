@@ -41,7 +41,7 @@ iterations = 10000
 print_every = 1000
 
 # Inference
-num_stepss = [10,100]
+num_stepss_backward = [10,100]
 include_t0 = False
 num_samples = 10000
 # Plots
@@ -249,11 +249,11 @@ if __name__ == '__main__':
                 """
                 Simulate the generative SDE by using RK4 method
                 """
-                # num_stepss = [1000, 100, 50, 20, 10, 5, 3, 2]
+                # num_stepss_backward = [1000, 100, 50, 20, 10, 5, 3, 2]
 
-                # num_stepss = [2]
-                for num_steps in num_stepss:
-                    print("Generation : num_steps = " + str(num_steps))
+                # num_stepss_backward = [2]
+                for num_steps_backward in num_stepss_backward:
+                    print("Generation : num_steps_backward = " + str(num_steps_backward))
                     # init param
                     # num_samples = 100000
 
@@ -262,13 +262,13 @@ if __name__ == '__main__':
                     # lmbds = [0., 1.0]
 
                     # indices to visualize
-                    fig_step = int(num_steps/10) #100
+                    fig_step = int(num_steps_backward/10) #100
                     if fig_step < 1:
                         fig_step = 1
                     if include_t0:
-                        inds = range(0, num_steps+1, fig_step)
+                        inds = range(0, num_steps_backward+1, fig_step)
                     else:
-                        inds = range(0, num_steps, fig_step)
+                        inds = range(0, num_steps_backward, fig_step)
                     # sample and plot
                     plt.close('all')
                     for lmbd in lmbds:
@@ -276,13 +276,13 @@ if __name__ == '__main__':
                         name_simu = folder_results + "/" + sampler.name + "_" \
                             + gen_sde.base_sde.name_SDE + "_" + str(iterations) + "iteLearning_" \
                             + str(batch_size) + "batchSize_" \
-                            + str(num_steps) + "stepsBack_lmbd=" + str(lmbd) 
+                            + str(num_steps_backward) + "stepsBack_lmbd=" + str(lmbd) 
                         if (justLoad):
                             save_results = False
                             xs = torch.load(name_simu + ".pt", weights_only=True)
                         else:
                             x_0 = gen_sde.latent_sample(num_samples, sampler.dim, device=device) # init from prior
-                            xs = rk4_stratonovich_sampler(gen_sde, x_0, num_steps, lmbd=lmbd,include_t0=include_t0) # sample
+                            xs = rk4_stratonovich_sampler(gen_sde, x_0, num_steps_backward, lmbd=lmbd,include_t0=include_t0) # sample
                         xgen = xs[-1]
 
                         if (scatter_plots):
