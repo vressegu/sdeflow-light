@@ -247,16 +247,10 @@ if __name__ == '__main__':
                     for lmbd in lmbds:
                         # x_0 = gen_sde.latent_sample(num_samples, 2, device=device) # init from prior
                         x_0 = gen_sde.latent_sample(num_samples, x.shape[1], device=device) # init from prior
-                        # xs = euler_maruyama_sampler(gen_sde, x_0, num_steps, lmbd=lmbd) # sample
-                        # xs = heun_sampler(gen_sde, x_0, num_steps, lmbd=lmbd) # sample
                         xs = rk4_stratonovich_sampler(gen_sde, x_0, num_steps, lmbd=lmbd) # sample
 
-                        # pddata = pd.DataFrame(npdata, columns=['A', 'B', 'C', 'D'])
                         pddatagen = pd.DataFrame(xs[num_steps-1][:,0:dimplot], columns=range(1,1+dimplot))
 
-                        # pddatatest = pd.DataFrame(xtest, columns=range(1,1+xtest.shape[1]))
-                        # # pd.plotting.scatter_matrix(pddata, diagonal='kde',s=1,hist_kwds={"bins": 20},
-                        # # color='red') 
                         fig, axes = plt.subplots(nrows=dimplot, ncols=dimplot, figsize=(2*dimplot,dimplot))
                         color='blue'
                         scatter = pd.plotting.scatter_matrix(pddatatest, diagonal=None,s=ssize,hist_kwds={"bins": 20},
@@ -273,10 +267,6 @@ if __name__ == '__main__':
                             color='red'
                             pddatagen[col].plot.kde(ax=ax, color=color, label='gen')
                             ax.legend(fontsize=8, loc='upper right')
-
-                        # pd.plotting.scatter_matrix(pddatagen, diagonal='kde',s=1,hist_kwds={"bins": 20})
-                        # # pd.plotting.scatter_matrix(pddata, diagonal="kde")
-
                         plt.tight_layout()
                         # plt.show()
                         time.sleep(0.5)
@@ -289,7 +279,6 @@ if __name__ == '__main__':
                         plt.pause(1)
                         plt.close()
 
-                        # plot_selected_inds(xs[:,0:1,:], inds, True, True, lmbd) # plot
 
                         # time.sleep(0.5)
                         # plt.show(block=False)
