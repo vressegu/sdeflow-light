@@ -249,14 +249,13 @@ if __name__ == '__main__':
                     # lmbds = [0., 1.0]
 
                     # indices to visualize
-                    num_figs = 10
-                    if num_figs > num_steps:
-                        num_figs = num_steps
-                    fig_step = int(num_steps/50) #100
+                    fig_step = int(num_steps/10) #100
                     if fig_step < 1:
                         fig_step = 1
-                    inds = [i-1 for i in range(num_steps-(num_figs-1)*fig_step, num_steps+1, fig_step)]
-
+                    if include_t0:
+                        inds = range(0, num_steps+1, fig_step)
+                    else:
+                        inds = range(0, num_steps, fig_step)
                     # sample and plot
                     plt.close('all')
                     for lmbd in lmbds:
