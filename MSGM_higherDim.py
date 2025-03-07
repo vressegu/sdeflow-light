@@ -237,7 +237,8 @@ if __name__ == '__main__':
                 Simulate the generative SDE by using RK4 method
                 """
                 # num_stepss = [1000, 100, 50, 20, 10, 5, 3, 2]
-                num_stepss = [1000, 100, 50]
+                include_t0 = False
+
                 # num_stepss = [2]
                 for num_steps in num_stepss:
                     print("Generation : num_steps = " + str(num_steps))
@@ -269,7 +270,7 @@ if __name__ == '__main__':
                             xs = torch.load(name_simu + ".pt", weights_only=True)
                         else:
                             x_0 = gen_sde.latent_sample(num_samples, sampler.dim, device=device) # init from prior
-                            xs = rk4_stratonovich_sampler(gen_sde, x_0, num_steps, lmbd=lmbd) # sample
+                            xs = rk4_stratonovich_sampler(gen_sde, x_0, num_steps, lmbd=lmbd,include_t0=include_t0) # sample
                         xgen = xs[-1]
 
                         if (scatter_plots):

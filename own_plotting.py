@@ -55,7 +55,7 @@ def get_2d_histogram_plot(data, val=3, num=64, vmax=10, use_grid=False, origin='
     plt.close()
     return image
 
-def plot_selected_inds(xs, inds, use_xticks=True, use_yticks=True, lmbd = 0.):
+def plot_selected_inds(xs, inds, use_xticks=True, use_yticks=True, lmbd = 0.,include_t0=False):
     imgs_ = []
     for ind in inds:
         imgs_ += [get_2d_histogram_plot(xs[ind].numpy())]
@@ -67,7 +67,10 @@ def plot_selected_inds(xs, inds, use_xticks=True, use_yticks=True, lmbd = 0.):
     fontsize = 15
     if use_xticks:
         xticks = [0.5*width_per_img + width_per_img*i for i in range(len(inds))]
-        xticklabels = [r'$i={:d}$'.format(ind+1) for ind in inds]
+        if not include_t0:
+            xticklabels = [r'$i={:d}$'.format(ind+1) for ind in inds]
+        else:
+            xticklabels = [r'$i={:d}$'.format(ind) for ind in inds]
     else:
         xticks, xticklabels = [], []
     if use_yticks:
