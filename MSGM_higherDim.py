@@ -268,7 +268,7 @@ if __name__ == '__main__':
                     if include_t0:
                         inds = range(0, num_steps_backward+1, fig_step)
                     else:
-                        inds = range(0, num_steps_backward, fig_step)
+                        inds = range(fig_step-1, num_steps_backward, fig_step)
                     # sample and plot
                     plt.close('all')
                     for lmbd in lmbds:
