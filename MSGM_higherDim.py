@@ -33,6 +33,7 @@ pd.set_option('display.max_rows', DISPLAY_MAX_ROWS)
 scatter_plots = True
 denoising_plots = True
 save_results = True
+justLoad = False
 ssize = 1
 
 if __name__ == '__main__':
@@ -204,28 +205,29 @@ if __name__ == '__main__':
                 print("iterations = " + str(iterations) )
                 print("name_SDE = " + inf_sde.name_SDE )
 
-                # init optimizer
-                optim = torch.optim.Adam(gen_sde.parameters(), lr=lr)
+                if (not justLoad):
+                    # init optimizer
+                    optim = torch.optim.Adam(gen_sde.parameters(), lr=lr)
 
-                # train
-                start_time = time.time()
-                for i in range(iterations):
-                    optim.zero_grad() # init optimizer
-                    x = sampler.sample(batch_size).to(device) # sample data
-                    loss = gen_sde.ssm(x).mean() # forward and compute loss
-                    loss.backward() # backward
-                    optim.step() # update
-
-                    # print
-                    if (i == 0) or ((i+1) % print_every == 0):
-                        # elbo
-                        elbo, elbo_std = evaluate(gen_sde, x)
+                    # train
+                    start_time = time.time()
+                    for i in range(iterations):
+                        optim.zero_grad() # init optimizer
+                        x = sampler.sample(batch_size).to(device) # sample data
+                        loss = gen_sde.ssm(x).mean() # forward and compute loss
+                        loss.backward() # backward
+                        optim.step() # update
 
                         # print
-                        elapsed = time.time() - start_time
-                        print('| iter {:6d} | {:5.2f} ms/step | loss {:8.3f} | elbo {:8.3f} | elbo std {:8.3f} '
-                            .format(i+1, elapsed*1000/print_every, loss.item(), elbo.item(), elbo_std.item()))
-                        start_time = time.time()
+                        if (i == 0) or ((i+1) % print_every == 0):
+                            # elbo
+                            elbo, elbo_std = evaluate(gen_sde, x)
+
+                            # print
+                            elapsed = time.time() - start_time
+                            print('| iter {:6d} | {:5.2f} ms/step | loss {:8.3f} | elbo {:8.3f} | elbo std {:8.3f} '
+                                .format(i+1, elapsed*1000/print_every, loss.item(), elbo.item(), elbo_std.item()))
+                            start_time = time.time()
 
 
                 ## 4. Visualize
@@ -263,8 +265,12 @@ if __name__ == '__main__':
                             + gen_sde.base_sde.name_SDE + "_" + str(iterations) + "iteLearning_" \
                             + str(batch_size) + "batchSize_" \
                             + str(num_steps) + "stepsBack_lmbd=" + str(lmbd) 
-                        x_0 = gen_sde.latent_sample(num_samples, sampler.dim, device=device) # init from prior
-                        xs = rk4_stratonovich_sampler(gen_sde, x_0, num_steps, lmbd=lmbd) # sample
+                        if (justLoad):
+                            save_results = False
+                            xs = torch.load(name_simu + ".pt", weights_only=True)
+                        else:
+                            x_0 = gen_sde.latent_sample(num_samples, sampler.dim, device=device) # init from prior
+                            xs = rk4_stratonovich_sampler(gen_sde, x_0, num_steps, lmbd=lmbd) # sample
                         xgen = xs[-1]
 
                         if (scatter_plots):
