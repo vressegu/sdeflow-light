@@ -30,17 +30,33 @@ torch.manual_seed(0)
 
 DISPLAY_MAX_ROWS = 20  # number of max rows to print for a DataFrame
 pd.set_option('display.max_rows', DISPLAY_MAX_ROWS)
+
+# arguments
+
+# Train
+T0 = 1
+vtype = 'rademacher'
+lr = 0.001
+iterations = 10000
+print_every = 1000
+
+# Inference
+num_stepss = [10,100]
+include_t0 = False
+num_samples = 10000
+# Plots
 scatter_plots = True
 denoising_plots = True
 save_results = True
 plot_xlim = 3.0
 plot_xlim = 2.0
-
-justLoad = False
-ssize = 1
-
 plot_ylim_row = plot_xlim
 plot_xlim_col = plot_xlim
+ssize = 1
+
+# Load results 
+justLoad = False
+
 
 if __name__ == '__main__':
 
@@ -59,8 +75,7 @@ if __name__ == '__main__':
             # sampler = PODmodes(Re,dim)
             sampler = Lorenz96(Re,dim)
             # sampler = eof_pressure(dim)
-            # num_samples = 100000
-            num_samples = 10000
+
             xtest = sampler.sampletest(num_samples).data.numpy()
             sampler.dim = xtest.shape[1]
             std_test = xtest.std(axis=0)
@@ -173,9 +188,7 @@ if __name__ == '__main__':
                 device = 'cpu'
                 print('use cpu\n')
 
-            # iterations = 10000
             # iterationss = [100000, 10000, 1000, 100, 10]
-            iterationss = [10000]
             # for iterations in iterationss:
             # batch_sizes = [256, 128, 64, 32, 16, 8, 4]
             batch_sizes = [256]
@@ -188,19 +201,7 @@ if __name__ == '__main__':
 
             for batch_size in batch_sizes:
 
-                # arguments
-                T0 = 1
-                vtype = 'rademacher'
-                lr = 0.001
-                # batch_size = 256
-                # #iterations = 100000
-                iterations = 10000
-                # iterations = 1
-                # print_every = 50
-                print_every = 1000
-
                 # init models
-                # drift_q = MLP(input_dim=2, index_dim=1, hidden_dim=128).to(device)
                 drift_q = MLP(input_dim=sampler.dim, index_dim=1, hidden_dim=128).to(device)
                 T = torch.nn.Parameter(torch.FloatTensor([T0]), requires_grad=False)
                 if MSGM:
@@ -245,7 +246,6 @@ if __name__ == '__main__':
                 Simulate the generative SDE by using RK4 method
                 """
                 # num_stepss = [1000, 100, 50, 20, 10, 5, 3, 2]
-                include_t0 = False
 
                 # num_stepss = [2]
                 for num_steps in num_stepss:
