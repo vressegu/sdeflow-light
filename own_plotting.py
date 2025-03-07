@@ -15,7 +15,7 @@ import torch.nn as nn
 import matplotlib.pyplot as plt
 
 ### 4.1. Define plotting tools
-def get_2d_histogram_plot(data, val=5, num=256, use_grid=False, origin='lower'):
+def get_2d_histogram_plot(data, val=3, num=64, vmax=10, use_grid=False, origin='lower'):
     xmin = -val
     xmax = val
     ymin = -val
@@ -31,7 +31,7 @@ def get_2d_histogram_plot(data, val=5, num=256, use_grid=False, origin='lower'):
 
     # plot heatmap
     fig, ax = plt.subplots(figsize=(5, 5))
-    im = ax.imshow(heatmap.T, extent=extent, cmap='jet', origin=origin)
+    im = ax.imshow(heatmap.T, extent=extent, origin=origin, vmin=0, vmax=vmax)
     ax.grid(False)
     if use_grid:
         plt.xticks(np.arange(-val, val+1, step=1))
