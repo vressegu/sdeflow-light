@@ -69,6 +69,10 @@ if __name__ == '__main__':
     Res=[100,1000,10000]
     # Res=[300]
     MSGM = 1
+    if not MSGM:
+        normalized_data = True
+    else:
+        normalized_data = False
     for dim in dims:
         
         for Re in Res:
