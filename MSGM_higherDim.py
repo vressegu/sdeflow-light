@@ -30,6 +30,7 @@ torch.manual_seed(0)
 
 DISPLAY_MAX_ROWS = 20  # number of max rows to print for a DataFrame
 pd.set_option('display.max_rows', DISPLAY_MAX_ROWS)
+save_results = True
 ssize = 1
 
 if __name__ == '__main__':
@@ -314,3 +315,5 @@ if __name__ == '__main__':
                         plt.pause(1)
                         plt.close()
 
+                        if (save_results):
+                            torch.save(xs, name_simu + ".pt")
