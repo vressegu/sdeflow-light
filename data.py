@@ -12,6 +12,40 @@ from netCDF4 import Dataset
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 
+class ncar_weather_station:
+    def __init__(self, dim = 90):
+        self.dim = dim
+        self.name='ncar_weather'
+        self.name = self.name + str(self.dim)
+
+        pathData = '../MultiplicativeDiffusion/'
+        folder = pathData + 'isfs_m2hats_qc_geo_hr_202309'
+        file = 'subsample_data'
+        file_path = folder + '/' + file + '.npy'
+        npdata = np.load(file_path) 
+
+        # center and mormalize data
+        npdata = (npdata-npdata.mean(axis=0))/npdata.std(axis=0)
+        # keep only dim dimension
+        npdata = npdata[0:-1:1,0:self.dim]
+
+        n_test = npdata.shape[0] // 3
+
+        self.npdata = npdata[0:-n_test:1,:]
+        self.npdatatest = npdata[-n_test:-1:1,:]
+
+        self.max_nsamples = self.npdata.shape[0]
+        self.max_nsamplestest = self.npdatatest.shape[0]
+
+    def sample(self, n):               
+        idx = np.random.randint(0,self.npdata.shape[0], size = n) #% self.max_nsamples
+        return torch.from_numpy(self.npdata[idx,:]).to(torch.float32)
+
+    def sampletest(self, n):               
+        idx = np.random.randint(0,self.npdatatest.shape[0], size = n) #% self.max_nsamples
+        return torch.from_numpy(self.npdatatest[idx,:]).to(torch.float32)
+
+
 class weather_station:
     def __init__(self, dim = 30):
         self.dim = dim
