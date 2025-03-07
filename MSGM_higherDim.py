@@ -134,10 +134,10 @@ if __name__ == '__main__':
             @torch.no_grad()
             def evaluate(gen_sde, x_test):
                 gen_sde.eval()
-                num_samples = x_test.size(0)
+                num_samples_ = x_test.size(0)
                 test_elbo = gen_sde.elbo_random_t_slice(x_test)
                 gen_sde.train()
-                return test_elbo.mean(), test_elbo.std() / num_samples ** 0.5
+                return test_elbo.mean(), test_elbo.std() / num_samples_ ** 0.5
 
             ## 3. Train
             # init device
