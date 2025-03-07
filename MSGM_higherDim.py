@@ -245,7 +245,6 @@ if __name__ == '__main__':
                     # sample and plot
                     plt.close('all')
                     for lmbd in lmbds:
-                        # x_0 = gen_sde.latent_sample(num_samples, 2, device=device) # init from prior
                         xs = rk4_stratonovich_sampler(gen_sde, x_0, num_steps, lmbd=lmbd) # sample
 
                         pddatagen = pd.DataFrame(xs[num_steps-1][:,0:dimplot], columns=range(1,1+dimplot))
