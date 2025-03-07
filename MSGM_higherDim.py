@@ -245,6 +245,11 @@ if __name__ == '__main__':
                     # sample and plot
                     plt.close('all')
                     for lmbd in lmbds:
+                        folder_results = "results"
+                        name_simu = folder_results + "/" + sampler.name + "_" \
+                            + gen_sde.base_sde.name_SDE + "_" + str(iterations) + "iteLearning_" \
+                            + str(batch_size) + "batchSize_" \
+                            + str(num_steps) + "stepsBack_lmbd=" + str(lmbd) 
                         x_0 = gen_sde.latent_sample(num_samples, sampler.dim, device=device) # init from prior
                         xs = rk4_stratonovich_sampler(gen_sde, x_0, num_steps, lmbd=lmbd) # sample
                         xgen = xs[-1]
@@ -271,10 +276,7 @@ if __name__ == '__main__':
                         # plt.show()
                         time.sleep(0.5)
                         plt.show(block=False)
-                        name_fig = sampler.name + "_" \
-                            + gen_sde.base_sde.name_SDE + "_" + str(iterations) + "iteLearning_" \
-                            + str(batch_size) + "batchSize_" \
-                            + str(num_steps) + "stepsBack_lmbd=" + str(lmbd) + "_multDim.png" 
+                        name_fig = name_simu + "_multDim.png" 
                         plt.savefig(name_fig)
                         plt.pause(1)
                         plt.close()
