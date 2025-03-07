@@ -76,9 +76,14 @@ if __name__ == '__main__':
     for dim in dims:
         
         for Re in Res:
-            # sampler = PODmodes(Re,dim)
-            sampler = Lorenz96(Re,dim)
+            sampler = SwissRoll()
+            # sampler = PODmodes(Re,dim, normalized=normalized_data)
+            # sampler = Lorenz96(Re,dim)
             # sampler = eof_pressure(dim)
+            # sampler = weather_station()
+            # sampler = weather_station(dim) 
+            # sampler = ncar_weather_station()
+            # sampler = ncar_weather_station(dim) 
 
             xtest = sampler.sampletest(num_samples).data.numpy()
             sampler.dim = xtest.shape[1]
