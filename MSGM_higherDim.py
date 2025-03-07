@@ -306,13 +306,11 @@ if __name__ == '__main__':
                         plt.pause(1)
                         plt.close()
 
+                        plot_selected_inds(xs, inds, True, False, lmbd, include_t0=include_t0) # plot
+                        time.sleep(0.5)
+                        plt.show(block=False)
+                        name_fig = name_simu + ".png" 
+                        plt.savefig(name_fig)
+                        plt.pause(1)
+                        plt.close()
 
-                        # time.sleep(0.5)
-                        # plt.show(block=False)
-                        # name_fig = sampler.name + "_" \
-                        #     + gen_sde.base_sde.name_SDE + "_" + str(iterations) + "iteLearning_" \
-                        #     + str(batch_size) + "batchSize_" \
-                        #     + str(num_steps) + "stepsBack_lmbd=" + str(lmbd) + ".png" 
-                        # plt.savefig(name_fig)
-                        # plt.pause(1)
-                        # plt.close()
