@@ -62,6 +62,7 @@ if __name__ == '__main__':
             # num_samples = 100000
             num_samples = 10000
             xtest = sampler.sampletest(num_samples).data.numpy()
+            sampler.dim = xtest.shape[1]
             std_test = xtest.std(axis=0)
 
             plt.close('all')
