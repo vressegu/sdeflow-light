@@ -30,6 +30,7 @@ torch.manual_seed(0)
 
 DISPLAY_MAX_ROWS = 20  # number of max rows to print for a DataFrame
 pd.set_option('display.max_rows', DISPLAY_MAX_ROWS)
+denoising_plots = True
 save_results = True
 ssize = 1
 
@@ -307,13 +308,14 @@ if __name__ == '__main__':
                         plt.pause(1)
                         plt.close()
 
-                        plot_selected_inds(xs, inds, True, False, lmbd, include_t0=include_t0) # plot
-                        time.sleep(0.5)
-                        plt.show(block=False)
-                        name_fig = name_simu + ".png" 
-                        plt.savefig(name_fig)
-                        plt.pause(1)
-                        plt.close()
+                        if (denoising_plots):
+                            plot_selected_inds(xs, inds, True, False, lmbd, include_t0=include_t0) # plot
+                            time.sleep(0.5)
+                            plt.show(block=False)
+                            name_fig = name_simu + ".png" 
+                            plt.savefig(name_fig)
+                            plt.pause(1)
+                            plt.close()
 
                         if (save_results):
                             torch.save(xs, name_simu + ".pt")
