@@ -30,6 +30,7 @@ torch.manual_seed(0)
 
 DISPLAY_MAX_ROWS = 20  # number of max rows to print for a DataFrame
 pd.set_option('display.max_rows', DISPLAY_MAX_ROWS)
+scatter_plots = True
 denoising_plots = True
 save_results = True
 ssize = 1
@@ -266,47 +267,48 @@ if __name__ == '__main__':
                         xs = rk4_stratonovich_sampler(gen_sde, x_0, num_steps, lmbd=lmbd) # sample
                         xgen = xs[-1]
 
-                        pddatagen = pd.DataFrame(xgen[:,0:dimplot], columns=range(1,1+dimplot))
+                        if (scatter_plots):
+                            pddatagen = pd.DataFrame(xgen[:,0:dimplot], columns=range(1,1+dimplot))
 
-                        fig, axes = plt.subplots(nrows=dimplot, ncols=dimplot, figsize=(2*dimplot,dimplot))
-                        color='red'
-                        scatter = pd.plotting.scatter_matrix(pddatagen, diagonal=None,s=ssize,hist_kwds={"bins": 20},
-                            color=color, ax=axes) 
-                        color='blue'
-                        scatter = pd.plotting.scatter_matrix(pddatatest, diagonal=None,s=ssize/2,hist_kwds={"bins": 20},
-                            color=color, ax=axes) 
-                        for i, col in enumerate(pddatatest.columns):
-                            ax = scatter[i, i]
-                            ax.clear()
-                            color='blue'
-                            pddatatest[col].plot.kde(ax=ax, color=color, label='test')
-                            if not normalized_data:
-                                plot_ylim_row = plot_xlim * std_test[i]
-                            for j, col in enumerate(pddatatest.columns):
-                                ax = scatter[i, j]
-                                if not normalized_data:
-                                    plot_xlim_col = plot_xlim * std_test[j]
-                                ax.axis(xmin=-plot_xlim_col,xmax=plot_xlim_col)
-                                if (i != j):
-                                    ax.axis(ymin=-plot_ylim_row,ymax=plot_ylim_row)
-                        plt.tight_layout()
-                        time.sleep(0.5)
-                        plt.show(block=False)
-                        plt.pause(1)
-                        # Customize the diagonal manually
-                        for i, col in enumerate(pddatatest.columns):
-                            ax = scatter[i, i]
+                            fig, axes = plt.subplots(nrows=dimplot, ncols=dimplot, figsize=(2*dimplot,dimplot))
                             color='red'
-                            pddatagen[col].plot.kde(ax=ax, color=color, label='gen')
-                            ax.legend(fontsize=8, loc='upper right')
-                        plt.tight_layout()
-                        # plt.show()
-                        time.sleep(0.5)
-                        plt.show(block=False)
-                        name_fig = name_simu + "_multDim.png" 
-                        plt.savefig(name_fig)
-                        plt.pause(1)
-                        plt.close()
+                            scatter = pd.plotting.scatter_matrix(pddatagen, diagonal=None,s=ssize,hist_kwds={"bins": 20},
+                                color=color, ax=axes) 
+                            color='blue'
+                            scatter = pd.plotting.scatter_matrix(pddatatest, diagonal=None,s=ssize/2,hist_kwds={"bins": 20},
+                                color=color, ax=axes) 
+                            for i, col in enumerate(pddatatest.columns):
+                                ax = scatter[i, i]
+                                ax.clear()
+                                color='blue'
+                                pddatatest[col].plot.kde(ax=ax, color=color, label='test')
+                                if not normalized_data:
+                                    plot_ylim_row = plot_xlim * std_test[i]
+                                for j, col in enumerate(pddatatest.columns):
+                                    ax = scatter[i, j]
+                                    if not normalized_data:
+                                        plot_xlim_col = plot_xlim * std_test[j]
+                                    ax.axis(xmin=-plot_xlim_col,xmax=plot_xlim_col)
+                                    if (i != j):
+                                        ax.axis(ymin=-plot_ylim_row,ymax=plot_ylim_row)
+                            plt.tight_layout()
+                            time.sleep(0.5)
+                            plt.show(block=False)
+                            plt.pause(1)
+                            # Customize the diagonal manually
+                            for i, col in enumerate(pddatatest.columns):
+                                ax = scatter[i, i]
+                                color='red'
+                                pddatagen[col].plot.kde(ax=ax, color=color, label='gen')
+                                ax.legend(fontsize=8, loc='upper right')
+                            plt.tight_layout()
+                            # plt.show()
+                            time.sleep(0.5)
+                            plt.show(block=False)
+                            name_fig = name_simu + "_multDim.png" 
+                            plt.savefig(name_fig)
+                            plt.pause(1)
+                            plt.close()
 
                         if (denoising_plots):
                             plot_selected_inds(xs, inds, True, False, lmbd, include_t0=include_t0) # plot
