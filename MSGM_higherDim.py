@@ -44,6 +44,14 @@ print_every = 1000
 num_stepss_backward = [10,100]
 include_t0 = False
 num_samples = 10000
+
+# Dataset
+dims = [30]
+dims = [4]
+Res=[300]
+MSGMs = [0,1]
+normalized_data = True
+
 # Plots
 scatter_plots = True
 denoising_plots = True
@@ -61,13 +69,6 @@ justLoad = False
 if __name__ == '__main__':
 
     ## 1. Initialize dataset
-    
-    # sampler = SwissRoll()
-    dims = [2,4,8,16]
-    # dims = [8]
-    # Res=[300,3900]
-    Res=[100,1000,10000]
-    # Res=[300]
     MSGM = 1
     if not MSGM:
         normalized_data = True
