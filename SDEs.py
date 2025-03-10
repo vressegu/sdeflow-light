@@ -513,7 +513,6 @@ class PluginReverseSDE(torch.nn.Module):
         estimating the SSM loss of the plug-in reverse SDE by sampling t uniformly between [0, T], and by estimating
         div(mu) using the Hutchinson trace estimator
         """
-        # Is self.debias case needed as in DSM ???
         t_ = torch.rand([x.size(0), ] + [1 for _ in range(x.ndim - 1)]).to(x) * self.T
         qt = 1 / self.T
         y = self.base_sde.sample(t_, x).requires_grad_()

@@ -19,6 +19,7 @@ import matplotlib.pyplot as plt
 from sklearn.datasets import make_swiss_roll
 from netCDF4 import Dataset
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
 from sde_scheme import euler_maruyama_sampler,heun_sampler,rk4_stratonovich_sampler
 from own_plotting import plot_selected_inds
 from SDEs import VariancePreservingSDE,PluginReverseSDE,multiplicativeNoise
@@ -92,13 +93,8 @@ if __name__ == '__main__':
                 std_test = xtest.std(axis=0)
 
                 plt.close('all')
-                # # fig = plt.figure(figsize=(5, 5))
-                # fig = plt.figure(figsize=(10, 10))
                 dimplot = np.min([8,xtest.shape[1]])
                 pddatatest = pd.DataFrame(xtest[:,0:dimplot], columns=range(1,1+dimplot))
-                # pd.plotting.scatter_matrix(pddata, diagonal='kde',s=1,hist_kwds={"bins": 20},
-                # color='red') 
-                # dim = pddatatest.shape[1]
                 fig, axes = plt.subplots(nrows=dimplot, ncols=dimplot, figsize=(2*dimplot,dimplot))
                 color='blue'
                 scatter = pd.plotting.scatter_matrix(pddatatest, diagonal=None,s=ssize,hist_kwds={"bins": 20},
@@ -119,14 +115,7 @@ if __name__ == '__main__':
                         if (i != j):
                             ax.axis(ymin=-plot_ylim_row,ymax=plot_ylim_row)
                             # ax.set_aspect('equal', 'box')
-
                 plt.tight_layout()
-                # plt.show()
-
-                # _ = plt.hist2d(x[:,0], x[:,1], 200, range=((-5,5), (-5,5)))
-                # plt.axis('off')
-                # plt.tight_layout()
-
                 plt.show(block=False)    
                 plt.pause(0.1)
                 plt.savefig("results/" + sampler.name + ".png")
