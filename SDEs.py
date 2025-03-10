@@ -78,7 +78,8 @@ class SDE(torch.nn.Module):
         our_sde = forward_SDE(self, self.T).to(device)
         # y_allt = euler_maruyama_sampler(our_sde, y0, num_steps_tot, 0, True) # sample
         # y_allt = heun_sampler(our_sde, y0, num_steps_tot, 0, True) # sample
-        y_allt = rk4_stratonovich_sampler(our_sde, y0, num_steps_tot, 0, True) # sample
+        include_t0=True
+        y_allt = rk4_stratonovich_sampler(our_sde, y0, num_steps_tot, lmbd=0, keep_all_samples=True, include_t0=include_t0) # sample
 
         num_steps_floats = num_steps_tot * t/self.T
         num_steps_int = torch.trunc(num_steps_floats).to(torch.int)
@@ -87,7 +88,10 @@ class SDE(torch.nn.Module):
         # another method should be used here instead
         for k in range(y0.shape[0]):
             if t[k] >= self.T: 
-                num_steps_int[k] = num_steps_tot - 1
+                if include_t0:
+                    num_steps_int[k] = num_steps_tot
+                else:
+                    num_steps_int[k] = num_steps_tot - 1
 
         yt = torch.zeros_like(y0)
         for k in range(y0.shape[0]):
