@@ -254,10 +254,6 @@ if __name__ == '__main__':
                         # init param
                         # num_samples = 100000
 
-                        # lambdas
-                        lmbds = [0.]
-                        # lmbds = [0., 1.0]
-
                         # indices to visualize
                         fig_step = int(num_steps_backward/10) #100
                         if fig_step < 1:
@@ -268,71 +264,71 @@ if __name__ == '__main__':
                             inds = range(fig_step-1, num_steps_backward, fig_step)
                         # sample and plot
                         plt.close('all')
-                        for lmbd in lmbds:
-                            folder_results = "results"
-                            name_simu = folder_results + "/" + sampler.name + "_" \
-                                + gen_sde.base_sde.name_SDE + "_" + str(iterations) + "iteLearning_" \
-                                + str(batch_size) + "batchSize_" \
-                                + str(num_steps_backward) + "stepsBack_lmbd=" + str(lmbd) 
-                            if (justLoad):
-                                save_results = False
-                                xs = torch.load(name_simu + ".pt", weights_only=True)
-                            else:
-                                x_0 = gen_sde.latent_sample(num_samples, sampler.dim, device=device) # init from prior
-                                xs = rk4_stratonovich_sampler(gen_sde, x_0, num_steps_backward, lmbd=lmbd,include_t0=include_t0) # sample
-                            xgen = xs[-1]
+                        lmbd = 0.
+                        folder_results = "results"
+                        name_simu = folder_results + "/" + sampler.name + "_" \
+                            + gen_sde.base_sde.name_SDE + "_" + str(iterations) + "iteLearning_" \
+                            + str(batch_size) + "batchSize_" \
+                            + str(num_steps_backward) + "stepsBack"
+                        if (justLoad):
+                            save_results = False
+                            xs = torch.load(name_simu + ".pt", weights_only=True)
+                        else:
+                            x_0 = gen_sde.latent_sample(num_samples, sampler.dim, device=device) # init from prior
+                            xs = rk4_stratonovich_sampler(gen_sde, x_0, num_steps_backward, lmbd=lmbd,include_t0=include_t0) # sample
+                        xgen = xs[-1]
 
-                            if (scatter_plots):
-                                pddatagen = pd.DataFrame(xgen[:,0:dimplot], columns=range(1,1+dimplot))
+                        if (save_results):
+                            torch.save(xs, name_simu + ".pt")
 
-                                fig, axes = plt.subplots(nrows=dimplot, ncols=dimplot, figsize=(2*dimplot,dimplot))
-                                color='red'
-                                scatter = pd.plotting.scatter_matrix(pddatagen, diagonal=None,s=ssize,hist_kwds={"bins": 20},
-                                    color=color, ax=axes) 
+                        if (scatter_plots):
+                            pddatagen = pd.DataFrame(xgen[:,0:dimplot], columns=range(1,1+dimplot))
+
+                            fig, axes = plt.subplots(nrows=dimplot, ncols=dimplot, figsize=(2*dimplot,dimplot))
+                            color='red'
+                            scatter = pd.plotting.scatter_matrix(pddatagen, diagonal=None,s=ssize,hist_kwds={"bins": 20},
+                                color=color, ax=axes) 
+                            color='blue'
+                            scatter = pd.plotting.scatter_matrix(pddatatest, diagonal=None,s=ssize/2,hist_kwds={"bins": 20},
+                                color=color, ax=axes) 
+                            for i, col in enumerate(pddatatest.columns):
+                                ax = scatter[i, i]
+                                ax.clear()
                                 color='blue'
-                                scatter = pd.plotting.scatter_matrix(pddatatest, diagonal=None,s=ssize/2,hist_kwds={"bins": 20},
-                                    color=color, ax=axes) 
-                                for i, col in enumerate(pddatatest.columns):
-                                    ax = scatter[i, i]
-                                    ax.clear()
-                                    color='blue'
-                                    pddatatest[col].plot.kde(ax=ax, color=color, label='test')
+                                pddatatest[col].plot.kde(ax=ax, color=color, label='test')
+                                if not normalized_data:
+                                    plot_ylim_row = plot_xlim * std_test[i]
+                                for j, col in enumerate(pddatatest.columns):
+                                    ax = scatter[i, j]
                                     if not normalized_data:
-                                        plot_ylim_row = plot_xlim * std_test[i]
-                                    for j, col in enumerate(pddatatest.columns):
-                                        ax = scatter[i, j]
-                                        if not normalized_data:
-                                            plot_xlim_col = plot_xlim * std_test[j]
-                                        ax.axis(xmin=-plot_xlim_col,xmax=plot_xlim_col)
-                                        if (i != j):
-                                            ax.axis(ymin=-plot_ylim_row,ymax=plot_ylim_row)
-                                plt.tight_layout()
-                                time.sleep(0.5)
-                                plt.show(block=False)
-                                plt.pause(1)
-                                # Customize the diagonal manually
-                                for i, col in enumerate(pddatatest.columns):
-                                    ax = scatter[i, i]
-                                    color='red'
-                                    pddatagen[col].plot.kde(ax=ax, color=color, label='gen')
-                                    ax.legend(fontsize=8, loc='upper right')
-                                plt.tight_layout()
-                                # plt.show()
-                                time.sleep(0.5)
-                                plt.show(block=False)
-                                name_fig = name_simu + "_multDim.png" 
-                                plt.savefig(name_fig)
-                                plt.pause(1)
-                                plt.close()
+                                        plot_xlim_col = plot_xlim * std_test[j]
+                                    ax.axis(xmin=-plot_xlim_col,xmax=plot_xlim_col)
+                                    if (i != j):
+                                        ax.axis(ymin=-plot_ylim_row,ymax=plot_ylim_row)
+                            plt.tight_layout()
+                            time.sleep(0.5)
+                            plt.show(block=False)
+                            plt.pause(1)
+                            # Customize the diagonal manually
+                            for i, col in enumerate(pddatatest.columns):
+                                ax = scatter[i, i]
+                                color='red'
+                                pddatagen[col].plot.kde(ax=ax, color=color, label='gen')
+                                ax.legend(fontsize=8, loc='upper right')
+                            plt.tight_layout()
+                            # plt.show()
+                            time.sleep(0.5)
+                            plt.show(block=False)
+                            name_fig = name_simu + "_multDim.png" 
+                            plt.savefig(name_fig)
+                            plt.pause(1)
+                            plt.close()
 
-                            if (denoising_plots):
-                                plot_selected_inds(xs, inds, True, False, lmbd, include_t0=include_t0) # plot
-                                time.sleep(0.5)
-                                plt.show(block=False)
-                                name_fig = name_simu + ".png" 
-                                plt.savefig(name_fig)
-                                plt.pause(1)
-                                plt.close()
-
-                            if (save_results):
-                                torch.save(xs, name_simu + ".pt")
+                        if (denoising_plots):
+                            plot_selected_inds(xs, inds, True, False, lmbd, include_t0=include_t0) # plot
+                            time.sleep(0.5)
+                            plt.show(block=False)
+                            name_fig = name_simu + ".png" 
+                            plt.savefig(name_fig)
+                            plt.pause(1)
+                            plt.close()
