@@ -36,6 +36,7 @@ pd.set_option('display.max_rows', DISPLAY_MAX_ROWS)
 
 # Train
 T0 = 1
+num_steps_forward = 100
 vtype = 'rademacher'
 lr = 0.001
 iterations = 10000

@@ -59,11 +59,12 @@ class SDE(torch.nn.Module):
     parent class for SDE
     """
     # This class need to be changed since the forward SDE cannot be solved analitically
-    def __init__(self, T=1.0, t_epsilon=0.001):
+    def __init__(self, T=1.0, t_epsilon=0.001, num_steps_forward = 100):
         super().__init__()
         self.T = T
         self.t_epsilon = t_epsilon
         # self.forward_SDE = forward_SDE(self, self.T).to(device)
+        self.num_steps_forward = num_steps_forward
 
     def sample_scheme(self, t, y0, return_noise=False):
         """
@@ -73,7 +74,7 @@ class SDE(torch.nn.Module):
         ## our_sde = forward_SDE(self, self.T).to(device)
         # y_allt = euler_maruyama_sampler(our_sde, y0, num_steps_tot, 0, True) # sample
 
-        num_steps_tot = 100
+        num_steps_tot = self.num_steps_forward
         our_sde = forward_SDE(self, self.T).to(device)
         # y_allt = euler_maruyama_sampler(our_sde, y0, num_steps_tot, 0, True) # sample
         # y_allt = heun_sampler(our_sde, y0, num_steps_tot, 0, True) # sample
@@ -169,8 +170,8 @@ class VariancePreservingSDE(SDE):
     See eq (32-33) of https://openreview.net/pdf?id=PxTIG12RRHS
     """
     # This class need to be changed since the forward SDE cannot be solved analitically
-    def __init__(self, beta_min=0.1, beta_max=20.0, T=1.0, t_epsilon=0.001):
-        super().__init__(T, t_epsilon)
+    def __init__(self, beta_min=0.1, beta_max=20.0, T=1.0, t_epsilon=0.001, num_steps_forward = 100):
+        super().__init__(T, t_epsilon, num_steps_forward = num_steps_forward)
         self.beta_min = beta_min
         self.beta_max = beta_max
         self.name_SDE = "VariancePreservingSDE"
@@ -317,8 +318,8 @@ class multiplicativeNoise(SDE):
     # This class need to be changed since the forward SDE cannot be solved analitically
     # def __init__(self, n=2, G = new_G(2), T=1.0, t_epsilon=0.001):
     # def __init__(self, n=2, T=1.0, t_epsilon=0.001):
-    def __init__(self, y0, beta=1.0, T=1.0, simpleG = False, t_epsilon=0.001, plot_validate = False):
-        super().__init__(T, t_epsilon)
+    def __init__(self, y0, beta=1.0, T=1.0, simpleG = False, t_epsilon=0.001, plot_validate = False, num_steps_forward = 100):
+        super().__init__(T, t_epsilon, num_steps_forward=num_steps_forward)
         self.r_T = torch.linalg.norm(torch.tensor(y0), dim= 1)
         r_T = self.r_T.reshape(len(self.r_T),1)
         self.kde = KernelDensity(kernel='gaussian', bandwidth=0.002).fit(r_T)
