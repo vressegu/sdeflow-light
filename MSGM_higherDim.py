@@ -43,8 +43,7 @@ iterations = 10000
 print_every = 1000
 
 # Inference
-num_stepss_backward = [10,100]
-include_t0 = False
+include_t0_reverse = False # for plots
 num_samples = 10000
 
 # Dataset
@@ -258,7 +257,7 @@ if __name__ == '__main__':
                         fig_step = int(num_steps_backward/10) #100
                         if fig_step < 1:
                             fig_step = 1
-                        if include_t0:
+                        if include_t0_reverse:
                             inds = range(0, num_steps_backward+1, fig_step)
                         else:
                             inds = range(fig_step-1, num_steps_backward, fig_step)
@@ -269,13 +268,14 @@ if __name__ == '__main__':
                         name_simu = folder_results + "/" + sampler.name + "_" \
                             + gen_sde.base_sde.name_SDE + "_" + str(iterations) + "iteLearning_" \
                             + str(batch_size) + "batchSize_" \
-                            + str(num_steps_backward) + "stepsBack"
+                            + str(num_steps_backward) + "stepsBack_" \
+                            + str(include_t0_reverse) + "t0infer" 
                         if (justLoad):
                             save_results = False
                             xs = torch.load(name_simu + ".pt", weights_only=True)
                         else:
                             x_0 = gen_sde.latent_sample(num_samples, sampler.dim, device=device) # init from prior
-                            xs = rk4_stratonovich_sampler(gen_sde, x_0, num_steps_backward, lmbd=lmbd,include_t0=include_t0) # sample
+                            xs = rk4_stratonovich_sampler(gen_sde, x_0, num_steps_backward, lmbd=lmbd,include_t0=include_t0_reverse) # sample
                         xgen = xs[-1]
 
                         if (save_results):
@@ -325,7 +325,7 @@ if __name__ == '__main__':
                             plt.close()
 
                         if (denoising_plots):
-                            plot_selected_inds(xs, inds, True, False, lmbd, include_t0=include_t0) # plot
+                            plot_selected_inds(xs, inds, True, False, lmbd, include_t0=include_t0_reverse) # plot
                             time.sleep(0.5)
                             plt.show(block=False)
                             name_fig = name_simu + ".png" 
