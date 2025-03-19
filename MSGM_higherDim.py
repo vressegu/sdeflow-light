@@ -49,6 +49,7 @@ iterations = 10000
 print_every = 1000
 
 # Inference
+num_stepss_backward = [1000,100,50,10]
 include_t0_reverse = True # for plots
 num_samples = 10000
 
