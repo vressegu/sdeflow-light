@@ -49,7 +49,7 @@ iterations = 10000
 print_every = 1000
 
 # Inference
-include_t0_reverse = False # for plots
+include_t0_reverse = True # for plots
 num_samples = 10000
 
 # Dataset
