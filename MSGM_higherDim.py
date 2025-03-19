@@ -37,7 +37,12 @@ pd.set_option('display.max_rows', DISPLAY_MAX_ROWS)
 # Train
 T0 = 1
 num_steps_forward = 100
-t_eps = 1/1000
+beta = 0.1 # =2/tau
+t_eps_beta = 1/1000
+
+
+t_eps = t_eps_beta / beta
+
 vtype = 'rademacher'
 lr = 0.001
 iterations = 10000
@@ -207,9 +212,9 @@ if __name__ == '__main__':
                     T = torch.nn.Parameter(torch.FloatTensor([T0]), requires_grad=False)
                     if MSGM:
                         x_init = sampler.sample(iterations*batch_size).data.numpy()
-                        inf_sde = multiplicativeNoise(x_init,t_epsilon=t_eps, T=T, num_steps_forward=num_steps_forward).to(device)
+                        inf_sde = multiplicativeNoise(x_init,beta=beta, t_epsilon=t_eps, T=T, num_steps_forward=num_steps_forward).to(device)
                     else:
-                        inf_sde = VariancePreservingSDE(t_epsilon=t_eps, T=T, num_steps_forward=num_steps_forward).to(device)
+                        inf_sde = VariancePreservingSDE(beta_min=beta, beta_max=beta, t_epsilon=t_eps, T=T, num_steps_forward=num_steps_forward).to(device)
                     gen_sde = PluginReverseSDE(inf_sde, drift_q, T, vtype=vtype, debias=False).to(device)
 
                     print("iterations = " + str(iterations) )
