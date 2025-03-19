@@ -523,6 +523,10 @@ class PluginReverseSDE(torch.nn.Module):
         div(mu) using the Hutchinson trace estimator
         """
         t_ = torch.rand([x.size(0), ] + [1 for _ in range(x.ndim - 1)]).to(x) * self.T
+        # truncated at t_epsilon for t < t_epsilon
+        mask_le_t_eps = (t_ <= self.base_sde.t_epsilon).float()
+        t_ = mask_le_t_eps * self.base_sde.t_epsilon + (1. - mask_le_t_eps) * t_
+
         qt = 1 / self.T
         y = self.base_sde.sample(t_, x).requires_grad_()
 
