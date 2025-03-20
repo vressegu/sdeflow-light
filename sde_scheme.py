@@ -23,7 +23,7 @@ def EMstep(mu, delta , sigma , dW):
     return mu * delta + dx
 
 ### 2.0 Define Euler Maruyama method with a step size $\Delta t$
-def euler_maruyama_sampler(sde, x_0, num_steps, lmbd=0., keep_all_samples=True):
+def euler_maruyama_sampler(sde, x_0, num_steps, lmbd=0., keep_all_samples=True, include_t0=False, T_ = -1):
     """
     Euler Maruyama method with a step size delta
     """
@@ -31,13 +31,18 @@ def euler_maruyama_sampler(sde, x_0, num_steps, lmbd=0., keep_all_samples=True):
     device = sde.T.device
     batch_size = x_0.size(0)
     ndim = x_0.dim()-1
-    T_ = sde.T.cpu().item()
+    if T_ == -1 :
+        T_ = sde.T.cpu().item()
+    else:
+        T_ = T_.cpu().item()
     delta = T_ / num_steps
     ts = torch.linspace(0, 1, num_steps + 1) * T_
 
     # sample
     xs = []
     x_t = x_0.detach().clone().to(device)
+    if include_t0 and keep_all_samples :
+        xs.append(x_t.to('cpu'))
     t = torch.zeros(batch_size, *([1]*ndim), device=device)
     with torch.no_grad():
         for i in range(num_steps):
@@ -51,7 +56,7 @@ def euler_maruyama_sampler(sde, x_0, num_steps, lmbd=0., keep_all_samples=True):
                 pass
     return xs
 
-def heun_sampler(sde, x_0, num_steps, lmbd=0., keep_all_samples=True):
+def heun_sampler(sde, x_0, num_steps, lmbd=0., keep_all_samples=True, include_t0=False, T_=-1):
     """
     Heun method (Runge-Kutta 2) for SDEs in Stratonovich form.
     """
@@ -59,7 +64,10 @@ def heun_sampler(sde, x_0, num_steps, lmbd=0., keep_all_samples=True):
     device = sde.T.device
     batch_size = x_0.size(0)
     ndim = x_0.dim() - 1
-    T_ = sde.T.cpu().item()
+    if T_ == -1 :
+        T_ = sde.T.cpu().item()
+    else:
+        T_ = T_.cpu().item()
     delta = T_ / num_steps
     ts = torch.linspace(0, 1, num_steps + 1) * T_
 
@@ -67,6 +75,9 @@ def heun_sampler(sde, x_0, num_steps, lmbd=0., keep_all_samples=True):
     xs = []
     x_t = x_0.detach().clone().to(device)
     t = torch.zeros(batch_size, *([1] * ndim), device=device)
+    if include_t0 and keep_all_samples :
+        xs.append(x_t.to('cpu'))
+        
     with torch.no_grad():
         for i in range(num_steps):
             t.fill_(ts[i].item())
@@ -94,7 +105,7 @@ def heun_sampler(sde, x_0, num_steps, lmbd=0., keep_all_samples=True):
 
     return xs
 
-def rk4_stratonovich_sampler(sde, x_0, num_steps, lmbd=0., keep_all_samples=True):
+def rk4_stratonovich_sampler(sde, x_0, num_steps, lmbd=0., keep_all_samples=True, include_t0=False, T_=-1):
     """
     Runge-Kutta 4th order method for Stratonovich SDEs with skew-symmetric noise.
     
@@ -113,13 +124,18 @@ def rk4_stratonovich_sampler(sde, x_0, num_steps, lmbd=0., keep_all_samples=True
     device = sde.T.device
     batch_size = x_0.size(0)
     ndim = x_0.dim() - 1
-    T_ = sde.T.cpu().item()
+    if T_ == -1 :
+        T_ = sde.T.cpu().item()
+    else:
+        T_ = T_.cpu().item()
     delta = T_ / num_steps
     ts = torch.linspace(0, 1, num_steps + 1) * T_
 
     xs = []
     x_t = x_0.detach().clone().to(device)
     t = torch.zeros(batch_size, *([1] * ndim), device=device)
+    if include_t0 and keep_all_samples :
+        xs.append(x_t.to('cpu'))
     
     sqrt_delta = delta**0.5
 
@@ -208,7 +224,7 @@ def rk4_stratonovich_sampler(sde, x_0, num_steps, lmbd=0., keep_all_samples=True
 
 
     ### 2.0 Define Euler Maruyama method with a step size $\Delta t$
-def own_euler_maruyama_sampler(sde, x_0, num_steps, lmbd=0., keep_all_samples=True):
+def own_euler_maruyama_sampler(sde, x_0, num_steps, lmbd=0., keep_all_samples=True, include_t0=False):
     """
     Euler Maruyama method with a step size delta
     """
@@ -232,6 +248,8 @@ def own_euler_maruyama_sampler(sde, x_0, num_steps, lmbd=0., keep_all_samples=Tr
     xs = []
     x_t = x_0.detach().clone().to(device)
     t = torch.zeros(batch_size, *([1]*ndim), device=device)
+    if include_t0 and keep_all_samples :
+        xs.append(x_t.to('cpu'))
 
 
     with torch.no_grad():

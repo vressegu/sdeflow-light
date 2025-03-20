@@ -15,7 +15,7 @@ import torch.nn as nn
 import matplotlib.pyplot as plt
 
 ### 4.1. Define plotting tools
-def get_2d_histogram_plot(data, val=5, num=256, use_grid=False, origin='lower'):
+def get_2d_histogram_plot(data, val=3, num=64, vmax=10, use_grid=False, origin='lower'):
     xmin = -val
     xmax = val
     ymin = -val
@@ -31,7 +31,7 @@ def get_2d_histogram_plot(data, val=5, num=256, use_grid=False, origin='lower'):
 
     # plot heatmap
     fig, ax = plt.subplots(figsize=(5, 5))
-    im = ax.imshow(heatmap.T, extent=extent, cmap='jet', origin=origin)
+    im = ax.imshow(heatmap.T, extent=extent, origin=origin, vmin=0, vmax=vmax)
     ax.grid(False)
     if use_grid:
         plt.xticks(np.arange(-val, val+1, step=1))
@@ -55,9 +55,9 @@ def get_2d_histogram_plot(data, val=5, num=256, use_grid=False, origin='lower'):
     plt.close()
     return image
 
-def plot_selected_inds(xs, inds, use_xticks=True, use_yticks=True, lmbd = 0.):
+def plot_selected_inds(xs, inds, use_xticks=True, use_yticks=True, lmbd = 0.,include_t0=False):
     imgs_ = []
-    for ind in inds:
+    for ind in reversed(inds):
         imgs_ += [get_2d_histogram_plot(xs[ind].numpy())]
     img_ = np.concatenate(imgs_, axis=1)
 
@@ -67,7 +67,10 @@ def plot_selected_inds(xs, inds, use_xticks=True, use_yticks=True, lmbd = 0.):
     fontsize = 15
     if use_xticks:
         xticks = [0.5*width_per_img + width_per_img*i for i in range(len(inds))]
-        xticklabels = [r'$i={:d}$'.format(ind+1) for ind in inds]
+        if not include_t0:
+            xticklabels = [r'$i={:d}$'.format(ind+1) for ind in reversed(inds)]
+        else:
+            xticklabels = [r'$i={:d}$'.format(ind) for ind in reversed(inds)]
     else:
         xticks, xticklabels = [], []
     if use_yticks:
