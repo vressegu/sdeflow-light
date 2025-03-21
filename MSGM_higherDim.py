@@ -277,6 +277,7 @@ if __name__ == '__main__':
                         name_simu = folder_results + "/" + sampler.name + "_" \
                             + gen_sde.base_sde.name_SDE + "_" + str(iterations) + "iteLearning_" \
                             + str(batch_size) + "batchSize_" \
+                            + str(num_steps_forward) + "stepsForw_" \
                             + str(beta_min) + "beta_min" \
                             + str(beta_max) + "beta_max" \
                             + str(t_eps_beta_min) + "t_eps_beta_min" \
