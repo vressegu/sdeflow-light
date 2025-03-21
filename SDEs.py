@@ -59,12 +59,17 @@ class SDE(torch.nn.Module):
     parent class for SDE
     """
     # This class need to be changed since the forward SDE cannot be solved analitically
-    def __init__(self, T=1.0, t_epsilon=0.001, num_steps_forward = 100):
+    def __init__(self, beta_min=0.1, beta_max=20.0, T=1.0, t_epsilon=0.001, num_steps_forward = 100):
         super().__init__()
         self.T = T
+        self.beta_min = beta_min
+        self.beta_max = beta_max
         self.t_epsilon = t_epsilon
         # self.forward_SDE = forward_SDE(self, self.T).to(device)
         self.num_steps_forward = num_steps_forward
+
+    def beta(self, t):
+        return self.beta_min + (self.beta_max-self.beta_min)*t
 
     def sample_scheme(self, t, y0, return_noise=False):
         """
@@ -179,9 +184,7 @@ class VariancePreservingSDE(SDE):
     """
     # This class need to be changed since the forward SDE cannot be solved analitically
     def __init__(self, beta_min=0.1, beta_max=20.0, T=1.0, t_epsilon=0.001, num_steps_forward = 100):
-        super().__init__(T, t_epsilon, num_steps_forward = num_steps_forward)
-        self.beta_min = beta_min
-        self.beta_max = beta_max
+        super().__init__(beta_min=beta_min, beta_max=beta_max, T=T, t_epsilon=t_epsilon, num_steps_forward = num_steps_forward)
         self.name_SDE = "VariancePreservingSDE"
 
     @property
@@ -189,9 +192,6 @@ class VariancePreservingSDE(SDE):
         logvar = torch.zeros(1)
         mean = torch.zeros(1)
         return logvar, mean
-
-    def beta(self, t):
-        return self.beta_min + (self.beta_max-self.beta_min)*t
 
     def mean_weight(self, t):
         return torch.exp(-0.25 * t**2 * (self.beta_max-self.beta_min) - 0.5 * t * self.beta_min)
@@ -326,8 +326,8 @@ class multiplicativeNoise(SDE):
     # This class need to be changed since the forward SDE cannot be solved analitically
     # def __init__(self, n=2, G = new_G(2), T=1.0, t_epsilon=0.001):
     # def __init__(self, n=2, T=1.0, t_epsilon=0.001):
-    def __init__(self, y0, beta=1.0, T=1.0, simpleG = False, t_epsilon=0.001, plot_validate = False, num_steps_forward = 100):
-        super().__init__(T, t_epsilon, num_steps_forward=num_steps_forward)
+    def __init__(self, y0, beta_min=0.1, beta_max=20.0, T=1.0, simpleG = False, t_epsilon=0.001, plot_validate = False, num_steps_forward = 100):
+        super().__init__(beta_min=beta_min, beta_max=beta_max, T=T, t_epsilon=t_epsilon, num_steps_forward=num_steps_forward)
         self.r_T = torch.linalg.norm(torch.tensor(y0), dim= 1)
         r_T = self.r_T.reshape(len(self.r_T),1)
         self.kde = KernelDensity(kernel='gaussian', bandwidth=0.002).fit(r_T)
@@ -336,7 +336,6 @@ class multiplicativeNoise(SDE):
             self.G = simple_G(self.dim)
         else:
             self.G = new_G(self.dim)
-        self.G = np.sqrt(beta) * self.G
         self.L_G = 0.5*torch.einsum('ijk, jmk -> im', self.G, self.G).to(device)   # ito correction tensor
         self.name_SDE = "multiplicativeNoise"
         if simpleG:
@@ -365,15 +364,18 @@ class multiplicativeNoise(SDE):
 
     def f(self, t, y):
         # return 0.5 * div_Sigma(t, y)
-        drift = torch.einsum('ij, bj -> bi', self.L_G, y)
+        beta_t = self.beta(t)
+        drift = torch.einsum('ij, bj -> bi', self.L_G, (beta_t) * y)
         return drift
 
     def div_Sigma(self, t, y):
-        drift = torch.einsum('ij, bj -> bi', 2*self.L_G, y)
+        beta_t = self.beta(t)
+        drift = torch.einsum('ij, bj -> bi', 2*self.L_G, (beta_t) * y)
         return drift
 
     def g(self, t, y):
-        Gy = torch.einsum('ijk, bj -> bik', self.G, y)         # diffusion part 
+        beta_t = self.beta(t)
+        Gy = torch.einsum('ijk, bj -> bik', self.G, (beta_t**0.5) * y  )         # diffusion part 
         return Gy
     
     def sample(self, t, y0, return_noise=False):

@@ -36,12 +36,14 @@ pd.set_option('display.max_rows', DISPLAY_MAX_ROWS)
 
 # Train
 T0 = 1
-num_steps_forward = 100
-beta = 0.1 # =2/tau
-t_eps_beta = 1/1000
 
+# GOOD 
+num_steps_forward = 1000
+beta_min=0.1
+beta_max=2
+t_eps_beta_min = 1/10000 # = dt = T / num_steps_forward
 
-t_eps = t_eps_beta / beta
+t_eps = t_eps_beta_min / beta_min
 
 vtype = 'rademacher'
 lr = 0.001
@@ -213,9 +215,9 @@ if __name__ == '__main__':
                     T = torch.nn.Parameter(torch.FloatTensor([T0]), requires_grad=False)
                     if MSGM:
                         x_init = sampler.sample(iterations*batch_size).data.numpy()
-                        inf_sde = multiplicativeNoise(x_init,beta=beta, t_epsilon=t_eps, T=T, num_steps_forward=num_steps_forward).to(device)
+                        inf_sde = multiplicativeNoise(x_init,beta_min=beta_min, beta_max=beta_max, t_epsilon=t_eps, T=T, num_steps_forward=num_steps_forward).to(device)
                     else:
-                        inf_sde = VariancePreservingSDE(beta_min=beta, beta_max=beta, t_epsilon=t_eps, T=T, num_steps_forward=num_steps_forward).to(device)
+                        inf_sde = VariancePreservingSDE(beta_min=beta_min, beta_max=beta_max, t_epsilon=t_eps, T=T, num_steps_forward=num_steps_forward).to(device)
                     gen_sde = PluginReverseSDE(inf_sde, drift_q, T, vtype=vtype, debias=False).to(device)
 
                     print("iterations = " + str(iterations) )
@@ -275,6 +277,9 @@ if __name__ == '__main__':
                         name_simu = folder_results + "/" + sampler.name + "_" \
                             + gen_sde.base_sde.name_SDE + "_" + str(iterations) + "iteLearning_" \
                             + str(batch_size) + "batchSize_" \
+                            + str(beta_min) + "beta_min" \
+                            + str(beta_max) + "beta_max" \
+                            + str(t_eps_beta_min) + "t_eps_beta_min" \
                             + str(num_steps_backward) + "stepsBack_" \
                             + str(include_t0_reverse) + "t0infer" 
                         if (justLoad):
