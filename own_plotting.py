@@ -23,7 +23,10 @@ def get_2d_histogram_plot(data, val=3, num=64, vmax=10, use_grid=False, origin='
 
     # get data
     x = data[:, 0]
-    y = data[:, 1]
+    if data.shape[1]<3:
+        y = data[:, 1]
+    else:
+        y = data[:, 2]
 
     # get histogram
     heatmap, xedges, yedges = np.histogram2d(x, y, range=[[xmin, xmax], [ymin, ymax]], bins=num)
