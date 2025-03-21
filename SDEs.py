@@ -42,13 +42,13 @@ class forward_SDE(torch.nn.Module):
         self.base_sde = base_sde
         self.T = T
     
-    # Drift
+    # Ito drift
     def mu(self, s, y, lmbd=0.):
-        return self.base_sde.f(s, y) 
+        return self.mu_Strato(s, y) + 0.5 * self.base_sde.div_Sigma(s, y)
     
     # Stratonovich Drift
-    def mu_Strato(self, t, y, lmbd=0.):
-        return self.mu(t, y) - 0.5 * self.base_sde.div_Sigma(t, y)
+    def mu_Strato(self, s, y, lmbd=0.):
+        return self.base_sde.f_strato(s, y) 
     
     # Diffusion
     def sigma(self, s, y, lmbd=0.):
@@ -200,6 +200,9 @@ class VariancePreservingSDE(SDE):
         return 1. - torch.exp(-0.5 * t**2 * (self.beta_max-self.beta_min) - t * self.beta_min)
 
     def f(self, t, y):
+        return - 0.5 * self.beta(t) * y
+
+    def f_strato(self, t, y):
         return - 0.5 * self.beta(t) * y
 
     def div_Sigma(self, t, y):
@@ -367,6 +370,9 @@ class multiplicativeNoise(SDE):
         beta_t = self.beta(t)
         drift = torch.einsum('ij, bj -> bi', self.L_G, (beta_t) * y)
         return drift
+
+    def f_strato(self, t, y):
+        return torch.zeros_like(y)
 
     def div_Sigma(self, t, y):
         beta_t = self.beta(t)
