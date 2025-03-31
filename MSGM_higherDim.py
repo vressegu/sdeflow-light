@@ -23,7 +23,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from sde_scheme import euler_maruyama_sampler,heun_sampler,rk4_stratonovich_sampler
 from own_plotting import plot_selected_inds
 from SDEs import VariancePreservingSDE,PluginReverseSDE,multiplicativeNoise
-from data import ncar_weather_station,weather_station,eof_pressure,Lorenz96,PODmodes,SwissRoll
+from data import ERA5,ncar_weather_station,weather_station,eof_pressure,Lorenz96,PODmodes,SwissRoll
 
 
 np.random.seed(0)
@@ -96,6 +96,7 @@ if __name__ == '__main__':
                 # sampler = weather_station(dim) 
                 # sampler = ncar_weather_station()
                 # sampler = ncar_weather_station(dim) 
+                # sampler = ERA5(dim) 
 
                 xtest = sampler.sampletest(num_samples).data.numpy()
                 sampler.dim = xtest.shape[1]

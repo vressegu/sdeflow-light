@@ -12,6 +12,103 @@ from netCDF4 import Dataset
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 
+class ERA5:
+    def __init__(self, dim = 40, \
+                 variables = ["10m_u_component_of_wind", "10m_v_component_of_wind", "2m_temperature", "vorticity"],\
+                 cities = ["Paris", "London", "Berlin", "Madrid", "Rome", "Vienna", "Amsterdam", "Stockholm", "Athens", "Warsaw"]):
+        self.dim = dim
+        if len(variables)*len(cities)<40:
+            self.dim = len(variables)*len(cities)
+        self.name='ERA5'
+        self.name = self.name + str(self.dim)
+
+        pathData = '../MultiplicativeDiffusion/'
+        folder = pathData + 'ERA5-cities'
+
+        # # Define variables and cities
+        # variables = ["10m_u_component_of_wind", "10m_v_component_of_wind", "2m_temperature", "vorticity"]
+        # # variables = ["10m_u_component_of_wind", "10m_v_component_of_wind"]
+        # # variables = ["10m_u_component_of_wind", "vorticity"]
+        # cities = ["Paris", "London", "Berlin", "Madrid", "Rome", "Vienna", "Amsterdam", "Stockholm", "Athens", "Warsaw"]
+        # # cities = ["Paris", "London", "Berlin", "Madrid"]
+        # # cities = ["Paris", "London"]
+
+        # Load all data into a dictionary
+        city_data = {}
+
+        for city in cities:
+            city_data[city] = {}
+            print(city)
+            for var in variables:
+                filename = folder + '/' + f"{city}_{var}_2010_2020.npy"
+                print(filename)
+                if os.path.exists(filename):
+                    city_data[city][var] = np.load(filename)
+                    if var == "vorticity":
+                        city_data[city][var]=city_data[city][var][:,0]
+                        city_data[city][var]=city_data[city][var]/0.000015
+                    if var == "10m_u_component_of_wind":
+                        city_data[city][var]=city_data[city][var]/3
+                    if var == "10m_v_component_of_wind":
+                        city_data[city][var]=city_data[city][var]/3
+                    if var == "2m_temperature":
+                        city_data[city][var]=city_data[city][var]/7
+
+                    # city_data[city][var]=city_data[city][var]*3
+                else:
+                    print(f"⚠️ Warning: File {filename} not found!")
+
+        # Convert to a structured NumPy array
+        num_timesteps = next(iter(city_data["Paris"].values())).shape[0]  # Get the number of time steps
+
+        # 🚀 **Step 1: Find valid time steps (where vorticity is not NaN)**
+        valid_mask = np.ones(num_timesteps, dtype=bool)
+        for city in cities:
+            vorticity_values = city_data[city]["vorticity"]
+            valid_mask &= ~np.isnan(vorticity_values)  # Check across all levels
+        print(f"✅ Keeping {valid_mask.sum()} out of {num_timesteps} time steps.")
+        # 🚀 **Step 2: Filter out invalid time steps for all variables**
+        for city in cities:
+            for var in variables:
+                city_data[city][var] = city_data[city][var][valid_mask]  # Apply mask
+
+        # 🚀 **Step 3: Store in a single NumPy array**
+        num_timesteps_filtered = valid_mask.sum()
+        data_array = np.zeros((len(cities), len(variables), num_timesteps_filtered))
+
+        for i, city in enumerate(cities):
+            for j, var in enumerate(variables):
+                data_array[i, j, :] = city_data[city][var]
+
+        # print("✅ Data stored in NumPy array with shape:", data_array.shape)
+        data_array = np.transpose(data_array,(2,1,0))
+        # print("✅ Data stored in NumPy array with shape:", data_array.shape)
+        data_array = np.reshape(data_array, (data_array.shape[0],data_array.shape[1]*data_array.shape[2]), order='F') # Fortran-like index ordering
+        # print("✅ Data stored in NumPy array with shape:", data_array.shape)
+
+        npdata = data_array
+        npdata = npdata - npdata.mean(axis=0)
+
+        # keep only dim dimension
+        npdata = npdata[:,0:self.dim]
+
+        n_test = npdata.shape[0] // 3
+
+        self.npdata = npdata[0:-n_test:1,:]
+        self.npdatatest = npdata[-n_test:-1:1,:]
+
+        self.max_nsamples = self.npdata.shape[0]
+        self.max_nsamplestest = self.npdatatest.shape[0]
+
+    def sample(self, n):               
+        idx = np.random.randint(0,self.npdata.shape[0], size = n) #% self.max_nsamples
+        return torch.from_numpy(self.npdata[idx,:]).to(torch.float32)
+
+    def sampletest(self, n):               
+        idx = np.random.randint(0,self.npdatatest.shape[0], size = n) #% self.max_nsamples
+        return torch.from_numpy(self.npdatatest[idx,:]).to(torch.float32)
+
+
 class ncar_weather_station:
     def __init__(self, dim = 90):
         self.dim = dim
