@@ -22,7 +22,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from sde_scheme import euler_maruyama_sampler,heun_sampler,rk4_stratonovich_sampler
 from own_plotting import plot_selected_inds
-from SDEs import VariancePreservingSDE,PluginReverseSDE,multiplicativeNoise
+from SDEs import forward_SDE,SDE,VariancePreservingSDE,PluginReverseSDE,multiplicativeNoise
 from data import ERA5,ncar_weather_station,weather_station,eof_pressure,Lorenz96,PODmodes,SwissRoll
 
 
@@ -64,6 +64,7 @@ normalized_data = True
 
 # Plots
 scatter_plots = True
+noising_plots = True
 denoising_plots = True
 save_results = True
 plot_xlim = 3.0
@@ -221,6 +222,35 @@ if __name__ == '__main__':
                         inf_sde = VariancePreservingSDE(beta_min=beta_min, beta_max=beta_max, t_epsilon=t_eps, T=T, num_steps_forward=num_steps_forward).to(device)
                     gen_sde = PluginReverseSDE(inf_sde, drift_q, T, vtype=vtype, debias=False).to(device)
 
+
+                    folder_results = "results"
+                    name_simu_root = folder_results + "/" + sampler.name + "_" \
+                        + gen_sde.base_sde.name_SDE + "_" + str(iterations) + "iteLearning_" \
+                        + str(batch_size) + "batchSize_" \
+                        + str(num_steps_forward) + "stepsForw_" \
+                        + str(beta_min) + "beta_min" \
+                        + str(beta_max) + "beta_max" 
+                    
+                    # Forward SDE
+                    xtest = torch.tensor(xtest, dtype=torch.float32).to(device)
+                    for_sde = forward_SDE(inf_sde, T).to(device)
+                    xs_forward = rk4_stratonovich_sampler(for_sde, xtest, num_steps_forward, lmbd=0.,include_t0=True) # sample
+                    # indices to visualize
+                    fig_step = int(num_steps_forward/10) #100
+                    if fig_step < 1:
+                        fig_step = 1
+                    inds_forward = range(0, num_steps_forward+1, fig_step)
+                    if (noising_plots):
+                        plot_selected_inds(xs_forward, inds_forward, \
+                            use_xticks= True, use_yticks=False, lmbd = 0., \
+                            include_t0=True, backward=False) # plot
+                        time.sleep(0.5)
+                        plt.show(block=False)
+                        name_fig = name_simu_root + "_Forward.png" 
+                        plt.savefig(name_fig)
+                        plt.pause(1)
+                        plt.close()
+
                     print("iterations = " + str(iterations) )
                     print("name_SDE = " + inf_sde.name_SDE )
 
@@ -274,13 +304,7 @@ if __name__ == '__main__':
                         # sample and plot
                         plt.close('all')
                         lmbd = 0.
-                        folder_results = "results"
-                        name_simu = folder_results + "/" + sampler.name + "_" \
-                            + gen_sde.base_sde.name_SDE + "_" + str(iterations) + "iteLearning_" \
-                            + str(batch_size) + "batchSize_" \
-                            + str(num_steps_forward) + "stepsForw_" \
-                            + str(beta_min) + "beta_min" \
-                            + str(beta_max) + "beta_max" \
+                        name_simu = name_simu_root \
                             + str(t_eps_beta_min) + "t_eps_beta_min" \
                             + str(num_steps_backward) + "stepsBack_" \
                             + str(include_t0_reverse) + "t0infer" 

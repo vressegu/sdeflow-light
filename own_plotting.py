@@ -48,19 +48,22 @@ def get_2d_histogram_plot(data, val=3, num=64, vmax=10, use_grid=False, origin='
 
     # draw to canvas
     fig.canvas.draw()  # draw the canvas, cache the renderer
-    image = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
-    tupl = fig.canvas.get_width_height()[::-1]
-    if ( tupl[0]*tupl[1]*3 == image.shape[0] ) :
-        image = image.reshape(fig.canvas.get_width_height()[::-1] + (3,))
-    else:
-        image = image.reshape( (tupl[0]*2,tupl[1]*2,3) )
+    image = np.frombuffer(fig.canvas.tostring_argb(), dtype=np.uint8)
+
+    # Reshape into a (height * width, 4) array where the 4th channel is alpha
+    image = image.reshape((fig.canvas.get_width_height()[1], fig.canvas.get_width_height()[0], 4))
+    # Keep only the first three channels (RGB), discarding the alpha channel
+    image = image[:, :, 1:]
 
     plt.close()
     return image
 
-def plot_selected_inds(xs, inds, use_xticks=True, use_yticks=True, lmbd = 0.,include_t0=False):
+def plot_selected_inds(xs, inds, use_xticks=True, use_yticks=True, lmbd = 0.,include_t0=False, backward=True):
     imgs_ = []
-    for ind in reversed(inds):
+    l_inds = len(inds)
+    if backward:
+        inds = reversed(inds)
+    for ind in inds:
         imgs_ += [get_2d_histogram_plot(xs[ind].numpy())]
     img_ = np.concatenate(imgs_, axis=1)
 
@@ -69,11 +72,11 @@ def plot_selected_inds(xs, inds, use_xticks=True, use_yticks=True, lmbd = 0.,inc
     figwidth = 25
     fontsize = 15
     if use_xticks:
-        xticks = [0.5*width_per_img + width_per_img*i for i in range(len(inds))]
+        xticks = [0.5*width_per_img + width_per_img*i for i in range(l_inds)]
         if not include_t0:
-            xticklabels = [r'$i={:d}$'.format(ind+1) for ind in reversed(inds)]
+            xticklabels = [r'$i={:d}$'.format(ind+1) for ind in (inds)]
         else:
-            xticklabels = [r'$i={:d}$'.format(ind) for ind in reversed(inds)]
+            xticklabels = [r'$i={:d}$'.format(ind) for ind in (inds)]
     else:
         xticks, xticklabels = [], []
     if use_yticks:
