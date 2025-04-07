@@ -24,7 +24,7 @@ from sde_scheme import euler_maruyama_sampler,heun_sampler,rk4_stratonovich_samp
 from own_plotting import plot_selected_inds
 from SDEs import forward_SDE,SDE,VariancePreservingSDE,PluginReverseSDE,multiplicativeNoise
 from data import ERA5,ncar_weather_station,weather_station,eof_pressure,Lorenz96,PODmodes,SwissRoll
-
+from quantitative_comparison import compute_mmd
 
 np.random.seed(0)
 torch.manual_seed(0) 
@@ -79,15 +79,23 @@ justLoad = False
 
 if __name__ == '__main__':
 
+    mmd = torch.zeros((len(MSGMs),len(dims),len(Res),len(num_stepss_backward)))
+    i_MGMM = -1
     for MSGM in MSGMs:
+        i_MGMM +=1
 
         if not MSGM:
             normalized_data = True
         else:
             normalized_data = False
+
+        i_dims = -1
         for dim in dims:
+            i_dims +=1
             
+            i_Res = -1
             for Re in Res:
+                i_Res +=1
                 ## 1. Initialize dataset
                 sampler = SwissRoll()
                 # sampler = PODmodes(Re,dim, normalized=normalized_data)
@@ -285,10 +293,9 @@ if __name__ == '__main__':
                     """
                     Simulate the generative SDE by using RK4 method
                     """
-                    # num_stepss_backward = [1000, 100, 50, 20, 10, 5, 3, 2]
-
-                    # num_stepss_backward = [2]
+                    i_num_stepss_backward = -1
                     for num_steps_backward in num_stepss_backward:
+                        i_num_stepss_backward +=1
                         print("Generation : num_steps_backward = " + str(num_steps_backward))
                         # init param
                         # num_samples = 100000
@@ -318,6 +325,12 @@ if __name__ == '__main__':
 
                         if (save_results):
                             torch.save(xs, name_simu + ".pt")
+
+                        # MMD
+                        dist_ref = compute_mmd(torch.zeros_like(xtest).to(device),xtest.to(device))
+                        dist = compute_mmd(xgen.to(device),xtest.to(device))
+                        mmd[i_MGMM, i_dims, i_Res, i_num_stepss_backward] = dist / dist_ref
+                        print("mmd = " + str(dist.item()) )
 
                         if (scatter_plots):
                             pddatagen = pd.DataFrame(xgen[:,0:dimplot], columns=range(1,1+dimplot))
@@ -370,3 +383,26 @@ if __name__ == '__main__':
                             plt.savefig(name_fig)
                             plt.pause(1)
                             plt.close()
+
+
+                    fig = plt.figure(figsize=(5,3))
+                    # print(num_stepss_backward)
+                    # print(mmd)
+                    if mmd.shape[0] == 1 :
+                        plt.loglog(num_stepss_backward,mmd[i_MGMM,i_dims,i_Res,:].flatten())
+                    else:
+                        plt.loglog(num_stepss_backward,mmd[0,i_dims,i_Res,:].flatten(),label='SGM')
+                        plt.loglog(num_stepss_backward,mmd[1,i_dims,i_Res,:].flatten(),label='MSGM')
+                        plt.legend()
+                    plt.ylabel('MMD')
+                    plt.xlabel('nb timesteps in backward SDE')
+                    plt.tight_layout()
+                    plt.show(block=False)
+                    name_fig = name_simu_root + "_MMD.png" 
+                    plt.savefig(name_fig)
+                    plt.pause(1)
+                    plt.close()
+
+    
+    torch.save(mmd, name_simu_root + "_globalMMDfile.pt")
+
