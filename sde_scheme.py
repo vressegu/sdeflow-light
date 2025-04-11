@@ -32,9 +32,9 @@ def euler_maruyama_sampler(sde, x_0, num_steps=1000, lmbd=0., keep_all_samples=T
     batch_size = x_0.size(0)
     ndim = x_0.dim()-1
     if T_ == -1 :
-        T_ = sde.T.cpu().item()
+        T_ = sde.T.item()
     else:
-        T_ = T_.cpu().item()
+        T_ = T_.item()
     delta = T_ / num_steps
     ts = torch.linspace(0, 1, num_steps + 1) * T_
 
@@ -44,7 +44,7 @@ def euler_maruyama_sampler(sde, x_0, num_steps=1000, lmbd=0., keep_all_samples=T
     if norm_correction:
         norm_x_0 = torch.norm(x_t,dim=1)
     if include_t0 and keep_all_samples :
-        xs.append(x_t.to('cpu'))
+        xs.append(x_t)
     t = torch.zeros(batch_size, *([1]*ndim), device=device)
     with torch.no_grad():
         for i in range(num_steps):
@@ -55,7 +55,7 @@ def euler_maruyama_sampler(sde, x_0, num_steps=1000, lmbd=0., keep_all_samples=T
             if norm_correction:
                 x_t = x_t * (norm_x_0/torch.norm(x_t,dim=1))[:,None]
             if keep_all_samples or i == num_steps-1:
-                xs.append(x_t.to('cpu'))
+                xs.append(x_t)
             else:
                 pass
     return xs
@@ -69,9 +69,9 @@ def heun_sampler(sde, x_0, num_steps=1000, lmbd=0., keep_all_samples=True, inclu
     batch_size = x_0.size(0)
     ndim = x_0.dim() - 1
     if T_ == -1 :
-        T_ = sde.T.cpu().item()
+        T_ = sde.T.item()
     else:
-        T_ = T_.cpu().item()
+        T_ = T_.item()
     delta = T_ / num_steps
     ts = torch.linspace(0, 1, num_steps + 1) * T_
 
@@ -82,7 +82,7 @@ def heun_sampler(sde, x_0, num_steps=1000, lmbd=0., keep_all_samples=True, inclu
         norm_x_0 = torch.norm(x_t,dim=1)
     t = torch.zeros(batch_size, *([1] * ndim), device=device)
     if include_t0 and keep_all_samples :
-        xs.append(x_t.to('cpu'))
+        xs.append(x_t)
         
     with torch.no_grad():
         for i in range(num_steps):
@@ -108,7 +108,7 @@ def heun_sampler(sde, x_0, num_steps=1000, lmbd=0., keep_all_samples=True, inclu
                 x_t = x_t * (norm_x_0/torch.norm(x_t,dim=1))[:,None]
 
             if keep_all_samples or i == num_steps - 1:
-                xs.append(x_t.to('cpu'))
+                xs.append(x_t)
 
     return xs
 
@@ -132,9 +132,9 @@ def rk4_stratonovich_sampler(sde, x_0, num_steps=1000, lmbd=0., keep_all_samples
     batch_size = x_0.size(0)
     ndim = x_0.dim() - 1
     if T_ == -1 :
-        T_ = sde.T.cpu().item()
+        T_ = sde.T.item()
     else:
-        T_ = T_.cpu().item()
+        T_ = T_.item()
     delta = T_ / num_steps
     ts = torch.linspace(0, 1, num_steps + 1) * T_
 
@@ -144,7 +144,7 @@ def rk4_stratonovich_sampler(sde, x_0, num_steps=1000, lmbd=0., keep_all_samples
         norm_x_0 = torch.norm(x_t,dim=1)
     t = torch.zeros(batch_size, *([1] * ndim), device=device)
     if include_t0 and keep_all_samples :
-        xs.append(x_t.to('cpu'))
+        xs.append(x_t)
     
     sqrt_delta = delta**0.5
 
@@ -187,6 +187,4 @@ def rk4_stratonovich_sampler(sde, x_0, num_steps=1000, lmbd=0., keep_all_samples
                 x_t = x_t * (norm_x_0/torch.norm(x_t,dim=1))[:,None]
 
             if keep_all_samples or i == num_steps - 1:
-                xs.append(x_t.to('cpu'))
-
-    return xs
+                xs.append(x_t)

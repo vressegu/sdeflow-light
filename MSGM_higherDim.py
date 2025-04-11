@@ -236,7 +236,7 @@ if __name__ == '__main__':
                         drift_q = MLP(input_dim=sampler.dim, index_dim=1, hidden_dim=128).to(device)
                         T = torch.nn.Parameter(torch.FloatTensor([T0]), requires_grad=False)
                         if MSGM:
-                            x_init = sampler.sample(iterations*batch_size).data.numpy()
+                            x_init = sampler.sample(iterations*batch_size).to(device)
                             inf_sde = multiplicativeNoise(x_init,beta_min=beta_min, beta_max=beta_max, t_epsilon=t_eps, T=T, num_steps_forward=num_steps_forward).to(device)
                         else:
                             inf_sde = VariancePreservingSDE(beta_min=beta_min, beta_max=beta_max, t_epsilon=t_eps, T=T, num_steps_forward=num_steps_forward).to(device)
@@ -372,7 +372,7 @@ if __name__ == '__main__':
                             print("mmd = " + str(dist.item()) )
 
                             if (scatter_plots):
-                                pddatagen = pd.DataFrame(xgen[:,0:dimplot], columns=range(1,1+dimplot))
+                                pddatagen = pd.DataFrame(xgen[:,0:dimplot].to('cpu'), columns=range(1,1+dimplot))
 
                                 if (sampler.name == 'swiss'):
                                     fig, axes = plt.subplots(nrows=dimplot, ncols=dimplot, figsize=(2*dimplot,4/3*dimplot))

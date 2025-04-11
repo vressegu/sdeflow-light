@@ -197,9 +197,9 @@ class VariancePreservingSDE(SDE):
 
 def new_G(n) : 
     # from n independent random matrices 
-    G = torch.zeros(n,n,n) 
+    G = torch.zeros(n,n,n,device=device) 
     for k in range(n): 
-        F = torch.randn(n,n)
+        F = torch.randn(n,n,device=device)
         F = 0.5 * (F - F.T)
         G[:,:,k] = F
     
@@ -233,11 +233,11 @@ class multiplicativeNoise(SDE):
                  norm_sampler = "ecdf", kernel = 'gaussian', plot_validate = False, num_steps_forward = 100):
         super().__init__(beta_min=beta_min, beta_max=beta_max, T=T, t_epsilon=t_epsilon, num_steps_forward=num_steps_forward)
         self.norm_correction = True
-        self.r_T = torch.linalg.norm(torch.tensor(y0), dim= 1)
+        self.r_T = torch.linalg.norm(y0, dim= 1)
         r_T = self.r_T.reshape(len(self.r_T),1)
         self.norm_sampler = norm_sampler
         bandwidth = 0.1*torch.std(r_T).item()
-        self.kde = KernelDensity(kernel=kernel, bandwidth=bandwidth).fit(r_T)
+        self.kde = KernelDensity(kernel=kernel, bandwidth=bandwidth).fit(r_T.clone().detach().cpu())
         self.dim = y0.shape[1]
         self.G = new_G(self.dim)
         self.L_G = 0.5*torch.einsum('ijk, jmk -> im', self.G, self.G).to(device)   # ito correction tensor
@@ -254,7 +254,7 @@ class multiplicativeNoise(SDE):
             print(self.L_G)
             print("beta_G = " + str(beta_G))
 
-            r_T_np_arr = r_T.numpy()
+            r_T_np_arr = r_T.clone().detach().cpu().numpy()
             res = stats.ecdf(r_T_np_arr.flatten())
             res.cdf.quantiles
             res.cdf.probabilities
@@ -308,18 +308,18 @@ class multiplicativeNoise(SDE):
 
     def generate_uniform_on_sphere(self,num_samples): 
         # Let X_i be N(0,1) and  lambda^2 =2 sum X_i^2, then (X_1,...,X_d) / lambda  is uniform in S^{d-1}
-        X = torch.randn(num_samples, self.dim).to(device)
+        X = torch.randn(num_samples, self.dim,device=device)
         X_norm = torch.linalg.norm(X, dim = 1).reshape(num_samples,1)
         X =  X / X_norm 
         return X
 
     def gen_radial_distribution(self,num_samples): 
-        U = torch.rand(num_samples)   # uniform         
+        U = torch.rand(num_samples,device=device)   # uniform         
         # could be replaced by KS density
         if self.norm_sampler == "ecdf":
-            r_gen = np.quantile(self.r_T, U).reshape(num_samples,1)
+            r_gen = torch.quantile(self.r_T, U).reshape(num_samples,1)
         else:
-            r_gen = self.kde.sample(num_samples)
+            r_gen = self.kde.sample(num_samples).to(torch.float32).to(device)
             mask_r_gen = (r_gen < 0)
             r_gen =  (1. - mask_r_gen) * r_gen
 
@@ -333,7 +333,7 @@ class multiplicativeNoise(SDE):
             plt.pause(1)
             plt.close()
 
-        return torch.tensor(r_gen).to(torch.float32).to(device)
+        return r_gen
 
     def latent_sample(self,num_samples, n, device=device):
         # init from prior
@@ -372,17 +372,17 @@ class multiplicativeNoise(SDE):
         r_T = self.r_T.reshape(len(self.r_T),1)
         r_yT = torch.linalg.norm(yT.clone().detach(), dim= 1)
         r_yT = r_yT.reshape(len(r_yT),1)
-        log_dens_yT = torch.tensor(self.kde.score_samples(r_yT.cpu())) - np.log(2*np.pi)
+        log_dens_yT = torch.tensor(self.kde.score_samples(r_yT.cpu())).to(torch.float32).to(device)
         return log_dens_yT.to(torch.float32).to(device)
 
 ###################################################################################################
 
 ### Reverse SDE
 def sample_rademacher(shape):
-    return (torch.rand(*shape).ge(0.5)).float() * 2 - 1
+    return (torch.rand(*shape,device=device).ge(0.5)).float() * 2 - 1
 
 def sample_gaussian(shape):
-    return torch.randn(*shape)
+    return torch.randn(*shape,device=device)
 
 def sample_v(shape, vtype='rademacher'):
     if vtype == 'rademacher':

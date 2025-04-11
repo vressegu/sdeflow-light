@@ -67,7 +67,7 @@ def plot_selected_inds(xs, inds, use_xticks=True, use_yticks=True, lmbd = 0.,inc
     if backward:
         inds = reversed(inds)
     for ind in inds:
-        imgs_ += [get_2d_histogram_plot(xs[ind].numpy())]
+        imgs_ += [get_2d_histogram_plot(xs[ind].to('cpu').numpy())]
     img_ = np.concatenate(imgs_, axis=1)
 
     height, width, _ = img_.shape
