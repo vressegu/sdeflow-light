@@ -26,13 +26,10 @@ from sde_scheme import euler_maruyama_sampler,heun_sampler,rk4_stratonovich_samp
 # init device
 if torch.cuda.is_available():
     device = 'cuda'
-    # print('use gpu\n')
 elif torch.backends.mps.is_available():
     device = 'mps'
-    # print('use mps\n')
 else:
     device = 'cpu'
-    # print('use cpu\n')
 
 # class OU_SDE(torch.nn.Module): 
 class forward_SDE(torch.nn.Module): 
@@ -76,10 +73,6 @@ class SDE(torch.nn.Module):
         """
         sample yt | y0
         """
-        # num_steps_tot = 1000
-        ## our_sde = forward_SDE(self, self.T).to(device)
-        # y_allt = euler_maruyama_sampler(our_sde, y0, num_steps_tot, 0, True) # sample
-
         num_steps_tot = self.num_steps_forward
         our_sde = forward_SDE(self, self.T).to(device)
         # y_allt = euler_maruyama_sampler(our_sde, y0, num_steps_tot, 0, True) # sample
@@ -227,8 +220,6 @@ class multiplicativeNoise(SDE):
     d Y = G(Y) o dB_t
     """
     # This class need to be changed since the forward SDE cannot be solved analitically
-    # def __init__(self, n=2, G = new_G(2), T=1.0, t_epsilon=0.001):
-    # def __init__(self, n=2, T=1.0, t_epsilon=0.001):
     def __init__(self, y0, beta_min=0.1, beta_max=20.0, T=1.0, t_epsilon=0.001, \
                  norm_sampler = "ecdf", kernel = 'gaussian', plot_validate = False, num_steps_forward = 100):
         super().__init__(beta_min=beta_min, beta_max=beta_max, T=T, t_epsilon=t_epsilon, num_steps_forward=num_steps_forward)
