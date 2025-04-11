@@ -98,10 +98,10 @@ class SDE(torch.nn.Module):
         yt = torch.zeros_like(y0)
         for k in range(y0.shape[0]):
             if num_steps_int[k]>0 :
-                yt[k,:] = y_allt[num_steps_int[k]][k,:]
+                yt[k,:] = y_allt[num_steps_int[k],k,:]
             else:
                 ytemp = rk4_stratonovich_sampler(our_sde, y0[k,:][np.newaxis, ...], 1, lmbd=0, keep_all_samples=False, include_t0=False, T_ = t[k])
-                yt[k,:] = ytemp[0][0,:]
+                yt[k,:] = ytemp[0,0,:]
 
         return yt
 

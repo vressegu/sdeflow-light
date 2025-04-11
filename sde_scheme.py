@@ -39,12 +39,15 @@ def euler_maruyama_sampler(sde, x_0, num_steps=1000, lmbd=0., keep_all_samples=T
     ts = torch.linspace(0, 1, num_steps + 1) * T_
 
     # sample
-    xs = []
     x_t = x_0.detach().clone().to(device)
     if norm_correction:
         norm_x_0 = torch.norm(x_t,dim=1)
-    if include_t0 and keep_all_samples :
-        xs.append(x_t)
+    if keep_all_samples :
+        if (not include_t0) :
+            xs = torch.zeros((x_0.shape,num_steps),device=device)
+        else :
+            xs = torch.zeros((x_0.shape[0],x_0.shape[1],num_steps+1),device=device)
+            xs[:,:,0]=x_t
     t = torch.zeros(batch_size, *([1]*ndim), device=device)
     with torch.no_grad():
         for i in range(num_steps):
@@ -54,10 +57,12 @@ def euler_maruyama_sampler(sde, x_0, num_steps=1000, lmbd=0., keep_all_samples=T
             x_t = x_t + EMstep(mu, delta , sigma , delta ** 0.5 * torch.randn_like(x_t)) # one step update of Euler Maruyama method with a step size delta
             if norm_correction:
                 x_t = x_t * (norm_x_0/torch.norm(x_t,dim=1))[:,None]
-            if keep_all_samples or i == num_steps-1:
-                xs.append(x_t)
-            else:
-                pass
+            if keep_all_samples:
+                xs[:,:,i+1]=x_t
+            elif i == num_steps - 1:
+                xs=x_t
+
+    xs = torch.permute(xs, (2, 0, 1))
     return xs
 
 def heun_sampler(sde, x_0, num_steps=1000, lmbd=0., keep_all_samples=True, include_t0=False, T_=-1, norm_correction = False):
@@ -76,13 +81,16 @@ def heun_sampler(sde, x_0, num_steps=1000, lmbd=0., keep_all_samples=True, inclu
     ts = torch.linspace(0, 1, num_steps + 1) * T_
 
     # Sampling
-    xs = []
     x_t = x_0.detach().clone().to(device)
     if norm_correction:
         norm_x_0 = torch.norm(x_t,dim=1)
     t = torch.zeros(batch_size, *([1] * ndim), device=device)
-    if include_t0 and keep_all_samples :
-        xs.append(x_t)
+    if keep_all_samples :
+        if (not include_t0) :
+            xs = torch.zeros((x_0.shape,num_steps),device=device)
+        else :
+            xs = torch.zeros((x_0.shape[0],x_0.shape[1],num_steps+1),device=device)
+            xs[:,:,0]=x_t
         
     with torch.no_grad():
         for i in range(num_steps):
@@ -107,9 +115,12 @@ def heun_sampler(sde, x_0, num_steps=1000, lmbd=0., keep_all_samples=True, inclu
             if norm_correction:
                 x_t = x_t * (norm_x_0/torch.norm(x_t,dim=1))[:,None]
 
-            if keep_all_samples or i == num_steps - 1:
-                xs.append(x_t)
+            if keep_all_samples:
+                xs[:,:,i+1]=x_t
+            elif i == num_steps - 1:
+                xs=x_t
 
+    xs = torch.permute(xs, (2, 0, 1))
     return xs
 
 def rk4_stratonovich_sampler(sde, x_0, num_steps=1000, lmbd=0., keep_all_samples=True, include_t0=False, T_=-1, norm_correction = False):
@@ -138,13 +149,16 @@ def rk4_stratonovich_sampler(sde, x_0, num_steps=1000, lmbd=0., keep_all_samples
     delta = T_ / num_steps
     ts = torch.linspace(0, 1, num_steps + 1) * T_
 
-    xs = []
     x_t = x_0.detach().clone().to(device)
     if norm_correction:
         norm_x_0 = torch.norm(x_t,dim=1)
     t = torch.zeros(batch_size, *([1] * ndim), device=device)
-    if include_t0 and keep_all_samples :
-        xs.append(x_t)
+    if keep_all_samples :
+        if (not include_t0) :
+            xs = torch.zeros((x_0.shape,num_steps),device=device)
+        else :
+            xs = torch.zeros((x_0.shape[0],x_0.shape[1],num_steps+1),device=device)
+            xs[:,:,0]=x_t
     
     sqrt_delta = delta**0.5
 
@@ -186,5 +200,11 @@ def rk4_stratonovich_sampler(sde, x_0, num_steps=1000, lmbd=0., keep_all_samples
             if norm_correction:
                 x_t = x_t * (norm_x_0/torch.norm(x_t,dim=1))[:,None]
 
-            if keep_all_samples or i == num_steps - 1:
-                xs.append(x_t)
+            if keep_all_samples:
+                xs[:,:,i+1]=x_t
+            elif i == num_steps - 1:
+                xs=x_t
+
+    xs = torch.permute(xs, (2, 0, 1))
+    return xs
+

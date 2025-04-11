@@ -250,7 +250,7 @@ if __name__ == '__main__':
                         xtest = torch.tensor(xtest, dtype=torch.float32).to(device)
                         for_sde = forward_SDE(inf_sde, T).to(device)
                         xs_forward = rk4_stratonovich_sampler(for_sde, xtest, num_steps_forward, lmbd=0.,include_t0=True, norm_correction = MSGM) # sample
-                        xgen_forward = xs_forward[-1]
+                        xgen_forward = xs_forward[-1,:,:]
                         cov_xtest = torch.cov(xtest.T)
                         cov_xgen_forward = torch.cov(xgen_forward.T)
                         xgen_forward_var = torch.var(xgen_forward.T,dim=1)
@@ -349,7 +349,7 @@ if __name__ == '__main__':
                                                             include_t0=include_t0_reverse, norm_correction = MSGM) # sample
                                 if (save_results):
                                     torch.save(xs, name_simu + ".pt")
-                            xgen = xs[-1]
+                            xgen = xs[-1,:,:]
 
                             # Identify rows with NaN values
                             nan_mask = (torch.isnan(xgen) | (torch.abs(xgen) > 1e3 )).any(dim=1)
