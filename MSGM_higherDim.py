@@ -42,6 +42,7 @@ num_steps_forward = 1000
 beta_min=0.1
 beta_max=2
 t_eps_beta_min = 1/10000 # = dt = T / num_steps_forward
+beta_mins = [1, 2]
 
 t_eps = t_eps_beta_min / beta_min
 
@@ -79,373 +80,374 @@ justLoad = False
 
 if __name__ == '__main__':
 
-    mmd = torch.zeros((len(MSGMs),len(dims),len(Res),len(num_stepss_backward)))
-    i_MGMM = -1
-    for MSGM in MSGMs:
-        i_MGMM +=1
+    for beta_min in beta_mins:
+        mmd = torch.zeros((len(MSGMs),len(dims),len(Res),len(num_stepss_backward)))
+        i_MGMM = -1
+        for MSGM in MSGMs:
+            i_MGMM +=1
 
-        if not MSGM:
-            normalized_data = True
-        else:
-            normalized_data = False
+            if not MSGM:
+                normalized_data = True
+            else:
+                normalized_data = False
 
-        i_dims = -1
-        for dim in dims:
-            i_dims +=1
-            
-            i_Res = -1
-            for Re in Res:
-                i_Res +=1
-                ## 1. Initialize dataset
-                sampler = SwissRoll()
-                # sampler = PODmodes(Re,dim, normalized=normalized_data)
-                # sampler = Lorenz96(Re,dim, normalized=normalized_data)
-                # sampler = eof_pressure(dim)
-                # sampler = weather_station()
-                # sampler = weather_station(dim) 
-                # sampler = ncar_weather_station()
-                # sampler = ncar_weather_station(dim) 
-                # sampler = ERA5(dim) 
+            i_dims = -1
+            for dim in dims:
+                i_dims +=1
+                
+                i_Res = -1
+                for Re in Res:
+                    i_Res +=1
+                    ## 1. Initialize dataset
+                    sampler = SwissRoll()
+                    # sampler = PODmodes(Re,dim, normalized=normalized_data)
+                    # sampler = Lorenz96(Re,dim, normalized=normalized_data)
+                    # sampler = eof_pressure(dim)
+                    # sampler = weather_station()
+                    # sampler = weather_station(dim) 
+                    # sampler = ncar_weather_station()
+                    # sampler = ncar_weather_station(dim) 
+                    # sampler = ERA5(dim) 
 
-                xtest = sampler.sampletest(num_samples).data.numpy()
-                sampler.dim = xtest.shape[1]
-                std_test = xtest.std(axis=0)
+                    xtest = sampler.sampletest(num_samples).data.numpy()
+                    sampler.dim = xtest.shape[1]
+                    std_test = xtest.std(axis=0)
 
-                plt.close('all')
-                dimplot = np.min([8,xtest.shape[1]])
-                pddatatest = pd.DataFrame(xtest[:,0:dimplot], columns=range(1,1+dimplot))
-                fig, axes = plt.subplots(nrows=dimplot, ncols=dimplot, figsize=(2*dimplot,dimplot))
-                color='blue'
-                scatter = pd.plotting.scatter_matrix(pddatatest, diagonal=None,s=ssize,hist_kwds={"bins": 20},
-                    color=color, ax=axes) 
-                # Customize the diagonal manually
-                for i, col in enumerate(pddatatest.columns):
-                    ax = scatter[i, i]
-                    ax.clear()
-                    pddatatest[col].plot.kde(ax=ax, color=color, label='test')
-                    ax.legend(fontsize=8, loc='upper right')
-                    if not normalized_data:
-                        plot_ylim_row = plot_xlim * std_test[i]
-                    for j, col in enumerate(pddatatest.columns):
-                        ax = scatter[i, j]
+                    plt.close('all')
+                    dimplot = np.min([8,xtest.shape[1]])
+                    pddatatest = pd.DataFrame(xtest[:,0:dimplot], columns=range(1,1+dimplot))
+                    fig, axes = plt.subplots(nrows=dimplot, ncols=dimplot, figsize=(2*dimplot,dimplot))
+                    color='blue'
+                    scatter = pd.plotting.scatter_matrix(pddatatest, diagonal=None,s=ssize,hist_kwds={"bins": 20},
+                        color=color, ax=axes) 
+                    # Customize the diagonal manually
+                    for i, col in enumerate(pddatatest.columns):
+                        ax = scatter[i, i]
+                        ax.clear()
+                        pddatatest[col].plot.kde(ax=ax, color=color, label='test')
+                        ax.legend(fontsize=8, loc='upper right')
                         if not normalized_data:
-                            plot_xlim_col = plot_xlim * std_test[j]
-                        ax.axis(xmin=-plot_xlim_col,xmax=plot_xlim_col)
-                        if (i != j):
-                            ax.axis(ymin=-plot_ylim_row,ymax=plot_ylim_row)
-                            if (sampler.name == 'swiss'):
-                                ax.set_aspect('equal', 'box')
-                plt.tight_layout()
-                plt.show(block=False)    
-                plt.pause(0.1)
-                plt.savefig("results/" + sampler.name + ".png", dpi=1200)
-                plt.pause(0.1)
-                plt.close()
-                
-
-                ## 2. Define models
-
-                ### 2.2. Define MLP
-                class Swish(nn.Module):
-                    def __init__(self):
-                        super().__init__()
-
-                    def forward(self, x):
-                        return torch.sigmoid(x)*x
-
-                class MLP(nn.Module):
-                    def __init__(self,
-                                input_dim=2,
-                                index_dim=1,
-                                hidden_dim=128,
-                                act=Swish(),
-                                ):
-                        super().__init__()
-                        self.input_dim = input_dim
-                        self.index_dim = index_dim
-                        self.hidden_dim = hidden_dim
-                        self.act = act
-
-                        self.main = nn.Sequential(
-                            nn.Linear(input_dim+index_dim, hidden_dim),
-                            act,
-                            nn.Linear(hidden_dim, hidden_dim),
-                            act,
-                            nn.Linear(hidden_dim, hidden_dim),
-                            act,
-                            nn.Linear(hidden_dim, input_dim),
-                            )
-
-                    def forward(self, input, t):
-                        # init
-                        sz = input.size()
-                        input = input.view(-1, self.input_dim)
-                        t = t.view(-1, self.index_dim).float()
-
-                        # forward
-                        h = torch.cat([input, t], dim=1) # concat
-                        output = self.main(h) # forward
-                        return output.view(*sz)
-
-                ### 2.3. Define evaluate function (compute ELBO)
-                @torch.no_grad()
-                def evaluate(gen_sde, x_test):
-                    gen_sde.eval()
-                    num_samples_ = x_test.size(0)
-                    test_elbo = gen_sde.elbo_random_t_slice(x_test)
-                    gen_sde.train()
-                    return test_elbo.mean(), test_elbo.std() / num_samples_ ** 0.5
-
-                ## 3. Train
-                # init device
-                if torch.cuda.is_available():
-                    device = 'cuda'
-                    print('use gpu\n')
-                elif torch.backends.mps.is_available():
-                    device = 'mps'
-                    print('use mps\n')
-                else:
-                    device = 'cpu'
-                    print('use cpu\n')
-
-                # iterationss = [100000, 10000, 1000, 100, 10]
-                # for iterations in iterationss:
-                # batch_sizes = [256, 128, 64, 32, 16, 8, 4]
-                batch_sizes = [256]
-
-                # nosamples = np.linspace( n0, sampler.max_nsamples, sampler.max_nsamples/10)  1000 2000 3000.... 10000
-                # if iter = k * 1000     (assume iterations = 10000)
-                #  -> choose nosamples[k] samples
-                # Technique to "generate" new sampler : boostrapping
-
-                print("num_steps_forward")
-                print(num_steps_forward)
-                print("beta_min")
-                print(beta_min)
-                print("beta_max")
-                print(beta_max)
-                print("t_eps")
-                print(t_eps)
-                
-
-                for batch_size in batch_sizes:
-
-                    # init models
-                    drift_q = MLP(input_dim=sampler.dim, index_dim=1, hidden_dim=128).to(device)
-                    T = torch.nn.Parameter(torch.FloatTensor([T0]), requires_grad=False)
-                    if MSGM:
-                        x_init = sampler.sample(iterations*batch_size).data.numpy()
-                        inf_sde = multiplicativeNoise(x_init,beta_min=beta_min, beta_max=beta_max, t_epsilon=t_eps, T=T, num_steps_forward=num_steps_forward).to(device)
-                    else:
-                        inf_sde = VariancePreservingSDE(beta_min=beta_min, beta_max=beta_max, t_epsilon=t_eps, T=T, num_steps_forward=num_steps_forward).to(device)
-                    gen_sde = PluginReverseSDE(inf_sde, drift_q, T, vtype=vtype, debias=False).to(device)
-
-
-                    folder_results = "results"
-                    name_simu_root = folder_results + "/" + sampler.name + "_" \
-                        + gen_sde.base_sde.name_SDE + "_" + str(iterations) + "iteLearning_" \
-                        + str(batch_size) + "batchSize_" \
-                        + str(num_steps_forward) + "stepsForw_" \
-                        + str(beta_min) + "beta_min" \
-                        + str(beta_max) + "beta_max" 
+                            plot_ylim_row = plot_xlim * std_test[i]
+                        for j, col in enumerate(pddatatest.columns):
+                            ax = scatter[i, j]
+                            if not normalized_data:
+                                plot_xlim_col = plot_xlim * std_test[j]
+                            ax.axis(xmin=-plot_xlim_col,xmax=plot_xlim_col)
+                            if (i != j):
+                                ax.axis(ymin=-plot_ylim_row,ymax=plot_ylim_row)
+                                if (sampler.name == 'swiss'):
+                                    ax.set_aspect('equal', 'box')
+                    plt.tight_layout()
+                    plt.show(block=False)    
+                    plt.pause(0.1)
+                    plt.savefig("results/" + sampler.name + ".png", dpi=1200)
+                    plt.pause(0.1)
+                    plt.close()
                     
-                    # Forward SDE
-                    xtest = torch.tensor(xtest, dtype=torch.float32).to(device)
-                    for_sde = forward_SDE(inf_sde, T).to(device)
-                    xs_forward = rk4_stratonovich_sampler(for_sde, xtest, num_steps_forward, lmbd=0.,include_t0=True, norm_correction = MSGM) # sample
-                    xgen_forward = xs_forward[-1]
-                    cov_xtest = torch.cov(xtest.T)
-                    cov_xgen_forward = torch.cov(xgen_forward.T)
-                    xgen_forward_var = torch.var(xgen_forward.T,dim=1)
-                    xgen_forward_var_mean = xgen_forward_var.mean()
-                    print("cov(x_test)")
-                    print(cov_xtest)
-                    print("cov(cov_xgen_forward)")
-                    print(cov_xgen_forward)
 
-                    xtest_var = torch.var(xtest.T,dim=1)
-                    xtest_var_mean = xtest_var.mean()
-                    cov_xgen_forward_converged = xtest_var_mean * torch.eye(sampler.dim).to(device)
-                    # since tr(cov)=E||X||^2 is theoretically conserved
-                    print("cov(cov_xgen_forward) in theory when converged")
-                    print(cov_xgen_forward_converged)
+                    ## 2. Define models
 
-                    # indices to visualize
-                    fig_step = int(num_steps_forward/10) #100
-                    if fig_step < 1:
-                        fig_step = 1
-                    inds_forward = range(0, num_steps_forward+1, fig_step)
-                    if (noising_plots):
-                        plot_selected_inds(xs_forward, inds_forward, \
-                            use_xticks= True, use_yticks=False, lmbd = 0., \
-                            include_t0=True, backward=False) # plot
-                        time.sleep(0.5)
-                        plt.show(block=False)
-                        name_fig = name_simu_root + "_Forward.png" 
-                        plt.savefig(name_fig)
-                        plt.pause(1)
-                        plt.close()
+                    ### 2.2. Define MLP
+                    class Swish(nn.Module):
+                        def __init__(self):
+                            super().__init__()
 
-                    print("data = " + sampler.name )
-                    print("iterations = " + str(iterations) )
-                    print("name_SDE = " + inf_sde.name_SDE )
+                        def forward(self, x):
+                            return torch.sigmoid(x)*x
 
-                    if (not justLoad):
-                        # init optimizer
-                        optim = torch.optim.Adam(gen_sde.parameters(), lr=lr)
+                    class MLP(nn.Module):
+                        def __init__(self,
+                                    input_dim=2,
+                                    index_dim=1,
+                                    hidden_dim=128,
+                                    act=Swish(),
+                                    ):
+                            super().__init__()
+                            self.input_dim = input_dim
+                            self.index_dim = index_dim
+                            self.hidden_dim = hidden_dim
+                            self.act = act
 
-                        # train
-                        start_time = time.time()
-                        for i in range(iterations):
-                            optim.zero_grad() # init optimizer
-                            x = sampler.sample(batch_size).to(device) # sample data
-                            loss = gen_sde.ssm(x).mean() # forward and compute loss
-                            loss.backward() # backward
-                            optim.step() # update
+                            self.main = nn.Sequential(
+                                nn.Linear(input_dim+index_dim, hidden_dim),
+                                act,
+                                nn.Linear(hidden_dim, hidden_dim),
+                                act,
+                                nn.Linear(hidden_dim, hidden_dim),
+                                act,
+                                nn.Linear(hidden_dim, input_dim),
+                                )
 
-                            # print
-                            if (i == 0) or ((i+1) % print_every == 0):
-                                # elbo
-                                elbo, elbo_std = evaluate(gen_sde, x)
+                        def forward(self, input, t):
+                            # init
+                            sz = input.size()
+                            input = input.view(-1, self.input_dim)
+                            t = t.view(-1, self.index_dim).float()
 
-                                # print
-                                elapsed = time.time() - start_time
-                                print('| iter {:6d} | {:5.2f} ms/step | loss {:8.3f} | elbo {:8.3f} | elbo std {:8.3f} '
-                                    .format(i+1, elapsed*1000/print_every, loss.item(), elbo.item(), elbo_std.item()))
-                                start_time = time.time()
+                            # forward
+                            h = torch.cat([input, t], dim=1) # concat
+                            output = self.main(h) # forward
+                            return output.view(*sz)
+
+                    ### 2.3. Define evaluate function (compute ELBO)
+                    @torch.no_grad()
+                    def evaluate(gen_sde, x_test):
+                        gen_sde.eval()
+                        num_samples_ = x_test.size(0)
+                        test_elbo = gen_sde.elbo_random_t_slice(x_test)
+                        gen_sde.train()
+                        return test_elbo.mean(), test_elbo.std() / num_samples_ ** 0.5
+
+                    ## 3. Train
+                    # init device
+                    if torch.cuda.is_available():
+                        device = 'cuda'
+                        print('use gpu\n')
+                    elif torch.backends.mps.is_available():
+                        device = 'mps'
+                        print('use mps\n')
+                    else:
+                        device = 'cpu'
+                        print('use cpu\n')
+
+                    # iterationss = [100000, 10000, 1000, 100, 10]
+                    # for iterations in iterationss:
+                    # batch_sizes = [256, 128, 64, 32, 16, 8, 4]
+                    batch_sizes = [256]
+
+                    # nosamples = np.linspace( n0, sampler.max_nsamples, sampler.max_nsamples/10)  1000 2000 3000.... 10000
+                    # if iter = k * 1000     (assume iterations = 10000)
+                    #  -> choose nosamples[k] samples
+                    # Technique to "generate" new sampler : boostrapping
+
+                    print("num_steps_forward")
+                    print(num_steps_forward)
+                    print("beta_min")
+                    print(beta_min)
+                    print("beta_max")
+                    print(beta_max)
+                    print("t_eps")
+                    print(t_eps)
+                    
+
+                    for batch_size in batch_sizes:
+
+                        # init models
+                        drift_q = MLP(input_dim=sampler.dim, index_dim=1, hidden_dim=128).to(device)
+                        T = torch.nn.Parameter(torch.FloatTensor([T0]), requires_grad=False)
+                        if MSGM:
+                            x_init = sampler.sample(iterations*batch_size).data.numpy()
+                            inf_sde = multiplicativeNoise(x_init,beta_min=beta_min, beta_max=beta_max, t_epsilon=t_eps, T=T, num_steps_forward=num_steps_forward).to(device)
+                        else:
+                            inf_sde = VariancePreservingSDE(beta_min=beta_min, beta_max=beta_max, t_epsilon=t_eps, T=T, num_steps_forward=num_steps_forward).to(device)
+                        gen_sde = PluginReverseSDE(inf_sde, drift_q, T, vtype=vtype, debias=False).to(device)
 
 
-                    ## 4. Visualize
+                        folder_results = "results"
+                        name_simu_root = folder_results + "/" + sampler.name + "_" \
+                            + gen_sde.base_sde.name_SDE + "_" + str(iterations) + "iteLearning_" \
+                            + str(batch_size) + "batchSize_" \
+                            + str(num_steps_forward) + "stepsForw_" \
+                            + str(beta_min) + "beta_min" \
+                            + str(beta_max) + "beta_max" 
+                        
+                        # Forward SDE
+                        xtest = torch.tensor(xtest, dtype=torch.float32).to(device)
+                        for_sde = forward_SDE(inf_sde, T).to(device)
+                        xs_forward = rk4_stratonovich_sampler(for_sde, xtest, num_steps_forward, lmbd=0.,include_t0=True, norm_correction = MSGM) # sample
+                        xgen_forward = xs_forward[-1]
+                        cov_xtest = torch.cov(xtest.T)
+                        cov_xgen_forward = torch.cov(xgen_forward.T)
+                        xgen_forward_var = torch.var(xgen_forward.T,dim=1)
+                        xgen_forward_var_mean = xgen_forward_var.mean()
+                        print("cov(x_test)")
+                        print(cov_xtest)
+                        print("cov(cov_xgen_forward)")
+                        print(cov_xgen_forward)
 
-                    ### 4.3. Simulate SDEs
-                    """
-                    Simulate the generative SDE by using RK4 method
-                    """
-                    i_num_stepss_backward = -1
-                    for num_steps_backward in num_stepss_backward:
-                        i_num_stepss_backward +=1
-                        print("Generation : num_steps_backward = " + str(num_steps_backward))
-                        # init param
-                        # num_samples = 100000
+                        xtest_var = torch.var(xtest.T,dim=1)
+                        xtest_var_mean = xtest_var.mean()
+                        cov_xgen_forward_converged = xtest_var_mean * torch.eye(sampler.dim).to(device)
+                        # since tr(cov)=E||X||^2 is theoretically conserved
+                        print("cov(cov_xgen_forward) in theory when converged")
+                        print(cov_xgen_forward_converged)
 
                         # indices to visualize
-                        fig_step = int(num_steps_backward/10) #100
+                        fig_step = int(num_steps_forward/10) #100
                         if fig_step < 1:
                             fig_step = 1
-                        if include_t0_reverse:
-                            inds = range(0, num_steps_backward+1, fig_step)
-                        else:
-                            inds = range(fig_step-1, num_steps_backward, fig_step)
-                        # sample and plot
-                        plt.close('all')
-                        lmbd = 0.
-                        name_simu = name_simu_root \
-                            + str(t_eps_beta_min) + "t_eps_beta_min" \
-                            + str(num_steps_backward) + "stepsBack_" \
-                            + str(include_t0_reverse) + "t0infer" 
-                        if (justLoad):
-                            save_results = False
-                            xs = torch.load(name_simu + ".pt", weights_only=True)
-                        else:
-                            x_0 = gen_sde.latent_sample(num_samples, sampler.dim, device=device) # init from prior
-                            xs = rk4_stratonovich_sampler(gen_sde, x_0, num_steps_backward, lmbd=lmbd,\
-                                                          include_t0=include_t0_reverse, norm_correction = MSGM) # sample
-                            if (save_results):
-                                torch.save(xs, name_simu + ".pt")
-                        xgen = xs[-1]
-
-                        # Identify rows with NaN values
-                        nan_mask = (torch.isnan(xgen) | (torch.abs(xgen) > 1e3 )).any(dim=1)
-                        # Count rows with NaN values
-                        nan_count = nan_mask.sum().item()
-                        print(f"Number of rows with NaN or large value: {nan_count}")
-                        # Remove rows with NaN values
-                        xgen = xgen[~nan_mask]
-
-
-                        # MMD
-                        dist_ref = compute_mmd(torch.zeros_like(xtest).to(device),xtest.to(device))
-                        dist = compute_mmd(xgen.to(device),xtest.to(device))
-                        mmd[i_MGMM, i_dims, i_Res, i_num_stepss_backward] = dist / dist_ref
-                        print("mmd = " + str(dist.item()) )
-
-                        if (scatter_plots):
-                            pddatagen = pd.DataFrame(xgen[:,0:dimplot], columns=range(1,1+dimplot))
-
-                            if (sampler.name == 'swiss'):
-                                fig, axes = plt.subplots(nrows=dimplot, ncols=dimplot, figsize=(2*dimplot,4/3*dimplot))
-                            else:
-                                fig, axes = plt.subplots(nrows=dimplot, ncols=dimplot, figsize=(2*dimplot,dimplot))
-
-                            color='blue'
-                            scatter = pd.plotting.scatter_matrix(pddatatest, diagonal=None,s=ssize,hist_kwds={"bins": 20},
-                                color=color, ax=axes) 
-                            color='red'
-                            scatter = pd.plotting.scatter_matrix(pddatagen, diagonal=None,s=ssize,hist_kwds={"bins": 20},
-                                color=color, ax=axes) 
-                            for i, col in enumerate(pddatatest.columns):
-                                ax = scatter[i, i]
-                                ax.clear()
-                                color='blue'
-                                pddatatest[col].plot.kde(ax=ax, color=color, label='test')
-                                if not normalized_data:
-                                    plot_ylim_row = plot_xlim * std_test[i]
-                                for j, col in enumerate(pddatatest.columns):
-                                    ax = scatter[i, j]
-                                    if not normalized_data:
-                                        plot_xlim_col = plot_xlim * std_test[j]
-                                    ax.axis(xmin=-plot_xlim_col,xmax=plot_xlim_col)
-                                    if (i != j):
-                                        ax.axis(ymin=-plot_ylim_row,ymax=plot_ylim_row)
-                                        if (sampler.name == 'swiss'):
-                                            ax.set_aspect('equal', 'box')
-                            plt.tight_layout()
+                        inds_forward = range(0, num_steps_forward+1, fig_step)
+                        if (noising_plots):
+                            plot_selected_inds(xs_forward, inds_forward, \
+                                use_xticks= True, use_yticks=False, lmbd = 0., \
+                                include_t0=True, backward=False) # plot
                             time.sleep(0.5)
                             plt.show(block=False)
-                            plt.pause(1)
-                            # Customize the diagonal manually
-                            for i, col in enumerate(pddatatest.columns):
-                                ax = scatter[i, i]
-                                color='red'
-                                pddatagen[col].plot.kde(ax=ax, color=color, label='gen')
-                                ax.legend(fontsize=8, loc='upper right')
-                            plt.tight_layout()
-                            # plt.show()
-                            time.sleep(0.5)
-                            plt.show(block=False)
-                            name_fig = name_simu + "_multDim.png" 
-                            plt.savefig(name_fig, dpi=1200)
-                            plt.pause(1)
-                            plt.close()
-
-                        if (denoising_plots):
-                            plot_selected_inds(xs, inds, True, False, lmbd, include_t0=include_t0_reverse) # plot
-                            time.sleep(0.5)
-                            plt.show(block=False)
-                            name_fig = name_simu + ".png" 
+                            name_fig = name_simu_root + "_Forward.png" 
                             plt.savefig(name_fig)
                             plt.pause(1)
                             plt.close()
 
+                        print("data = " + sampler.name )
+                        print("iterations = " + str(iterations) )
+                        print("name_SDE = " + inf_sde.name_SDE )
 
-                    fig = plt.figure(figsize=(5,3))
-                    # print(num_stepss_backward)
-                    # print(mmd)
-                    if mmd.shape[0] == 1 :
-                        plt.loglog(num_stepss_backward,mmd[i_MGMM,i_dims,i_Res,:].flatten())
-                    else:
-                        plt.loglog(num_stepss_backward,mmd[0,i_dims,i_Res,:].flatten(),label='SGM')
-                        plt.loglog(num_stepss_backward,mmd[1,i_dims,i_Res,:].flatten(),label='MSGM')
-                        plt.legend()
-                    plt.ylabel('MMD')
-                    plt.xlabel('nb timesteps in backward SDE')
-                    plt.tight_layout()
-                    plt.show(block=False)
-                    name_fig = name_simu_root + "_MMD.png" 
-                    plt.savefig(name_fig)
-                    plt.pause(1)
-                    plt.close()
+                        if (not justLoad):
+                            # init optimizer
+                            optim = torch.optim.Adam(gen_sde.parameters(), lr=lr)
 
-    
-    torch.save(mmd, name_simu_root + "_globalMMDfile.pt")
+                            # train
+                            start_time = time.time()
+                            for i in range(iterations):
+                                optim.zero_grad() # init optimizer
+                                x = sampler.sample(batch_size).to(device) # sample data
+                                loss = gen_sde.ssm(x).mean() # forward and compute loss
+                                loss.backward() # backward
+                                optim.step() # update
+
+                                # print
+                                if (i == 0) or ((i+1) % print_every == 0):
+                                    # elbo
+                                    elbo, elbo_std = evaluate(gen_sde, x)
+
+                                    # print
+                                    elapsed = time.time() - start_time
+                                    print('| iter {:6d} | {:5.2f} ms/step | loss {:8.3f} | elbo {:8.3f} | elbo std {:8.3f} '
+                                        .format(i+1, elapsed*1000/print_every, loss.item(), elbo.item(), elbo_std.item()))
+                                    start_time = time.time()
+
+
+                        ## 4. Visualize
+
+                        ### 4.3. Simulate SDEs
+                        """
+                        Simulate the generative SDE by using RK4 method
+                        """
+                        i_num_stepss_backward = -1
+                        for num_steps_backward in num_stepss_backward:
+                            i_num_stepss_backward +=1
+                            print("Generation : num_steps_backward = " + str(num_steps_backward))
+                            # init param
+                            # num_samples = 100000
+
+                            # indices to visualize
+                            fig_step = int(num_steps_backward/10) #100
+                            if fig_step < 1:
+                                fig_step = 1
+                            if include_t0_reverse:
+                                inds = range(0, num_steps_backward+1, fig_step)
+                            else:
+                                inds = range(fig_step-1, num_steps_backward, fig_step)
+                            # sample and plot
+                            plt.close('all')
+                            lmbd = 0.
+                            name_simu = name_simu_root \
+                                + str(t_eps) + "t_eps" \
+                                + str(num_steps_backward) + "stepsBack_" \
+                                + str(include_t0_reverse) + "t0infer" 
+                            if (justLoad):
+                                save_results = False
+                                xs = torch.load(name_simu + ".pt", weights_only=True)
+                            else:
+                                x_0 = gen_sde.latent_sample(num_samples, sampler.dim, device=device) # init from prior
+                                xs = rk4_stratonovich_sampler(gen_sde, x_0, num_steps_backward, lmbd=lmbd,\
+                                                            include_t0=include_t0_reverse, norm_correction = MSGM) # sample
+                                if (save_results):
+                                    torch.save(xs, name_simu + ".pt")
+                            xgen = xs[-1]
+
+                            # Identify rows with NaN values
+                            nan_mask = (torch.isnan(xgen) | (torch.abs(xgen) > 1e3 )).any(dim=1)
+                            # Count rows with NaN values
+                            nan_count = nan_mask.sum().item()
+                            print(f"Number of rows with NaN or large value: {nan_count}")
+                            # Remove rows with NaN values
+                            xgen = xgen[~nan_mask]
+
+
+                            # MMD
+                            dist_ref = compute_mmd(torch.zeros_like(xtest).to(device),xtest.to(device))
+                            dist = compute_mmd(xgen.to(device),xtest.to(device))
+                            mmd[i_MGMM, i_dims, i_Res, i_num_stepss_backward] = dist / dist_ref
+                            print("mmd = " + str(dist.item()) )
+
+                            if (scatter_plots):
+                                pddatagen = pd.DataFrame(xgen[:,0:dimplot], columns=range(1,1+dimplot))
+
+                                if (sampler.name == 'swiss'):
+                                    fig, axes = plt.subplots(nrows=dimplot, ncols=dimplot, figsize=(2*dimplot,4/3*dimplot))
+                                else:
+                                    fig, axes = plt.subplots(nrows=dimplot, ncols=dimplot, figsize=(2*dimplot,dimplot))
+
+                                color='blue'
+                                scatter = pd.plotting.scatter_matrix(pddatatest, diagonal=None,s=ssize,hist_kwds={"bins": 20},
+                                    color=color, ax=axes) 
+                                color='red'
+                                scatter = pd.plotting.scatter_matrix(pddatagen, diagonal=None,s=ssize,hist_kwds={"bins": 20},
+                                    color=color, ax=axes) 
+                                for i, col in enumerate(pddatatest.columns):
+                                    ax = scatter[i, i]
+                                    ax.clear()
+                                    color='blue'
+                                    pddatatest[col].plot.kde(ax=ax, color=color, label='test')
+                                    if not normalized_data:
+                                        plot_ylim_row = plot_xlim * std_test[i]
+                                    for j, col in enumerate(pddatatest.columns):
+                                        ax = scatter[i, j]
+                                        if not normalized_data:
+                                            plot_xlim_col = plot_xlim * std_test[j]
+                                        ax.axis(xmin=-plot_xlim_col,xmax=plot_xlim_col)
+                                        if (i != j):
+                                            ax.axis(ymin=-plot_ylim_row,ymax=plot_ylim_row)
+                                            if (sampler.name == 'swiss'):
+                                                ax.set_aspect('equal', 'box')
+                                plt.tight_layout()
+                                time.sleep(0.5)
+                                plt.show(block=False)
+                                plt.pause(1)
+                                # Customize the diagonal manually
+                                for i, col in enumerate(pddatatest.columns):
+                                    ax = scatter[i, i]
+                                    color='red'
+                                    pddatagen[col].plot.kde(ax=ax, color=color, label='gen')
+                                    ax.legend(fontsize=8, loc='upper right')
+                                plt.tight_layout()
+                                # plt.show()
+                                time.sleep(0.5)
+                                plt.show(block=False)
+                                name_fig = name_simu + "_multDim.png" 
+                                plt.savefig(name_fig, dpi=1200)
+                                plt.pause(1)
+                                plt.close()
+
+                            if (denoising_plots):
+                                plot_selected_inds(xs, inds, True, False, lmbd, include_t0=include_t0_reverse) # plot
+                                time.sleep(0.5)
+                                plt.show(block=False)
+                                name_fig = name_simu + ".png" 
+                                plt.savefig(name_fig)
+                                plt.pause(1)
+                                plt.close()
+
+
+                        fig = plt.figure(figsize=(5,3))
+                        # print(num_stepss_backward)
+                        # print(mmd)
+                        if mmd.shape[0] == 1 :
+                            plt.loglog(num_stepss_backward,mmd[i_MGMM,i_dims,i_Res,:].flatten())
+                        else:
+                            plt.loglog(num_stepss_backward,mmd[0,i_dims,i_Res,:].flatten(),label='SGM')
+                            plt.loglog(num_stepss_backward,mmd[1,i_dims,i_Res,:].flatten(),label='MSGM')
+                            plt.legend()
+                        plt.ylabel('MMD')
+                        plt.xlabel('nb timesteps in backward SDE')
+                        plt.tight_layout()
+                        plt.show(block=False)
+                        name_fig = name_simu_root + "_MMD.png" 
+                        plt.savefig(name_fig)
+                        plt.pause(1)
+                        plt.close()
+
+        
+        torch.save(mmd, name_simu_root + "_globalMMDfile.pt")
 
