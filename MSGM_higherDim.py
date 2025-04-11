@@ -339,6 +339,8 @@ if __name__ == '__main__':
                             x_0 = gen_sde.latent_sample(num_samples, sampler.dim, device=device) # init from prior
                             xs = rk4_stratonovich_sampler(gen_sde, x_0, num_steps_backward, lmbd=lmbd,\
                                                           include_t0=include_t0_reverse, norm_correction = MSGM) # sample
+                            if (save_results):
+                                torch.save(xs, name_simu + ".pt")
                         xgen = xs[-1]
 
                         # Identify rows with NaN values
