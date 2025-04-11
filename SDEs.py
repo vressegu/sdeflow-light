@@ -78,10 +78,8 @@ class SDE(torch.nn.Module):
 
         num_steps_tot = self.num_steps_forward
         our_sde = forward_SDE(self, self.T).to(device)
-        # y_allt = euler_maruyama_sampler(our_sde, y0, num_steps_tot, 0, True) # sample
-        # y_allt = heun_sampler(our_sde, y0, num_steps_tot, 0, True) # sample
         include_t0=True
-        y_allt = rk4_stratonovich_sampler(our_sde, y0, num_steps_tot, lmbd=0, keep_all_samples=True, include_t0=include_t0, norm_correction = self.norm_correction) # sample
+        y_allt = self.sample_scheme_allt(y0, include_t0=include_t0)
 
         num_steps_floats = num_steps_tot * t/self.T
         num_steps_int = torch.trunc(num_steps_floats).to(torch.int)
@@ -104,6 +102,17 @@ class SDE(torch.nn.Module):
                 yt[k,:] = ytemp[0,0,:]
 
         return yt
+
+    def sample_scheme_allt(self, y0, include_t0=True):
+        """
+        sample y0, y_t_1, y_t_2, ..., y_T | y0
+        """
+
+        our_sde = forward_SDE(self, self.T).to(device)
+        y_allt = rk4_stratonovich_sampler(our_sde, y0, num_steps=self.num_steps_forward, \
+                                          lmbd=0, keep_all_samples=True, include_t0=include_t0) # sample
+
+        return y_allt
 
     def sample_Song_et_al(self, t, y0, return_noise=False):
         """
