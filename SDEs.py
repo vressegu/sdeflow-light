@@ -443,7 +443,6 @@ class multiplicativeNoise(SDE):
     
     def log_latent_pdf(self,yT):
         r_T = self.r_T.reshape(len(self.r_T),1)
-        X_plot = torch.linspace(0,max(r_T[:,0]) + 0.1*abs(max(r_T[:,0])), 1000).reshape(1000,1)
         r_yT = torch.linalg.norm(yT.clone().detach(), dim= 1)
         r_yT = r_yT.reshape(len(r_yT),1)
         log_dens_yT = torch.tensor(self.kde.score_samples(r_yT.cpu())) - np.log(2*np.pi)
