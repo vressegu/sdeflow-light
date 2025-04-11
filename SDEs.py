@@ -195,16 +195,6 @@ class VariancePreservingSDE(SDE):
 
 ##########################################
 
-def delta(i,j): 
-    if i == j: 
-        return 1.
-    else: 
-        return 0.
-    
-def G_k_e_l(alpha,F,n,k,l) : 
-    return torch.tensor([alpha[k] * F[k,l] * delta(i, (l-k)%n)  for i in range(n)])
-
-
 def new_G(n) : 
     # from n independent random matrices 
     G = torch.zeros(n,n,n) 
@@ -231,30 +221,6 @@ def new_G(n) :
 
     return G.to(device)
 
-def new_G_physics(n) : 
-    # Jacobian from advection term
-    F = torch.randn(n,n)
-    F = 0.5 * (F - F.T)
-    # small-scale streamfunction spectrum
-    alpha = torch.randn(n)
-    alpha = torch.pow(alpha,2) 
-
-    G = torch.zeros(n,n,n) 
-    for k in range(n): 
-        for l in range(n): 
-            G[:,l,k] = G_k_e_l(alpha,F,n,k,l)
-    
-    # check
-    validate = False
-    if validate:
-        for l in range(n): 
-            print("G[:,l,:] of rank d-1 ?")
-            print(G[:,l,:])
-        for k in range(n): 
-            print("G[:,:,k] skew sym ?")
-            print(G[:,:,k])
-
-    return G.to(device)
 
 class multiplicativeNoise(SDE):
     """
