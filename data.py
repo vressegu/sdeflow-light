@@ -258,7 +258,7 @@ class eof_pressure:
         return torch.from_numpy(self.npdatatest[idx,:]).to(torch.float32)
 
 class Lorenz96:
-    def __init__(self, n_dim_L96 = 100, dim = 8):
+    def __init__(self, n_dim_L96 = 100, dim = 8, normalized = False):
         self.dim = dim
         # n_dim_L96 = 100
         # # n_dim_L96 = 4
@@ -275,6 +275,12 @@ class Lorenz96:
         npdatatest = np.load(pathData + '_test.npy')
         npdata = npdata/10
         npdatatest = npdatatest/10
+
+        if normalized:
+            std = npdata.std(axis=0)
+            npdata = npdata/std
+            npdatatest = npdatatest/std
+
         self.npdata = npdata[:,0:self.dim]
         self.npdatatest = npdatatest[:,0:self.dim]
 

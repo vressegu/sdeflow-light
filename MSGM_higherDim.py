@@ -99,7 +99,7 @@ if __name__ == '__main__':
                 ## 1. Initialize dataset
                 sampler = SwissRoll()
                 # sampler = PODmodes(Re,dim, normalized=normalized_data)
-                # sampler = Lorenz96(Re,dim)
+                # sampler = Lorenz96(Re,dim, normalized=normalized_data)
                 # sampler = eof_pressure(dim)
                 # sampler = weather_station()
                 # sampler = weather_station(dim) 
