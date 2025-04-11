@@ -217,6 +217,15 @@ if __name__ == '__main__':
                 # if iter = k * 1000     (assume iterations = 10000)
                 #  -> choose nosamples[k] samples
                 # Technique to "generate" new sampler : boostrapping
+
+                print("num_steps_forward")
+                print(num_steps_forward)
+                print("beta_min")
+                print(beta_min)
+                print("beta_max")
+                print(beta_max)
+                print("t_eps")
+                print(t_eps)
                 
 
                 for batch_size in batch_sizes:
@@ -277,6 +286,7 @@ if __name__ == '__main__':
                         plt.pause(1)
                         plt.close()
 
+                    print("data = " + sampler.name )
                     print("iterations = " + str(iterations) )
                     print("name_SDE = " + inf_sde.name_SDE )
 
