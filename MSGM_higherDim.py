@@ -339,8 +339,14 @@ if __name__ == '__main__':
                             xs = rk4_stratonovich_sampler(gen_sde, x_0, num_steps_backward, lmbd=lmbd,include_t0=include_t0_reverse) # sample
                         xgen = xs[-1]
 
-                        if (save_results):
-                            torch.save(xs, name_simu + ".pt")
+                        # Identify rows with NaN values
+                        nan_mask = (torch.isnan(xgen) | (torch.abs(xgen) > 1e3 )).any(dim=1)
+                        # Count rows with NaN values
+                        nan_count = nan_mask.sum().item()
+                        print(f"Number of rows with NaN or large value: {nan_count}")
+                        # Remove rows with NaN values
+                        xgen = xgen[~nan_mask]
+
 
                         # MMD
                         dist_ref = compute_mmd(torch.zeros_like(xtest).to(device),xtest.to(device))
