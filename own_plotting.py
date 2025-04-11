@@ -50,8 +50,11 @@ def get_2d_histogram_plot(data, val=3, num=64, vmax=10, use_grid=False, origin='
     fig.canvas.draw()  # draw the canvas, cache the renderer
     image = np.frombuffer(fig.canvas.tostring_argb(), dtype=np.uint8)
 
-    # Reshape into a (height * width, 4) array where the 4th channel is alpha
-    image = image.reshape((fig.canvas.get_width_height()[1], fig.canvas.get_width_height()[0], 4))
+    tupl = fig.canvas.get_width_height()[::-1]
+    if ( tupl[0]*tupl[1]*4 == image.shape[0] ) :
+        image = image.reshape(tupl + (4,))
+    else:
+        image = image.reshape( (tupl[0]*2,tupl[1]*2,4) )
     # Keep only the first three channels (RGB), discarding the alpha channel
     image = image[:, :, 1:]
 
