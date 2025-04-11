@@ -108,45 +108,6 @@ class SDE(torch.nn.Module):
                 yt[k,:] = ytemp[0][0,:]
 
         return yt
-    
-    def slow_sample(self, t, y0, return_noise=False):
-        """
-        sample yt | y0
-        if return_noise=True, also return std and g for reweighting the denoising score matching loss
-        """
-        # mu = self.mean_weight(t) * y0
-        # std = self.var(t) ** 0.5
-        # epsilon = torch.randn_like(y0)
-        # yt = epsilon * std + mu
-
-        #y_0 = torch.randn(num_samples, 2, device=device) # init from prior
-        dt =0.01
-
-        # # print(t.shape())
-        # print(y0)
-        # print(type(y0))
-        # print(y0.shape)
-        # exit()
-        num_steps_floats = t /dt 
-        yt = torch.zeros_like(y0)
-        #self.our_sde.T = t
-        # TODO: Make this in parallel
-        for k, discretization_info in enumerate(zip(t,num_steps_floats,y0)):  
-            print("k = ", k)
-            tt, ns, y0_k= discretization_info
-            if tt < dt: 
-                ns = 1
-            else:
-                ns = int(ns)
-            our_sde = forward_SDE(self, tt).to(device)
-            # self.forward_SDE.T = tt
-            yt[k,:] = own_euler_maruyama_sampler(our_sde, y0_k, ns, 0,0)[-1] # sample
-            
-
-        if not return_noise:
-            return yt
-        else:
-            return yt, epsilon, std, self.g(t, yt)
 
     def sample_Song_et_al(self, t, y0, return_noise=False):
         """
