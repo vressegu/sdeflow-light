@@ -302,16 +302,21 @@ class multiplicativeNoise(SDE):
     # This class need to be changed since the forward SDE cannot be solved analitically
     # def __init__(self, n=2, G = new_G(2), T=1.0, t_epsilon=0.001):
     # def __init__(self, n=2, T=1.0, t_epsilon=0.001):
-    def __init__(self, y0, beta_min=0.1, beta_max=20.0, T=1.0, t_epsilon=0.001, plot_validate = False, num_steps_forward = 100):
+    def __init__(self, y0, beta_min=0.1, beta_max=20.0, T=1.0, t_epsilon=0.001, \
+                 norm_sampler = "ecdf", kernel = 'gaussian', plot_validate = False, num_steps_forward = 100):
         super().__init__(beta_min=beta_min, beta_max=beta_max, T=T, t_epsilon=t_epsilon, num_steps_forward=num_steps_forward)
         self.norm_correction = True
         self.r_T = torch.linalg.norm(torch.tensor(y0), dim= 1)
         r_T = self.r_T.reshape(len(self.r_T),1)
-        self.kde = KernelDensity(kernel='gaussian', bandwidth=0.002).fit(r_T)
+        self.norm_sampler = norm_sampler
+        bandwidth = 0.1*torch.std(r_T).item()
+        self.kde = KernelDensity(kernel=kernel, bandwidth=bandwidth).fit(r_T)
         self.dim = y0.shape[1]
         self.G = new_G(self.dim)
         self.L_G = 0.5*torch.einsum('ijk, jmk -> im', self.G, self.G).to(device)   # ito correction tensor
         self.name_SDE = "multiplicativeNoise"
+        if not (norm_sampler=="ecdf"):
+            self.name_SDE += norm_sampler + kernel
 
         if plot_validate :   
             beta_G = - 2*torch.trace(self.L_G)/self.dim            
@@ -366,7 +371,12 @@ class multiplicativeNoise(SDE):
     def gen_radial_distribution(self,num_samples): 
         U = torch.rand(num_samples)   # uniform         
         # could be replaced by KS density
-        r_gen = np.quantile(self.r_T, U).reshape(num_samples,1)
+        if self.norm_sampler == "ecdf":
+            r_gen = np.quantile(self.r_T, U).reshape(num_samples,1)
+        else:
+            r_gen = self.kde.sample(num_samples)
+            mask_r_gen = (r_gen < 0)
+            r_gen =  (1. - mask_r_gen) * r_gen
 
         validate = False
         if validate:
