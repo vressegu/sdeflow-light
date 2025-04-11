@@ -220,15 +220,10 @@ if __name__ == '__main__':
                     #  -> choose nosamples[k] samples
                     # Technique to "generate" new sampler : boostrapping
 
-                    print("num_steps_forward")
-                    print(num_steps_forward)
-                    print("beta_min")
-                    print(beta_min)
-                    print("beta_max")
-                    print(beta_max)
-                    print("t_eps")
-                    print(t_eps)
-                    
+                    print("num_steps_forward = " + str(num_steps_forward))
+                    print("beta_min = " + str(beta_min))
+                    print("beta_max = " + str(beta_max))
+                    print("t_eps = " + str(t_eps))                    
 
                     for batch_size in batch_sizes:
 
@@ -261,16 +256,16 @@ if __name__ == '__main__':
                         xgen_forward_var = torch.var(xgen_forward.T,dim=1)
                         xgen_forward_var_mean = xgen_forward_var.mean()
                         print("cov(x_test)")
-                        print(cov_xtest)
-                        print("cov(cov_xgen_forward)")
-                        print(cov_xgen_forward)
+                        print(cov_xtest.clone().detach().cpu().numpy())
+                        print("cov(xgen_forward)")
+                        print(cov_xgen_forward.clone().detach().cpu().numpy())
 
                         xtest_var = torch.var(xtest.T,dim=1)
                         xtest_var_mean = xtest_var.mean()
                         cov_xgen_forward_converged = xtest_var_mean * torch.eye(sampler.dim).to(device)
                         # since tr(cov)=E||X||^2 is theoretically conserved
                         print("cov(cov_xgen_forward) in theory when converged")
-                        print(cov_xgen_forward_converged)
+                        print(cov_xgen_forward_converged.clone().detach().cpu().numpy())
 
                         # indices to visualize
                         fig_step = int(num_steps_forward/10) #100
