@@ -73,6 +73,9 @@ class SDE(torch.nn.Module):
         """
         sample yt | y0
         """
+        if return_noise:
+            raise NotImplementedError('See the official repository.')
+
         num_steps_tot = self.num_steps_forward
         our_sde = forward_SDE(self, self.T).to(device)
         # y_allt = euler_maruyama_sampler(our_sde, y0, num_steps_tot, 0, True) # sample
@@ -295,7 +298,7 @@ class multiplicativeNoise(SDE):
         return Gy
     
     def sample(self, t, y0, return_noise=False):
-        return self.sample_scheme(t, y0)
+        return self.sample_scheme(t, y0, return_noise=return_noise)
 
     def generate_uniform_on_sphere(self,num_samples): 
         # Let X_i be N(0,1) and  lambda^2 =2 sum X_i^2, then (X_1,...,X_d) / lambda  is uniform in S^{d-1}
