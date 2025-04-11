@@ -23,7 +23,7 @@ def EMstep(mu, delta , sigma , dW):
     return mu * delta + dx
 
 ### 2.0 Define Euler Maruyama method with a step size $\Delta t$
-def euler_maruyama_sampler(sde, x_0, num_steps, lmbd=0., keep_all_samples=True, include_t0=False, T_ = -1):
+def euler_maruyama_sampler(sde, x_0, num_steps=1000, lmbd=0., keep_all_samples=True, include_t0=False, T_ = -1):
     """
     Euler Maruyama method with a step size delta
     """
@@ -56,7 +56,7 @@ def euler_maruyama_sampler(sde, x_0, num_steps, lmbd=0., keep_all_samples=True, 
                 pass
     return xs
 
-def heun_sampler(sde, x_0, num_steps, lmbd=0., keep_all_samples=True, include_t0=False, T_=-1):
+def heun_sampler(sde, x_0, num_steps=1000, lmbd=0., keep_all_samples=True, include_t0=False, T_=-1):
     """
     Heun method (Runge-Kutta 2) for SDEs in Stratonovich form.
     """
@@ -105,7 +105,7 @@ def heun_sampler(sde, x_0, num_steps, lmbd=0., keep_all_samples=True, include_t0
 
     return xs
 
-def rk4_stratonovich_sampler(sde, x_0, num_steps, lmbd=0., keep_all_samples=True, include_t0=False, T_=-1):
+def rk4_stratonovich_sampler(sde, x_0, num_steps=1000, lmbd=0., keep_all_samples=True, include_t0=False, T_=-1):
     """
     Runge-Kutta 4th order method for Stratonovich SDEs with skew-symmetric noise.
     
