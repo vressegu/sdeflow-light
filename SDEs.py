@@ -326,15 +326,33 @@ class multiplicativeNoise(SDE):
             print("L_G")
             print(self.L_G)
             print("beta_G = " + str(beta_G))
+
+            r_T_np_arr = r_T.numpy()
+            res = stats.ecdf(r_T_np_arr.flatten())
+            res.cdf.quantiles
+            res.cdf.probabilities
                 
             r_T = self.r_T.reshape(len(r_T),1)
-            kde = KernelDensity(kernel='gaussian', bandwidth=0.002).fit(r_T)
-            X_plot = torch.linspace(0,max(r_T[:,0]) + 0.1*abs(max(r_T[:,0])), 1000).reshape(1000,1)
-            log_dens = torch.tensor(kde.score_samples(X_plot))
-            plt.plot(X_plot[:,0], torch.exp(log_dens))
+            r_plot = torch.linspace(0,max(r_T[:,0]) + 0.1*abs(max(r_T[:,0])), 1000).reshape(1000,1)
+            log_dens = torch.tensor(self.kde.score_samples(r_plot))
+            # log_dens -= np.log(2*np.pi)
+            dens = torch.exp(log_dens)
+            dr = (r_plot[1,0]-r_plot[0,0])
+            cst_dens = torch.sum(dens,dim=0)* dr
+            self.cst_log_dens = torch.log(cst_dens)
+            dens /= cst_dens
+            print(cst_dens)
+            cdf_dens_plot = torch.cumsum(dens,dim=0)* dr
+
+            plt.plot(r_plot[:,0], dens, label='pdf kde')
+            plt.plot(r_plot[:,0], cdf_dens_plot, label='cdf kde')
+            plt.plot(res.cdf.quantiles, res.cdf.probabilities, label='ecdf')
+            plt.legend()
             time.sleep(0.5)
             plt.show(block=False)
-            plt.savefig("ecdf_n_kde.png")
+            name_fig = "ecdf_n_kde_" + kernel + \
+                "_ensSize=" + str(len(r_T_np_arr.flatten())) + "_bw=" + str(bandwidth) + ".png"
+            plt.savefig(name_fig)
             plt.pause(1)
             plt.close()
 
