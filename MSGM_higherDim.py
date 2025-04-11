@@ -133,11 +133,12 @@ if __name__ == '__main__':
                         ax.axis(xmin=-plot_xlim_col,xmax=plot_xlim_col)
                         if (i != j):
                             ax.axis(ymin=-plot_ylim_row,ymax=plot_ylim_row)
-                            # ax.set_aspect('equal', 'box')
+                            if (sampler.name == 'swiss'):
+                                ax.set_aspect('equal', 'box')
                 plt.tight_layout()
                 plt.show(block=False)    
                 plt.pause(0.1)
-                plt.savefig("results/" + sampler.name + ".png")
+                plt.savefig("results/" + sampler.name + ".png", dpi=1200)
                 plt.pause(0.1)
                 plt.close()
                 
@@ -361,12 +362,16 @@ if __name__ == '__main__':
                         if (scatter_plots):
                             pddatagen = pd.DataFrame(xgen[:,0:dimplot], columns=range(1,1+dimplot))
 
-                            fig, axes = plt.subplots(nrows=dimplot, ncols=dimplot, figsize=(2*dimplot,dimplot))
+                            if (sampler.name == 'swiss'):
+                                fig, axes = plt.subplots(nrows=dimplot, ncols=dimplot, figsize=(2*dimplot,4/3*dimplot))
+                            else:
+                                fig, axes = plt.subplots(nrows=dimplot, ncols=dimplot, figsize=(2*dimplot,dimplot))
+
+                            color='blue'
+                            scatter = pd.plotting.scatter_matrix(pddatatest, diagonal=None,s=ssize,hist_kwds={"bins": 20},
+                                color=color, ax=axes) 
                             color='red'
                             scatter = pd.plotting.scatter_matrix(pddatagen, diagonal=None,s=ssize,hist_kwds={"bins": 20},
-                                color=color, ax=axes) 
-                            color='blue'
-                            scatter = pd.plotting.scatter_matrix(pddatatest, diagonal=None,s=ssize/2,hist_kwds={"bins": 20},
                                 color=color, ax=axes) 
                             for i, col in enumerate(pddatatest.columns):
                                 ax = scatter[i, i]
@@ -382,6 +387,8 @@ if __name__ == '__main__':
                                     ax.axis(xmin=-plot_xlim_col,xmax=plot_xlim_col)
                                     if (i != j):
                                         ax.axis(ymin=-plot_ylim_row,ymax=plot_ylim_row)
+                                        if (sampler.name == 'swiss'):
+                                            ax.set_aspect('equal', 'box')
                             plt.tight_layout()
                             time.sleep(0.5)
                             plt.show(block=False)
@@ -397,7 +404,7 @@ if __name__ == '__main__':
                             time.sleep(0.5)
                             plt.show(block=False)
                             name_fig = name_simu + "_multDim.png" 
-                            plt.savefig(name_fig)
+                            plt.savefig(name_fig, dpi=1200)
                             plt.pause(1)
                             plt.close()
 
