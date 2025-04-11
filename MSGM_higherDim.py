@@ -242,6 +242,7 @@ if __name__ == '__main__':
                     # Forward SDE
                     xtest = torch.tensor(xtest, dtype=torch.float32).to(device)
                     for_sde = forward_SDE(inf_sde, T).to(device)
+                    xs_forward = rk4_stratonovich_sampler(for_sde, xtest, num_steps_forward, lmbd=0.,include_t0=True, norm_correction = MSGM) # sample
                     xgen_forward = xs_forward[-1]
                     cov_xtest = torch.cov(xtest.T)
                     cov_xgen_forward = torch.cov(xgen_forward.T)
@@ -336,7 +337,8 @@ if __name__ == '__main__':
                             xs = torch.load(name_simu + ".pt", weights_only=True)
                         else:
                             x_0 = gen_sde.latent_sample(num_samples, sampler.dim, device=device) # init from prior
-                            xs = rk4_stratonovich_sampler(gen_sde, x_0, num_steps_backward, lmbd=lmbd,include_t0=include_t0_reverse) # sample
+                            xs = rk4_stratonovich_sampler(gen_sde, x_0, num_steps_backward, lmbd=lmbd,\
+                                                          include_t0=include_t0_reverse, norm_correction = MSGM) # sample
                         xgen = xs[-1]
 
                         # Identify rows with NaN values

@@ -67,6 +67,7 @@ class SDE(torch.nn.Module):
         self.t_epsilon = t_epsilon
         # self.forward_SDE = forward_SDE(self, self.T).to(device)
         self.num_steps_forward = num_steps_forward
+        self.norm_correction = False
 
     def beta(self, t):
         return self.beta_min + (self.beta_max-self.beta_min)*t
@@ -84,7 +85,7 @@ class SDE(torch.nn.Module):
         # y_allt = euler_maruyama_sampler(our_sde, y0, num_steps_tot, 0, True) # sample
         # y_allt = heun_sampler(our_sde, y0, num_steps_tot, 0, True) # sample
         include_t0=True
-        y_allt = rk4_stratonovich_sampler(our_sde, y0, num_steps_tot, lmbd=0, keep_all_samples=True, include_t0=include_t0) # sample
+        y_allt = rk4_stratonovich_sampler(our_sde, y0, num_steps_tot, lmbd=0, keep_all_samples=True, include_t0=include_t0, norm_correction = self.norm_correction) # sample
 
         num_steps_floats = num_steps_tot * t/self.T
         num_steps_int = torch.trunc(num_steps_floats).to(torch.int)
@@ -331,6 +332,7 @@ class multiplicativeNoise(SDE):
     # def __init__(self, n=2, T=1.0, t_epsilon=0.001):
     def __init__(self, y0, beta_min=0.1, beta_max=20.0, T=1.0, simpleG = False, t_epsilon=0.001, plot_validate = False, num_steps_forward = 100):
         super().__init__(beta_min=beta_min, beta_max=beta_max, T=T, t_epsilon=t_epsilon, num_steps_forward=num_steps_forward)
+        self.norm_correction = True
         self.r_T = torch.linalg.norm(torch.tensor(y0), dim= 1)
         r_T = self.r_T.reshape(len(self.r_T),1)
         self.kde = KernelDensity(kernel='gaussian', bandwidth=0.002).fit(r_T)
