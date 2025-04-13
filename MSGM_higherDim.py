@@ -357,7 +357,7 @@ if __name__ == '__main__':
                             nan_count = nan_mask.sum().item()
                             print(f"Number of rows with NaN or large value: {nan_count}")
                             # Remove rows with NaN values
-                            xgen = xgen[~nan_mask]
+                            xgen = xgen[~nan_mask,:]
 
 
                             # MMD

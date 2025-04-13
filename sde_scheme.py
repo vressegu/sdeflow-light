@@ -44,7 +44,7 @@ def euler_maruyama_sampler(sde, x_0, num_steps=1000, lmbd=0., keep_all_samples=T
         norm_x_0 = torch.norm(x_t,dim=1)
     if keep_all_samples :
         if (not include_t0) :
-            xs = torch.zeros((x_0.shape,num_steps),device=device)
+            xs = torch.zeros((x_0.shape[0],x_0.shape[1],num_steps),device=device)
         else :
             xs = torch.zeros((x_0.shape[0],x_0.shape[1],num_steps+1),device=device)
             xs[:,:,0]=x_t
@@ -58,7 +58,7 @@ def euler_maruyama_sampler(sde, x_0, num_steps=1000, lmbd=0., keep_all_samples=T
             if norm_correction:
                 x_t = x_t * (norm_x_0/torch.norm(x_t,dim=1))[:,None]
             if keep_all_samples:
-                xs[:,:,i+1]=x_t
+                xs[:,:,i+include_t0]=x_t
             elif i == num_steps - 1:
                 xs=x_t
 
@@ -87,7 +87,7 @@ def heun_sampler(sde, x_0, num_steps=1000, lmbd=0., keep_all_samples=True, inclu
     t = torch.zeros(batch_size, *([1] * ndim), device=device)
     if keep_all_samples :
         if (not include_t0) :
-            xs = torch.zeros((x_0.shape,num_steps),device=device)
+            xs = torch.zeros((x_0.shape[0],x_0.shape[1],num_steps),device=device)
         else :
             xs = torch.zeros((x_0.shape[0],x_0.shape[1],num_steps+1),device=device)
             xs[:,:,0]=x_t
@@ -116,7 +116,7 @@ def heun_sampler(sde, x_0, num_steps=1000, lmbd=0., keep_all_samples=True, inclu
                 x_t = x_t * (norm_x_0/torch.norm(x_t,dim=1))[:,None]
 
             if keep_all_samples:
-                xs[:,:,i+1]=x_t
+                xs[:,:,i+include_t0]=x_t
             elif i == num_steps - 1:
                 xs=x_t
 
@@ -155,7 +155,7 @@ def rk4_stratonovich_sampler(sde, x_0, num_steps=1000, lmbd=0., keep_all_samples
     t = torch.zeros(batch_size, *([1] * ndim), device=device)
     if keep_all_samples :
         if (not include_t0) :
-            xs = torch.zeros((x_0.shape,num_steps),device=device)
+            xs = torch.zeros((x_0.shape[0],x_0.shape[1],num_steps),device=device)
         else :
             xs = torch.zeros((x_0.shape[0],x_0.shape[1],num_steps+1),device=device)
             xs[:,:,0]=x_t
@@ -201,7 +201,7 @@ def rk4_stratonovich_sampler(sde, x_0, num_steps=1000, lmbd=0., keep_all_samples
                 x_t = x_t * (norm_x_0/torch.norm(x_t,dim=1))[:,None]
 
             if keep_all_samples:
-                xs[:,:,i+1]=x_t
+                xs[:,:,i+include_t0]=x_t
             elif i == num_steps - 1:
                 xs=x_t
 
