@@ -205,7 +205,26 @@ if __name__ == '__main__':
                     plt.close()
                     plt.pause(0.1)
                     plt.close('all')
+                    
+                    if (datatype == 'era5') and xtest.shape[1]>= 9:
+                        pddatatrain = pd.DataFrame(torch.cat( ((std_norm * sampler.sample(num_samples_init).to('cpu'))[:,6:9], \
+                                                                (std_norm * sampler.sample(num_samples_init).to('cpu'))[:,0:3]),dim=1).to('cpu').data.numpy(), \
+                                                columns=columns \
+                                                )
+                    else:
+                        pddatatrain = pd.DataFrame((std_norm *  sampler.sample(num_samples_init)).data.numpy()[:,0:dimplot], columns=range(1,1+dimplot))
+
+                    plot_kws={"s": ssize}
+                    scatter = sns.pairplot(pddatatrain, aspect=1, height=height_seaborn, corner=True,plot_kws=plot_kws)
+
+                    plt.tight_layout()
+                    if plt_show:
+                        plt.show(block=False)   
+                        plt.pause(0.1)
+                    plt.savefig("results/" + sampler.name + "_train.png", dpi=dpi)
                     plt.close()
+                    del scatter, pddatatrain
+                    plt.pause(0.1)
                     
 
                     ## 2. Define models
