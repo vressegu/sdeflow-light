@@ -493,14 +493,18 @@ if __name__ == '__main__':
                                     plt.close()
                                     del pddatagen, pddata, scatter
 
-                            if (denoising_plots):
-                                plot_selected_inds(xs, inds, True, False, lmbd, include_t0=include_t0_reverse) # plot
+                            if (denoising_plots) and (i_run == 0):
+                                plot_selected_inds(xs, inds, True, False, lmbd, include_t0=include_t0_reverse, plt_show=plt_show) # plot
                                 time.sleep(0.5)
-                                plt.show(block=False)
+                                if plt_show:
+                                    plt.show(block=False)
                                 name_fig = name_simu + ".png" 
                                 plt.savefig(name_fig)
-                                plt.pause(1)
+                                if plt_show:
+                                    plt.pause(1)
                                 plt.close()
+                                plt.close('all')
+
 
 
                         fig = plt.figure(figsize=(5,3))
