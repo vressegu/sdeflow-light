@@ -22,6 +22,8 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from sde_scheme import euler_maruyama_sampler,heun_sampler,rk4_stratonovich_sampler
+import gc
+
 
 # init device
 if torch.cuda.is_available():
@@ -98,11 +100,9 @@ class SDE(torch.nn.Module):
             if num_steps_int[k]>0 :
                 yt[k,:] = y_allt[num_steps_int[k],k,:]
             else:
-                ytemp = rk4_stratonovich_sampler(our_sde, y0[k,:][np.newaxis, ...], 1, lmbd=0, keep_all_samples=False, include_t0=False, T_ = t[k])
-                yt[k,:] = ytemp[0,0,:]
-
-        return yt
-
+                del ytemp
+        
+        del y_allt, num_steps_int
     def sample_scheme_allt(self, y0, include_t0=True):
         """
         sample y0, y_t_1, y_t_2, ..., y_T | y0
@@ -284,7 +284,10 @@ class multiplicativeNoise(SDE):
             plt.savefig(name_fig)
             plt.pause(1)
             plt.close()
-
+    
+        if estim_cst_norm_dens_r_T:
+            del log_dens, dens, r_plot 
+        gc.collect()
 
     def f(self, t, y):
         # return 0.5 * div_Sigma(t, y)
@@ -313,6 +316,7 @@ class multiplicativeNoise(SDE):
         X = torch.randn(num_samples, self.dim,device=device)
         X_norm = torch.linalg.norm(X, dim = 1).reshape(num_samples,1)
         X =  X / X_norm 
+        del X_norm
         return X
 
     def gen_radial_distribution(self,num_samples): 
@@ -324,6 +328,7 @@ class multiplicativeNoise(SDE):
             r_gen = self.kde.sample(num_samples).to(torch.float32).to(device)
             mask_r_gen = (r_gen < 0)
             r_gen =  (1. - mask_r_gen) * r_gen
+            del mask_r_gen
 
         validate = False
         if validate:
@@ -334,6 +339,8 @@ class multiplicativeNoise(SDE):
             plt.savefig("radial_distribution.png")
             plt.pause(1)
             plt.close()
+        
+        del U
 
         return r_gen
 
@@ -361,6 +368,8 @@ class multiplicativeNoise(SDE):
             plt.savefig("latent_sample_multNoise.png")
             plt.close()
 
+        del r, s
+
         return x0
         
     def cond_latent_sample(self,t_, T, x):
@@ -368,11 +377,12 @@ class multiplicativeNoise(SDE):
         r_x = torch.linalg.norm(x.clone().detach(), dim= 1).reshape(x.shape[0],1)
         s = self.generate_uniform_on_sphere(x.shape[0])
         yT =  r_x * s
-        return yT.to(torch.float32).to(device)
+        del r_x, s
     
     def log_latent_pdf(self,yT):
         r_T = self.r_T.reshape(len(self.r_T),1)
         r_yT = torch.linalg.norm(yT.clone().detach(), dim= 1)
+        del yT
         r_yT = r_yT.reshape(len(r_yT),1)
         log_dens_yT = torch.tensor(self.kde.score_samples(r_yT.cpu())).to(torch.float32).to(device)
         log_dens_yT -= self.cst_log_dens
