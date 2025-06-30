@@ -313,15 +313,14 @@ if __name__ == '__main__':
                     print("t_eps = " + str(t_eps))                    
 
                     for batch_size in batch_sizes:
-
+                        num_samples_init = min(int(1e6),iterations*batch_size)
+                    
                         # init models
                         drift_q = MLP(input_dim=sampler.dim, index_dim=1, hidden_dim=128).to(device)
                         T = torch.nn.Parameter(torch.FloatTensor([T0]), requires_grad=False)
                         if MSGM:
-                            x_init = sampler.sample(iterations*batch_size).to(device)
-                            inf_sde = multiplicativeNoise(x_init,beta_min=beta_min, beta_max=beta_max, t_epsilon=t_eps, T=T, num_steps_forward=num_steps_forward).to(device)
-                        else:
-                            inf_sde = VariancePreservingSDE(beta_min=beta_min, beta_max=beta_max, t_epsilon=t_eps, T=T, num_steps_forward=num_steps_forward).to(device)
+                            x_init = sampler.sample(num_samples_init).to(device)
+                            inf_sde = multiplicativeNoise(x_init,beta_min=beta_min, beta_max=beta_max, \
                         gen_sde = PluginReverseSDE(inf_sde, drift_q, T, vtype=vtype, debias=False).to(device)
 
 
