@@ -207,32 +207,6 @@ class VariancePreservingSDE(SDE):
 
 ##########################################
 
-def new_G(n) : 
-    # from n independent random matrices 
-    G = torch.zeros(n,n,n,device=device) 
-    for k in range(n): 
-        F = torch.randn(n,n,device=device)
-        F = 0.5 * (F - F.T)
-        G[:,:,k] = F
-    
-    # normalisation to control how fast the dynamic is
-    L_G = 0.5*torch.einsum('ijk, jmk -> im', G, G)   # ito correction tensor
-    tr_L = torch.trace(L_G)
-    G = torch.sqrt( - 0.5 * n / tr_L ) * G
-    
-    # check
-    validate = False
-    if validate:
-        print(tr_L)
-        for l in range(n): 
-            print("G[:,l,:] of rank d-1 ?")
-            print(G[:,l,:])    
-        for k in range(n): 
-            print("G[:,:,k] skew sym ?")
-            print(G[:,:,k])
-
-    return G.to(device)
-
 
 class multiplicativeNoise(SDE):
     """
@@ -251,7 +225,7 @@ class multiplicativeNoise(SDE):
         self.kde = KernelDensity(kernel=kernel, bandwidth=bandwidth).fit(r_T.clone().detach().cpu())
         self.r_T = self.r_T.to(self.device)  # if you use it later in device ops
         self.dim = y0.shape[1]
-        self.G = new_G(self.dim)
+        self.G = self.new_G(self.dim)
         self.L_G = 0.5*torch.einsum('ijk, jmk -> im', self.G, self.G)   # ito correction tensor
         self.name_SDE = "multiplicativeNoise"
         if not (norm_sampler=="ecdf"):
@@ -297,6 +271,35 @@ class multiplicativeNoise(SDE):
         if estim_cst_norm_dens_r_T:
             del log_dens, dens, r_plot 
         gc.collect()
+
+
+    def new_G(self, n) : 
+        # from n independent random matrices 
+        G = torch.zeros(n,n,n,device=self.device) 
+        for k in range(n): 
+            F = torch.randn(n,n,device=self.device)
+            F = 0.5 * (F - F.T)
+            G[:,:,k] = F
+        
+        # normalisation to control how fast the dynamic is
+        L_G = 0.5*torch.einsum('ijk, jmk -> im', G, G)   # ito correction tensor
+        tr_L = torch.trace(L_G)
+        G = torch.sqrt( - 0.5 * n / tr_L ) * G
+        
+        # check
+        validate = False
+        if validate:
+            print(tr_L)
+            for l in range(n): 
+                print("G[:,l,:] of rank d-1 ?")
+                print(G[:,l,:])    
+            for k in range(n): 
+                print("G[:,:,k] skew sym ?")
+                print(G[:,:,k])
+
+        del F, L_G, tr_L
+
+        return G
 
     def f(self, t, y):
         # return 0.5 * div_Sigma(t, y)
