@@ -312,16 +312,24 @@ class PODmodes:
         npdatatest = np.load(pathData + '_test/U.npy')
         npdata = npdata/10
         npdatatest = npdatatest/10
-        if normalized:
-            std = npdata.std(axis=0)
-            npdata = npdata/std
-            npdatatest = npdatatest/std
 
-        self.npdata = npdata[:,0:self.dim]
-        self.npdatatest = npdatatest[:,0:self.dim]
+        npdata = npdata[:,0:self.dim]
+        npdatatest = npdatatest[:,0:self.dim]
+
+        self.std = npdata.std(axis=0)
+        self.mean = npdata.mean(axis=0)
+        print(self.mean/self.std)
+        if normalized:
+            npdata = npdata/self.std
+            npdatatest = npdatatest/self.std
+
+        self.npdata = npdata
+        self.npdatatest = npdatatest
 
         self.max_nsamples = npdata.shape[0]
         self.max_nsamplestest = npdatatest.shape[0]
+        print("max nb train samples = " + str(self.max_nsamples))
+        print("max nb test samples = " + str(self.max_nsamplestest))
 
     def sample(self, n):               
         idx = np.random.randint(0,self.npdata.shape[0], size = n) #% self.max_nsamples
@@ -330,6 +338,9 @@ class PODmodes:
     def sampletest(self, n):               
         idx = np.random.randint(0,self.npdatatest.shape[0], size = n) #% self.max_nsamples
         return torch.from_numpy(self.npdatatest[idx,:]).to(torch.float32)
+    
+    def get_std(self):
+        return torch.from_numpy(self.std).to(torch.float32)
 
 class SwissRoll:
     """
