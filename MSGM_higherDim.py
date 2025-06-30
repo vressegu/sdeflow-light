@@ -129,6 +129,59 @@ if not justLoad:
 if not plt_show:
     matplotlib.use("Agg")
 
+#  Define models
+
+### 2.2. Define MLP
+class Swish(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, x):
+        return torch.sigmoid(x)*x
+
+class MLP(nn.Module):
+    def __init__(self,
+                input_dim=2,
+                index_dim=1,
+                hidden_dim=128,
+                act=Swish(),
+                ):
+        super().__init__()
+        self.input_dim = input_dim
+        self.index_dim = index_dim
+        self.hidden_dim = hidden_dim
+        self.act = act
+
+        self.main = nn.Sequential(
+            nn.Linear(input_dim+index_dim, hidden_dim),
+            act,
+            nn.Linear(hidden_dim, hidden_dim),
+            act,
+            nn.Linear(hidden_dim, hidden_dim),
+            act,
+            nn.Linear(hidden_dim, input_dim),
+            )
+
+    def forward(self, input, t):
+        # init
+        sz = input.size()
+        input = input.view(-1, self.input_dim)
+        t = t.view(-1, self.index_dim).float()
+
+        # forward
+        h = torch.cat([input, t], dim=1) # concat
+        output = self.main(h) # forward
+        return output.view(*sz)
+
+### 2.3. Define evaluate function (compute ELBO)
+@torch.no_grad()
+def evaluate(gen_sde, x_test):
+    gen_sde.eval()
+    num_samples_ = x_test.size(0)
+    test_elbo = gen_sde.elbo_random_t_slice(x_test)
+    gen_sde.train()
+    return test_elbo.mean(), test_elbo.std() / num_samples_ ** 0.5
+
 
 if __name__ == '__main__':
 
@@ -231,59 +284,6 @@ if __name__ == '__main__':
                     del scatter, pddatatrain
                     plt.pause(0.1)
                     
-
-                    ## 2. Define models
-
-                    ### 2.2. Define MLP
-                    class Swish(nn.Module):
-                        def __init__(self):
-                            super().__init__()
-
-                        def forward(self, x):
-                            return torch.sigmoid(x)*x
-
-                    class MLP(nn.Module):
-                        def __init__(self,
-                                    input_dim=2,
-                                    index_dim=1,
-                                    hidden_dim=128,
-                                    act=Swish(),
-                                    ):
-                            super().__init__()
-                            self.input_dim = input_dim
-                            self.index_dim = index_dim
-                            self.hidden_dim = hidden_dim
-                            self.act = act
-
-                            self.main = nn.Sequential(
-                                nn.Linear(input_dim+index_dim, hidden_dim),
-                                act,
-                                nn.Linear(hidden_dim, hidden_dim),
-                                act,
-                                nn.Linear(hidden_dim, hidden_dim),
-                                act,
-                                nn.Linear(hidden_dim, input_dim),
-                                )
-
-                        def forward(self, input, t):
-                            # init
-                            sz = input.size()
-                            input = input.view(-1, self.input_dim)
-                            t = t.view(-1, self.index_dim).float()
-
-                            # forward
-                            h = torch.cat([input, t], dim=1) # concat
-                            output = self.main(h) # forward
-                            return output.view(*sz)
-
-                    ### 2.3. Define evaluate function (compute ELBO)
-                    @torch.no_grad()
-                    def evaluate(gen_sde, x_test):
-                        gen_sde.eval()
-                        num_samples_ = x_test.size(0)
-                        test_elbo = gen_sde.elbo_random_t_slice(x_test)
-                        gen_sde.train()
-                        return test_elbo.mean(), test_elbo.std() / num_samples_ ** 0.5
 
                     ## 3. Train
                     # init device
