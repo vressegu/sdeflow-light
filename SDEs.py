@@ -485,9 +485,13 @@ class PluginReverseSDE(torch.nn.Module):
             # truncated at t_epsilon for t < t_epsilon
             mask_le_t_eps = (t_ <= self.base_sde.t_epsilon).float()
             t_ = mask_le_t_eps * self.base_sde.t_epsilon + (1. - mask_le_t_eps) * t_
+            y = self.base_sde.sample(t_, x)
+        y.requires_grad_()
+        return self.ssm_loss(t_,x,y)
+
     @torch.enable_grad()
+    def ssm_loss(self, t_, x, y):
         qt = 1 / self.T
-        y = self.base_sde.sample(t_, x).requires_grad_()
 
         a = self.a(y, t_.squeeze())
 
