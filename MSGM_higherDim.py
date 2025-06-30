@@ -426,107 +426,117 @@ if __name__ == '__main__':
                             # sample and plot
                             plt.close('all')
                             lmbd = 0.
-                            name_simu = name_simu_root \
+                            name_simu = folder_results + "/" + name_simu_root \
                                 + str(t_eps) + "t_eps" \
                                 + str(num_steps_backward) + "stepsBack_" \
-                                + str(include_t0_reverse) + "t0infer" 
-                            if (justLoad):
-                                save_results = False
-                                xs = torch.load(name_simu + ".pt", weights_only=True)
-                            else:
-                                x_0 = gen_sde.latent_sample(num_samples, sampler.dim, device=device) # init from prior
-                                xs = rk4_stratonovich_sampler(gen_sde, x_0, num_steps_backward, lmbd=lmbd,\
-                                                            keep_all_samples=True, 
-                                                            include_t0=include_t0_reverse, 
-                                                            norm_correction = MSGM) # sample
-                                if (save_results):
-                                    torch.save(xs, name_simu + ".pt")
-                            xgen = xs[-1,:,:].to(device)
-
-                            if save_results and not justLoad:
-                                np.save(name_simu + ".pt", xgen.clone().detach().cpu().numpy())
-
-                            # Identify rows with NaN values
-                            nan_mask = (torch.isnan(xgen) | (torch.abs(xgen) > 1e3 )).any(dim=1)
-                            # Count rows with NaN values
-                            nan_count = nan_mask.sum().item()
-                            if nan_count > 0:
-                                print(f"Number of rows with NaN or large value: {nan_count}")
-                            # Remove rows with NaN values
-                            xgen = xgen[~nan_mask,:]
-
-
-                            # MMD
-                            if not justLoadmmmd:
-                                with torch.no_grad():
-                                    x_mmd1 = sampler.sample(xtest.shape[0]).to(device)
-                                    x_mmd2 = sampler.sample(xtest.shape[0]).to(device)
-                                    dist_train_to_test = compute_mmd(std_norm * x_mmd1,std_norm * xtest)
-                                    dist_test_to_test = compute_mmd(std_norm * x_mmd1,std_norm * xtest)
-                                    dist = compute_mmd(std_norm * xgen,std_norm * xtest)
-                                mmd_ref[i_dims, i_Res, i_num_stepss_backward,i_run] = dist_train_to_test
-                                if MSGM:
-                                    mmd_MSGM[i_dims, i_Res, i_num_stepss_backward,i_run] = dist
+                                + str(include_t0_reverse) + "t0infer"
+                            
+                            for i_run in range(nruns_mmd):
+                                print("Run number : " + str(i_run))
+                                if i_run > 0 :
+                                    name_simu = "runs/" + name_simu_root \
+                                        + str(t_eps) + "t_eps" \
+                                        + str(num_steps_backward) + "stepsBack_" \
+                                        + str(include_t0_reverse) + "t0infer" \
+                                        + "_run"+ str(i_run)
+                                
+                                if (justLoad):
+                                    save_results = False
+                                    xs = torch.load(name_simu + ".pt", weights_only=True)
                                 else:
-                                    mmd_SGM[i_dims, i_Res, i_num_stepss_backward,i_run] = dist
-                                del dist
+                                    x_0 = gen_sde.latent_sample(num_samples, sampler.dim) # init from prior
+                                    xs = rk4_stratonovich_sampler(gen_sde, x_0, num_steps_backward, lmbd=lmbd,\
+                                                                keep_all_samples=True, 
+                                                                include_t0=include_t0_reverse, 
+                                                                norm_correction = MSGM) # sample
+                                    if (save_results):
+                                        torch.save(xs, name_simu + ".pt")
+                                xgen = xs[-1,:,:].to(device)
 
-                            if (scatter_plots) and (i_run == 0):
+                                if save_results and not justLoad:
+                                    np.save(name_simu + ".pt", xgen.clone().detach().cpu().numpy())
 
-                                if (datatype == 'era5') and xtest.shape[1]>= 9:
-                                    pddatagen = pd.DataFrame(torch.cat( ((std_norm * xgen)[:,6:9],(std_norm * xgen)[:,0:3]),dim=1).to('cpu'), \
-                                                                columns=columns \
-                                                            )
-                                else:
-                                    pddatagen = pd.DataFrame((std_norm * xgen)[:,0:dimplot].to('cpu'), columns=range(1,1+dimplot))
+                                # Identify rows with NaN values
+                                nan_mask = (torch.isnan(xgen) | (torch.abs(xgen) > 1e3 )).any(dim=1)
+                                # Count rows with NaN values
+                                nan_count = nan_mask.sum().item()
+                                if nan_count > 0:
+                                    print(f"Number of rows with NaN or large value: {nan_count}")
+                                # Remove rows with NaN values
+                                xgen = xgen[~nan_mask,:]
 
-                                pddata = pd.concat([pddatatest.assign(samples="test"), pddatagen.assign(samples="gen.")])
 
-                                plot_kws={'alpha':0.1, "s": ssize}
-                                scatter = sns.pairplot(pddata, kind='scatter', hue="samples", aspect=1, height=height_seaborn, corner=True,plot_kws=plot_kws)
-                                handles = scatter._legend_data.values()
-                                labels = scatter._legend_data.keys()
-                                scatter.figure.legend(handles=handles, labels=labels, loc='upper right', markerscale=5*ssize )
-                                scatter._legend.remove()
+                                # MMD
+                                if not justLoadmmmd:
+                                    with torch.no_grad():
+                                        x_mmd1 = sampler.sample(xtest.shape[0]).to(device)
+                                        x_mmd2 = sampler.sample(xtest.shape[0]).to(device)
+                                        dist_train_to_test = compute_mmd(std_norm * x_mmd1,std_norm * xtest)
+                                        dist_test_to_test = compute_mmd(std_norm * x_mmd1,std_norm * xtest)
+                                        dist = compute_mmd(std_norm * xgen,std_norm * xtest)
+                                    mmd_ref[i_dims, i_Res, i_num_stepss_backward,i_run] = dist_train_to_test
+                                    if MSGM:
+                                        mmd_MSGM[i_dims, i_Res, i_num_stepss_backward,i_run] = dist
+                                    else:
+                                        mmd_SGM[i_dims, i_Res, i_num_stepss_backward,i_run] = dist
+                                    del dist
 
-                                for i, row in enumerate(scatter.axes):
-                                    plot_ylim_row = plot_xlim * std_norm[i]* std_test[i]
-                                    for j, ax in enumerate(row):
-                                        plot_xlim_col = plot_xlim * std_norm[j]* std_test[j]
-                                        if ax is not None:
-                                            if i == j:  # Diagonal
-                                                ax.set_xlim((-plot_xlim_col,plot_xlim_col))
-                                            if j < i:  # since corner=True, we only have lower triangle
-                                                ax.set_xlim((-plot_xlim_col,plot_xlim_col))
-                                                ax.set_ylim((-plot_ylim_row,plot_ylim_row))
-                                plt.tight_layout()
-                                time.sleep(0.5)
-                                if plt_show:
-                                    plt.show(block=False)
-                                    plt.pause(1)
-                                plt.tight_layout()
-                                # plt.show()
-                                time.sleep(0.5)
-                                if plt_show:
-                                    plt.show(block=False)
-                                name_fig = name_simu + "_multDim.png" 
-                                plt.savefig(name_fig, dpi=dpi)
-                                if plt_show:
-                                    plt.pause(1)
-                                plt.close()
-                                del pddatagen, pddata, scatter
+                                if (scatter_plots) and (i_run == 0):
 
-                            if (denoising_plots) and (i_run == 0):
-                                plot_selected_inds(xs, inds, True, False, lmbd, include_t0=include_t0_reverse, plt_show=plt_show) # plot
-                                time.sleep(0.5)
-                                if plt_show:
-                                    plt.show(block=False)
-                                name_fig = name_simu + ".png" 
-                                plt.savefig(name_fig)
-                                if plt_show:
-                                    plt.pause(1)
-                                plt.close()
-                                plt.close('all')
+                                    if (datatype == 'era5') and xtest.shape[1]>= 9:
+                                        pddatagen = pd.DataFrame(torch.cat( ((std_norm * xgen)[:,6:9],(std_norm * xgen)[:,0:3]),dim=1).to('cpu'), \
+                                                                    columns=columns \
+                                                                )
+                                    else:
+                                        pddatagen = pd.DataFrame((std_norm * xgen)[:,0:dimplot].to('cpu'), columns=range(1,1+dimplot))
+
+                                    pddata = pd.concat([pddatatest.assign(samples="test"), pddatagen.assign(samples="gen.")])
+
+                                    plot_kws={'alpha':0.1, "s": ssize}
+                                    scatter = sns.pairplot(pddata, kind='scatter', hue="samples", aspect=1, height=height_seaborn, corner=True,plot_kws=plot_kws)
+                                    handles = scatter._legend_data.values()
+                                    labels = scatter._legend_data.keys()
+                                    scatter.figure.legend(handles=handles, labels=labels, loc='upper right', markerscale=5*ssize )
+                                    scatter._legend.remove()
+
+                                    for i, row in enumerate(scatter.axes):
+                                        plot_ylim_row = plot_xlim * std_norm[i]* std_test[i]
+                                        for j, ax in enumerate(row):
+                                            plot_xlim_col = plot_xlim * std_norm[j]* std_test[j]
+                                            if ax is not None:
+                                                if i == j:  # Diagonal
+                                                    ax.set_xlim((-plot_xlim_col,plot_xlim_col))
+                                                if j < i:  # since corner=True, we only have lower triangle
+                                                    ax.set_xlim((-plot_xlim_col,plot_xlim_col))
+                                                    ax.set_ylim((-plot_ylim_row,plot_ylim_row))
+                                    plt.tight_layout()
+                                    time.sleep(0.5)
+                                    if plt_show:
+                                        plt.show(block=False)
+                                        plt.pause(1)
+                                    plt.tight_layout()
+                                    # plt.show()
+                                    time.sleep(0.5)
+                                    if plt_show:
+                                        plt.show(block=False)
+                                    name_fig = name_simu + "_multDim.png" 
+                                    plt.savefig(name_fig, dpi=dpi)
+                                    if plt_show:
+                                        plt.pause(1)
+                                    plt.close()
+                                    del pddatagen, pddata, scatter
+
+                                if (denoising_plots) and (i_run == 0):
+                                    plot_selected_inds(xs, inds, True, False, lmbd, include_t0=include_t0_reverse, plt_show=plt_show) # plot
+                                    time.sleep(0.5)
+                                    if plt_show:
+                                        plt.show(block=False)
+                                    name_fig = name_simu + ".png" 
+                                    plt.savefig(name_fig)
+                                    if plt_show:
+                                        plt.pause(1)
+                                    plt.close()
+                                    plt.close('all')
 
 
                         if justLoadmmmd and (not MSGM):
