@@ -503,17 +503,17 @@ if __name__ == '__main__':
                                 if plt_show:
                                     plt.show(block=False)
                                     plt.pause(1)
-                                    plt.tight_layout()
-                                    # plt.show()
-                                    time.sleep(0.5)
-                                    if plt_show:
-                                        plt.show(block=False)
-                                    name_fig = name_simu + "_multDim.png" 
-                                    plt.savefig(name_fig, dpi=dpi)
-                                    if plt_show:
-                                        plt.pause(1)
-                                    plt.close()
-                                    del pddatagen, pddata, scatter
+                                plt.tight_layout()
+                                # plt.show()
+                                time.sleep(0.5)
+                                if plt_show:
+                                    plt.show(block=False)
+                                name_fig = name_simu + "_multDim.png" 
+                                plt.savefig(name_fig, dpi=dpi)
+                                if plt_show:
+                                    plt.pause(1)
+                                plt.close()
+                                del pddatagen, pddata, scatter
 
                             if (denoising_plots) and (i_run == 0):
                                 plot_selected_inds(xs, inds, True, False, lmbd, include_t0=include_t0_reverse, plt_show=plt_show) # plot
