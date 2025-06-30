@@ -447,7 +447,8 @@ if __name__ == '__main__':
                             nan_mask = (torch.isnan(xgen) | (torch.abs(xgen) > 1e3 )).any(dim=1)
                             # Count rows with NaN values
                             nan_count = nan_mask.sum().item()
-                            print(f"Number of rows with NaN or large value: {nan_count}")
+                            if nan_count > 0:
+                                print(f"Number of rows with NaN or large value: {nan_count}")
                             # Remove rows with NaN values
                             xgen = xgen[~nan_mask,:]
 
