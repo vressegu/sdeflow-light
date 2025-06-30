@@ -153,19 +153,33 @@ if __name__ == '__main__':
                     np.random.seed(0)
                     torch.manual_seed(0) 
                     ## 1. Initialize dataset
-                    sampler = SwissRoll()
-                    # sampler = PODmodes(Re,dim, normalized=normalized_data)
-                    # sampler = Lorenz96(Re,dim, normalized=normalized_data)
-                    # sampler = eof_pressure(dim)
-                    # sampler = weather_station()
-                    # sampler = weather_station(dim) 
-                    # sampler = ncar_weather_station()
-                    # sampler = ncar_weather_station(dim) 
-                    # sampler = ERA5(dim) 
+                    match datatype:
+                        case 'swissroll':
+                            sampler = SwissRoll()
+                            normalized_data = False
+                        case 'POD':
+                            sampler = PODmodes(Re,dim, normalized=normalized_data)
+                        case 'lorenz':
+                            sampler = Lorenz96(Re,dim, normalized=normalized_data)
+                        case 'eof_pressure':
+                            sampler = eof_pressure(dim)
+                        case 'weather_station':
+                            sampler = weather_station(dim) 
+                        case 'ncar':
+                            sampler = ncar_weather_station(dim) 
+                        case 'era5':
+                            sampler = ERA5(dim, variables = ["10m_u_component_of_wind", "10m_v_component_of_wind", "vorticity"]) 
+                            normalized_data = False
+                            columns=["$u$, Berlin", "$v$, Berlin", "$\omega$, Berlin",\
+                                     "$u$, Paris", "$v$, Paris", "$\omega$, Paris"]
 
-                    xtest = sampler.sampletest(num_samples).data.numpy()
+                    xtest = sampler.sampletest(num_samples)
                     sampler.dim = xtest.shape[1]
                     std_test = xtest.std(axis=0)
+                    if normalized_data:
+                        std_norm = sampler.get_std()
+                    else:
+                        std_norm = torch.ones((xtest.shape[1]))
 
                     plt.close('all')
                     dimplot = np.min([8,xtest.shape[1]])
