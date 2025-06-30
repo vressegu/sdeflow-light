@@ -15,6 +15,7 @@ import torch.nn as nn
 import sys
 import os
 import pandas as pd
+import matplotlib
 import matplotlib.pyplot as plt
 from sklearn.datasets import make_swiss_roll
 from netCDF4 import Dataset
@@ -123,6 +124,9 @@ print_RAM = False
 
 if not justLoad:
     justLoadmmmd = False
+
+if not plt_show:
+    matplotlib.use("Agg")
 
 
 if __name__ == '__main__':
