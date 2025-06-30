@@ -37,14 +37,14 @@ pd.set_option('display.max_rows', DISPLAY_MAX_ROWS)
 # Train
 T0 = 1
 
-# GOOD 
-num_steps_forward = 1000
-beta_min=0.1
-beta_max=2
-t_eps_beta_min = 1/10000 # = dt = T / num_steps_forward
-beta_mins = [1, 2]
-
-t_eps = t_eps_beta_min / beta_min
+num_steps_forward = 100
+beta_min=1
+beta_max=20
+t_eps = 1/1000  
+# default values from git repo
+beta_min_SGM = 0.1
+beta_max_SGM = 20
+beta_maxs = [beta_max]
 
 vtype = 'rademacher'
 lr = 0.001
@@ -108,13 +108,21 @@ noising_plots = True
 denoising_plots = True
 save_results = True
 plot_xlim = 3.0
-plot_xlim = 2.0
-plot_ylim_row = plot_xlim
-plot_xlim_col = plot_xlim
-ssize = 1
+height_seaborn = 1.2
+ssize = height_seaborn
+dpi=200
+
+# nruns_mmd = 1
+nruns_mmd = 10
 
 # Load results 
 justLoad = False
+justLoadmmmd = False
+plt_show = False
+print_RAM = False
+
+if not justLoad:
+    justLoadmmmd = False
 
 
 if __name__ == '__main__':
