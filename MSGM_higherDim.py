@@ -439,7 +439,9 @@ if __name__ == '__main__':
                                                             norm_correction = MSGM) # sample
                                 if (save_results):
                                     torch.save(xs, name_simu + ".pt")
-                            xgen = xs[-1,:,:]
+
+                            if save_results and not justLoad:
+                                np.save(name_simu + ".pt", xgen.clone().detach().cpu().numpy())
 
                             # Identify rows with NaN values
                             nan_mask = (torch.isnan(xgen) | (torch.abs(xgen) > 1e3 )).any(dim=1)
