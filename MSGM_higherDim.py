@@ -195,8 +195,10 @@ else:
 
 if __name__ == '__main__':
 
-    for beta_min in beta_mins:
-        mmd = torch.zeros((len(MSGMs),len(dims),len(Res),len(num_stepss_backward)))
+    for beta_max in beta_maxs:
+        mmd_SGM = torch.zeros((len(dims),len(Res),len(num_stepss_backward),nruns_mmd))
+        mmd_MSGM = torch.zeros((len(dims),len(Res),len(num_stepss_backward),nruns_mmd))
+        mmd_ref = torch.zeros((len(dims),len(Res),len(num_stepss_backward),nruns_mmd))
         i_MGMM = -1
         for MSGM in MSGMs:
             i_MGMM +=1
@@ -454,10 +456,19 @@ if __name__ == '__main__':
 
 
                             # MMD
-                            dist_ref = compute_mmd(torch.zeros_like(xtest).to(device),xtest.to(device))
-                            dist = compute_mmd(xgen.to(device),xtest.to(device))
-                            mmd[i_MGMM, i_dims, i_Res, i_num_stepss_backward] = dist / dist_ref
-                            print("mmd = " + str(dist.item()) )
+                            if not justLoadmmmd:
+                                with torch.no_grad():
+                                    x_mmd1 = sampler.sample(xtest.shape[0]).to(device)
+                                    x_mmd2 = sampler.sample(xtest.shape[0]).to(device)
+                                    dist_train_to_test = compute_mmd(std_norm * x_mmd1,std_norm * xtest)
+                                    dist_test_to_test = compute_mmd(std_norm * x_mmd1,std_norm * xtest)
+                                    dist = compute_mmd(std_norm * xgen,std_norm * xtest)
+                                mmd_ref[i_dims, i_Res, i_num_stepss_backward,i_run] = dist_train_to_test
+                                if MSGM:
+                                    mmd_MSGM[i_dims, i_Res, i_num_stepss_backward,i_run] = dist
+                                else:
+                                    mmd_SGM[i_dims, i_Res, i_num_stepss_backward,i_run] = dist
+                                del dist
 
                             if (scatter_plots) and (i_run == 0):
 
@@ -517,25 +528,78 @@ if __name__ == '__main__':
                                 plt.close('all')
 
 
+                        if justLoadmmmd and (not MSGM):
+                            mmd_SGM = torch.load(folder_results + "/" + name_simu_root + "_globalMMDfile_SGM_" + str(nruns_mmd) + "runs.pt")
+                            mmd_MSGM = torch.load(folder_results + "/" + name_simu_root + "_globalMMDfile_MSGM_" + str(nruns_mmd) + "runs.pt") 
+                            mmd_ref = torch.load(folder_results + "/" + name_simu_root + "_globalMMDfile_ref_" + str(nruns_mmd) + "runs.pt") 
 
                         fig = plt.figure(figsize=(5,3))
-                        # print(num_stepss_backward)
-                        # print(mmd)
-                        if mmd.shape[0] == 1 :
-                            plt.loglog(num_stepss_backward,mmd[i_MGMM,i_dims,i_Res,:].flatten())
-                        else:
-                            plt.loglog(num_stepss_backward,mmd[0,i_dims,i_Res,:].flatten(),label='SGM')
-                            plt.loglog(num_stepss_backward,mmd[1,i_dims,i_Res,:].flatten(),label='MSGM')
-                            plt.legend()
+                        
+                        mmmd_SGM = mmd_SGM.mean(dim=3)
+                        q10mmd_SGM = mmd_SGM.quantile(0.1,dim=3)
+                        q90mmd_SGM = mmd_SGM.quantile(0.9,dim=3)
+                        mmmd_MSGM = mmd_MSGM.mean(dim=3)
+                        q10mmd_MSGM = mmd_MSGM.quantile(0.1,dim=3)
+                        q90mmd_MSGM = mmd_MSGM.quantile(0.9,dim=3)
+                        mmmd_ref = mmd_ref.mean(dim=3)
+                        q10mmd_ref = mmd_ref.quantile(0.1,dim=3)
+                        q90mmd_ref = mmd_ref.quantile(0.9,dim=3)
+
+                        alpha_plot = 0.2
+                        i_num_stepss_backward = range(len(num_stepss_backward))
+                        plt.loglog(num_stepss_backward,mmmd_SGM[i_dims,i_Res,i_num_stepss_backward].flatten(),label='SGM')
+                        plt.fill_between(num_stepss_backward, q10mmd_SGM[i_dims,i_Res,i_num_stepss_backward].flatten(), q90mmd_SGM[i_dims,i_Res,i_num_stepss_backward].flatten(),
+                            alpha=alpha_plot)
+                        plt.loglog(num_stepss_backward,mmmd_MSGM[i_dims,i_Res,i_num_stepss_backward].flatten(),label='MSGM')
+                        plt.fill_between(num_stepss_backward, q10mmd_MSGM[i_dims,i_Res,i_num_stepss_backward].flatten(), q90mmd_MSGM[i_dims,i_Res,i_num_stepss_backward].flatten(),
+                            alpha=alpha_plot)
+                        plt.loglog(num_stepss_backward,mmmd_ref[i_dims,i_Res,i_num_stepss_backward].flatten(),label='train data')
+                        plt.fill_between(num_stepss_backward, q10mmd_ref[i_dims,i_Res,i_num_stepss_backward].flatten(), q90mmd_ref[i_dims,i_Res,i_num_stepss_backward].flatten(),
+                            alpha=alpha_plot)
+                        plt.legend()
                         plt.ylabel('MMD')
                         plt.xlabel('nb timesteps in backward SDE')
+                        plt.xticks(num_stepss_backward)
                         plt.tight_layout()
-                        plt.show(block=False)
-                        name_fig = name_simu_root + "_MMD.png" 
+                        if plt_show:
+                            plt.show(block=False)
+                        name_fig = folder_results + "/" + name_simu_root + "_MMD_" + str(nruns_mmd) + "runs.png" 
                         plt.savefig(name_fig)
-                        plt.pause(1)
+                        if plt_show:
+                            plt.pause(1)
+                        plt.close(fig)
                         plt.close()
+                        del fig
 
-        
-        torch.save(mmd, name_simu_root + "_globalMMDfile.pt")
+                        if mmd_SGM.shape[0]>1:
+                            range_dims = range(len(dims))
+                            fig = plt.figure(figsize=(5,3))
+                            plt.loglog(dims,mmmd_SGM[range_dims,i_Res,0].flatten(),label='SGM')
+                            plt.fill_between(dims, q10mmd_SGM[range_dims,i_Res,0].flatten(), q90mmd_SGM[range_dims,i_Res,0].flatten(),
+                                alpha=alpha_plot)
+                            plt.loglog(dims,mmmd_MSGM[range_dims,i_Res,0].flatten(),label='MSGM')
+                            plt.fill_between(dims, q10mmd_MSGM[range_dims,i_Res,0].flatten(), q90mmd_MSGM[range_dims,i_Res,0].flatten(),
+                                alpha=alpha_plot)
+                            plt.loglog(dims,mmmd_ref[range_dims,i_Res,0].flatten(),label='train data')
+                            plt.fill_between(dims, q10mmd_ref[range_dims,i_Res,0].flatten(), q90mmd_ref[range_dims,i_Res,0].flatten(),
+                                alpha=alpha_plot)
+                            plt.legend()
+                            plt.ylabel('MMD')
+                            plt.xlabel('dimension')
+                            plt.xticks(dims)
+                            plt.tight_layout()
+                            if plt_show:
+                                plt.show(block=False)
+                            name_fig = folder_results + "/" + name_simu_root + "_MMD_withDim_" + str(nruns_mmd) + "runs.png" 
+                            plt.savefig(name_fig)
+                            if plt_show:
+                                plt.pause(1)
+                            plt.close(fig)
+                            plt.close()
+                            del fig
+
+        if not justLoadmmmd:
+            torch.save(mmd_SGM, folder_results + "/" + name_simu_root + "_globalMMDfile_SGM_" + str(nruns_mmd) + "runs.pt")
+            torch.save(mmd_MSGM, folder_results + "/" + name_simu_root + "_globalMMDfile_MSGM_" + str(nruns_mmd) + "runs.pt")
+            torch.save(mmd_ref, folder_results + "/" + name_simu_root + "_globalMMDfile_ref_" + str(nruns_mmd) + "runs.pt")
 
