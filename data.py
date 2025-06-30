@@ -17,9 +17,13 @@ class ERA5:
                  variables = ["10m_u_component_of_wind", "10m_v_component_of_wind", "2m_temperature", "vorticity"],\
                  cities = ["Paris", "London", "Berlin", "Madrid", "Rome", "Vienna", "Amsterdam", "Stockholm", "Athens", "Warsaw"]):
         self.dim = dim
-        if len(variables)*len(cities)<40:
-            self.dim = len(variables)*len(cities)
         self.name='ERA5'
+        if len(variables)*len(cities)<self.dim:
+            self.dim = len(variables)*len(cities)
+        if len(variables)<4:
+            self.name = self.name + str(len(variables)) + 'vars'
+        if len(cities)<10:
+            self.name = self.name + str(len(cities)) + 'cities'
         self.name = self.name + str(self.dim)
 
         pathData = '../MultiplicativeDiffusion/'
