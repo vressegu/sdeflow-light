@@ -231,13 +231,18 @@ class multiplicativeNoise(SDE):
         if not (norm_sampler=="ecdf"):
             self.name_SDE += norm_sampler + kernel
 
-        r_T = self.r_T.reshape(len(r_T),1)
-        r_plot = torch.linspace(0,max(r_T[:,0]) + 0.1*abs(max(r_T[:,0])), 1000).reshape(1000,1)
-        log_dens = torch.tensor(self.kde.score_samples(r_plot)).to(torch.float32).to(device)
-        dens = torch.exp(log_dens)
-        dr = (r_plot[1,0]-r_plot[0,0])
-        cst_dens = torch.sum(dens,dim=0)* dr
-        self.cst_log_dens = torch.log(cst_dens)
+        if plot_validate:
+            estim_cst_norm_dens_r_T = True
+        if estim_cst_norm_dens_r_T:
+            r_T = self.r_T.reshape(len(r_T),1)
+            r_plot = torch.linspace(0,max(r_T[:,0]) + 0.1*abs(max(r_T[:,0])), 1000).reshape(1000,1)
+            log_dens = torch.tensor(self.kde.score_samples(r_plot)).to(torch.float32).to(device)
+            dens = torch.exp(log_dens)
+            dr = (r_plot[1,0]-r_plot[0,0])
+            cst_dens = torch.sum(dens,dim=0)* dr
+            self.cst_log_dens = torch.log(cst_dens)
+        else:
+            self.cst_log_dens = 0
 
         if plot_validate :   
             beta_G = - 2*torch.trace(self.L_G)/self.dim            
@@ -394,8 +399,7 @@ class multiplicativeNoise(SDE):
         r_yT = torch.linalg.norm(yT.clone().detach(), dim= 1)
         del yT
         r_yT = r_yT.reshape(len(r_yT),1)
-        log_dens_yT = torch.tensor(self.kde.score_samples(r_yT.cpu())).to(torch.float32).to(device)
-        log_dens_yT -= self.cst_log_dens
+        return torch.tensor(self.kde.score_samples(r_yT.cpu())).to(torch.float32).to(device) - self.cst_log_dens
         return log_dens_yT.to(torch.float32).to(device)
 
 ###################################################################################################
