@@ -315,6 +315,8 @@ if __name__ == '__main__':
                     print("beta_min = " + str(beta_min))
                     print("beta_max = " + str(beta_max))
                     print("t_eps = " + str(t_eps))                    
+                    
+                    xtest = xtest.to(device)             
 
                     for batch_size in batch_sizes:
                         num_samples_init = min(int(1e6),iterations*batch_size)

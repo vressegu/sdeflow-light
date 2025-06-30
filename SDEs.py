@@ -58,8 +58,9 @@ class SDE(torch.nn.Module):
     parent class for SDE
     """
     # This class need to be changed since the forward SDE cannot be solved analitically
-    def __init__(self, beta_min=0.1, beta_max=20.0, T=1.0, t_epsilon=0.001, num_steps_forward = 100):
+    def __init__(self, beta_min=0.1, beta_max=20.0, T=1.0, t_epsilon=0.001, num_steps_forward = 100, device="cpu"):
         super().__init__()
+        self.device = torch.device(device)
         self.T = T
         self.beta_min = beta_min
         self.beta_max = beta_max
@@ -80,12 +81,11 @@ class SDE(torch.nn.Module):
             raise NotImplementedError('See the official repository.')
 
         num_steps_tot = self.num_steps_forward
-        our_sde = forward_SDE(self, self.T).to(device)
         include_t0=True
         y_allt = self.sample_scheme_allt(y0, include_t0=include_t0)
 
         num_steps_floats = num_steps_tot * t/self.T
-        num_steps_int = torch.trunc(num_steps_floats).to(torch.int)
+        num_steps_int = torch.trunc(num_steps_floats).to(torch.int).to('cpu')
 
         # WARNING : this sampler is used (many times) for t=T 
         # another method should be used here instead
@@ -101,20 +101,23 @@ class SDE(torch.nn.Module):
             if num_steps_int[k]>0 :
                 yt[k,:] = y_allt[num_steps_int[k],k,:]
             else:
+                # print('warning : small random time')
+                ytemp = rk4_stratonovich_sampler(forward_SDE(self, self.T).to(device), y0[k,:][np.newaxis, ...], 1, lmbd=0, keep_all_samples=False, include_t0=False, T_ = t[k])
+                yt[k,:] = ytemp[0,:]
                 del ytemp
         
         del y_allt, num_steps_int
+
+        return yt.to(device)
+
     @torch.no_grad()
     def sample_scheme_allt(self, y0, include_t0=True):
         """
         sample y0, y_t_1, y_t_2, ..., y_T | y0
         """
 
-        our_sde = forward_SDE(self, self.T).to(device)
-        y_allt = rk4_stratonovich_sampler(our_sde, y0, num_steps=self.num_steps_forward, \
+        return rk4_stratonovich_sampler(forward_SDE(self, self.T).to(device), y0, num_steps=self.num_steps_forward, \
                                           lmbd=0, keep_all_samples=True, include_t0=include_t0) # sample
-
-        return y_allt
 
     def sample_Song_et_al(self, t, y0, return_noise=False):
         """
@@ -152,8 +155,8 @@ class VariancePreservingSDE(SDE):
     See eq (32-33) of https://openreview.net/pdf?id=PxTIG12RRHS
     """
     # This class need to be changed since the forward SDE cannot be solved analitically
-    def __init__(self, beta_min=0.1, beta_max=20.0, T=1.0, t_epsilon=0.001, num_steps_forward = 100):
-        super().__init__(beta_min=beta_min, beta_max=beta_max, T=T, t_epsilon=t_epsilon, num_steps_forward = num_steps_forward)
+    def __init__(self, beta_min=0.1, beta_max=20.0, T=1.0, t_epsilon=0.001, num_steps_forward = 100, device='cpu'):
+        super().__init__(beta_min=beta_min, beta_max=beta_max, T=T, t_epsilon=t_epsilon, num_steps_forward = num_steps_forward, device=device)
         self.name_SDE = "VariancePreservingSDE"
 
     @property
@@ -187,14 +190,14 @@ class VariancePreservingSDE(SDE):
         # return self.sample_scheme(t, y0)
         return self.sample_Song_et_al(t, y0, return_noise)
 
-    def latent_sample(self,num_samples, n, device=device):
+    # def latent_sample(self,num_samples, n, device=device):
+    def latent_sample(self,num_samples, n):
         # init from prior
-        return torch.randn(num_samples, n, device=device) 
+        return torch.randn(num_samples, n, device=self.device) 
     
     def cond_latent_sample(self,t_, T, x):
         # conditionnal latent sample of yT knowing x=y0
-        yT = self.sample(torch.ones_like(t_) * T, x)
-        return yT
+        return self.sample(torch.ones_like(t_) * T, x)
     
     def log_latent_pdf(self,yT):
         # log of latent pdf
@@ -236,17 +239,19 @@ class multiplicativeNoise(SDE):
     """
     # This class need to be changed since the forward SDE cannot be solved analitically
     def __init__(self, y0, beta_min=0.1, beta_max=20.0, T=1.0, t_epsilon=0.001, \
-                 norm_sampler = "ecdf", kernel = 'gaussian', plot_validate = False, num_steps_forward = 100):
-        super().__init__(beta_min=beta_min, beta_max=beta_max, T=T, t_epsilon=t_epsilon, num_steps_forward=num_steps_forward)
+                 norm_sampler = "ecdf", kernel = 'gaussian', plot_validate = False, \
+                 num_steps_forward = 100, device='cpu', estim_cst_norm_dens_r_T = True):
+        super().__init__(beta_min=beta_min, beta_max=beta_max, T=T, t_epsilon=t_epsilon, num_steps_forward=num_steps_forward, device=device)
         self.norm_correction = True
         self.r_T = torch.linalg.norm(y0, dim= 1)
         r_T = self.r_T.reshape(len(self.r_T),1)
         self.norm_sampler = norm_sampler
         bandwidth = 0.1*torch.std(r_T).item()
         self.kde = KernelDensity(kernel=kernel, bandwidth=bandwidth).fit(r_T.clone().detach().cpu())
+        self.r_T = self.r_T.to(self.device)  # if you use it later in device ops
         self.dim = y0.shape[1]
         self.G = new_G(self.dim)
-        self.L_G = 0.5*torch.einsum('ijk, jmk -> im', self.G, self.G).to(device)   # ito correction tensor
+        self.L_G = 0.5*torch.einsum('ijk, jmk -> im', self.G, self.G)   # ito correction tensor
         self.name_SDE = "multiplicativeNoise"
         if not (norm_sampler=="ecdf"):
             self.name_SDE += norm_sampler + kernel
@@ -295,35 +300,32 @@ class multiplicativeNoise(SDE):
     def f(self, t, y):
         # return 0.5 * div_Sigma(t, y)
         beta_t = self.beta(t)
-        drift = torch.einsum('ij, bj -> bi', self.L_G, (beta_t) * y)
-        return drift
+        return torch.einsum('ij, bj -> bi', self.L_G, (beta_t) * y)
 
     def f_strato(self, t, y):
         return torch.zeros_like(y)
 
     def div_Sigma(self, t, y):
         beta_t = self.beta(t)
-        drift = torch.einsum('ij, bj -> bi', 2*self.L_G, (beta_t) * y)
-        return drift
+        return torch.einsum('ij, bj -> bi', 2*self.L_G, (beta_t) * y)
 
     def g(self, t, y):
         beta_t = self.beta(t)
-        Gy = torch.einsum('ijk, bj -> bik', self.G, (beta_t**0.5) * y  )         # diffusion part 
-        return Gy
+        return torch.einsum('ijk, bj -> bik', self.G, (beta_t**0.5) * y  )         # diffusion part 
     
     def sample(self, t, y0, return_noise=False):
-        return self.sample_scheme(t, y0, return_noise=return_noise)
+        return self.sample_scheme(t, y0, return_noise=return_noise).to(self.device)
 
     def generate_uniform_on_sphere(self,num_samples): 
         # Let X_i be N(0,1) and  lambda^2 =2 sum X_i^2, then (X_1,...,X_d) / lambda  is uniform in S^{d-1}
-        X = torch.randn(num_samples, self.dim,device=device)
+        X = torch.randn(num_samples, self.dim,device=self.device)
         X_norm = torch.linalg.norm(X, dim = 1).reshape(num_samples,1)
         X =  X / X_norm 
         del X_norm
         return X
 
     def gen_radial_distribution(self,num_samples): 
-        U = torch.rand(num_samples,device=device)   # uniform         
+        U = torch.rand(num_samples,device=self.device)   # uniform         
         # could be replaced by KS density
         if self.norm_sampler == "ecdf":
             r_gen = torch.quantile(self.r_T, U).reshape(num_samples,1)
@@ -347,7 +349,7 @@ class multiplicativeNoise(SDE):
 
         return r_gen
 
-    def latent_sample(self,num_samples, n, device=device):
+    def latent_sample(self,num_samples, n):
         # init from prior
         r = self.gen_radial_distribution(num_samples)
         s = self.generate_uniform_on_sphere(num_samples)
@@ -377,10 +379,11 @@ class multiplicativeNoise(SDE):
         
     def cond_latent_sample(self,t_, T, x):
         # conditionnal latent sample of yT knowing x=y0
-        r_x = torch.linalg.norm(x.clone().detach(), dim= 1).reshape(x.shape[0],1)
+        r_x = torch.linalg.norm(x.clone().detach().to(self.device), dim= 1).reshape(x.shape[0],1)
         s = self.generate_uniform_on_sphere(x.shape[0])
         yT =  r_x * s
         del r_x, s
+        return yT
     
     def log_latent_pdf(self,yT):
         r_T = self.r_T.reshape(len(self.r_T),1)
@@ -433,10 +436,10 @@ class PluginReverseSDE(torch.nn.Module):
     
     def ga(self, s, y):
         if len(self.base_sde.g(s, y).shape)>2 :
-            ga = torch.einsum('bij, bj -> bi', self.base_sde.g(s, y), self.a(y, s.squeeze()))
+            return torch.einsum('bij, bj -> bi', self.base_sde.g(s, y), self.a(y, s.squeeze()))
         else :
-            ga = self.base_sde.g(s, y) * self.a(y, s.squeeze())
-        return ga
+            return self.base_sde.g(s, y) * self.a(y, s.squeeze())
+
 
     # Stratonovich Drift
     def mu_Strato(self, t, y, lmbd=0.):
@@ -512,9 +515,9 @@ class PluginReverseSDE(torch.nn.Module):
 
         return lp - self.ssm(x) / qt
     
-    def latent_sample(self,num_samples, n, device=device):
+    def latent_sample(self,num_samples, n):
         # init from prior
-        return self.base_sde.latent_sample(num_samples, n, device) 
+        return self.base_sde.latent_sample(num_samples, n) 
     
     def cond_latent_sample(self,t_, T, x):
         # conditionnal latent sample of yT knowing x=y0
