@@ -145,9 +145,6 @@ class SDE(torch.nn.Module):
 
 Log2PI = float(np.log(2 * np.pi))
 
-def log_normal(x, mean, log_var, eps=0.00001):
-    z = - 0.5 * Log2PI
-    return - (x - mean) ** 2 / (2. * torch.exp(log_var) + eps) - log_var / 2. + z
 
 class VariancePreservingSDE(SDE):
     """
@@ -201,7 +198,11 @@ class VariancePreservingSDE(SDE):
     
     def log_latent_pdf(self,yT):
         # log of latent pdf
-        return log_normal(yT, torch.zeros_like(yT), torch.zeros_like(yT))
+        return self.log_normal(yT, torch.zeros_like(yT), torch.zeros_like(yT))
+    
+    def log_normal(self,x, mean, log_var, eps=0.00001):
+        z = - 0.5 * Log2PI
+        return - (x - mean) ** 2 / (2. * torch.exp(log_var) + eps) - log_var / 2. + z
     
 
 ##########################################
