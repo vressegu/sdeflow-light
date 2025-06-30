@@ -27,6 +27,7 @@ from own_plotting import plot_selected_inds
 from SDEs import forward_SDE,SDE,VariancePreservingSDE,PluginReverseSDE,multiplicativeNoise
 from data import ERA5,ncar_weather_station,weather_station,eof_pressure,Lorenz96,PODmodes,SwissRoll
 from quantitative_comparison import compute_mmd
+import gc
 
 np.random.seed(0)
 torch.manual_seed(0) 
@@ -323,6 +324,7 @@ if __name__ == '__main__':
                         if MSGM:
                             x_init = sampler.sample(num_samples_init).to(device)
                             inf_sde = multiplicativeNoise(x_init,beta_min=beta_min, beta_max=beta_max, \
+                            del x_init
                         gen_sde = PluginReverseSDE(inf_sde, drift_q, T, vtype=vtype, debias=False).to(device)
 
 
@@ -373,6 +375,10 @@ if __name__ == '__main__':
                             plt.close()
                             plt.close('all')
 
+                        del xs_forward, xgen_forward, cov_xgen_forward, cov_xgen_forward_converged, xgen_forward_var, xgen_forward_var_mean
+                        del for_sde
+                        gc.collect()
+
                         print("data = " + sampler.name )
                         print("iterations = " + str(iterations) )
                         print("name_SDE = " + inf_sde.name_SDE )
@@ -400,6 +406,15 @@ if __name__ == '__main__':
                                     print('| iter {:6d} | {:5.2f} ms/step | loss {:8.3f} | elbo {:8.3f} | elbo std {:8.3f} '
                                         .format(i+1, elapsed*1000/print_every, loss.item(), elbo.item(), elbo_std.item()))
                                     start_time = time.time()
+
+                                    del elbo, elbo_std
+                                    gc.collect()
+                                
+                                del x
+                                # torch.mps.empty_cache()  # does not do much on MPS, but still good practice
+                                # gc.collect()
+                            del loss, optim
+                            gc.collect()
 
 
                         ## 4. Visualize
@@ -445,10 +460,7 @@ if __name__ == '__main__':
                                     xs = torch.load(name_simu + ".pt", weights_only=True)
                                 else:
                                     x_0 = gen_sde.latent_sample(num_samples, sampler.dim) # init from prior
-                                    xs = rk4_stratonovich_sampler(gen_sde, x_0, num_steps_backward, lmbd=lmbd,\
-                                                                keep_all_samples=True, 
-                                                                include_t0=include_t0_reverse, 
-                                                                norm_correction = MSGM) # sample
+                                    del x_0
                                     if (save_results):
                                         torch.save(xs, name_simu + ".pt")
                                 xgen = xs[-1,:,:].to(device)
@@ -464,6 +476,7 @@ if __name__ == '__main__':
                                     print(f"Number of rows with NaN or large value: {nan_count}")
                                 # Remove rows with NaN values
                                 xgen = xgen[~nan_mask,:]
+                                del nan_mask
 
 
                                 # MMD
@@ -538,6 +551,8 @@ if __name__ == '__main__':
                                     plt.close()
                                     plt.close('all')
 
+                                del xs, xgen
+                                gc.collect()
 
                         if justLoadmmmd and (not MSGM):
                             mmd_SGM = torch.load(folder_results + "/" + name_simu_root + "_globalMMDfile_SGM_" + str(nruns_mmd) + "runs.pt")
@@ -608,6 +623,13 @@ if __name__ == '__main__':
                             plt.close(fig)
                             plt.close()
                             del fig
+
+                        del gen_sde, inf_sde, drift_q, T
+                        gc.collect()
+
+                    del pddatatest, cov_xtest, xtest, std_test, xtest_var, xtest_var_mean
+                    del sampler
+                    gc.collect()
 
         if not justLoadmmmd:
             torch.save(mmd_SGM, folder_results + "/" + name_simu_root + "_globalMMDfile_SGM_" + str(nruns_mmd) + "runs.pt")
