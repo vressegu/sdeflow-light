@@ -486,7 +486,8 @@ class PluginReverseSDE(torch.nn.Module):
         # Simpler and faster way for MSGM
         #mu_to_div = self.ga(t_, y)
 
-        v = sample_v(x.shape, vtype=self.vtype).to(y)
+        with torch.no_grad():
+            v = sample_v(x.shape, vtype=self.vtype).to(y)
 
         mMu = (
             torch.autograd.grad(mu_to_div, y, v, create_graph=self.training)[0] * v
