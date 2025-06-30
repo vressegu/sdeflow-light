@@ -153,6 +153,9 @@ if __name__ == '__main__':
 
                     np.random.seed(0)
                     torch.manual_seed(0) 
+
+                    num_samples_init = min(int(1e6),iterations*batch_sizes[-1])
+
                     ## 1. Initialize dataset
                     match datatype:
                         case 'swissroll':
