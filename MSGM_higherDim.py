@@ -182,7 +182,8 @@ if __name__ == '__main__':
                         std_norm = torch.ones((xtest.shape[1]))
 
                     plt.close('all')
-                    dimplot = np.min([8,xtest.shape[1]])
+                    dimplot_max = 8
+                    dimplot = np.min([dimplot_max,xtest.shape[1]])
                     pddatatest = pd.DataFrame(xtest[:,0:dimplot], columns=range(1,1+dimplot))
                     fig, axes = plt.subplots(nrows=dimplot, ncols=dimplot, figsize=(2*dimplot,dimplot))
                     color='blue'
