@@ -137,6 +137,8 @@ if __name__ == '__main__':
         i_MGMM = -1
         for MSGM in MSGMs:
             i_MGMM +=1
+            plot_ylim_row = plot_xlim
+            plot_xlim_col = plot_xlim
 
             if not MSGM:
                 normalized_data = True
