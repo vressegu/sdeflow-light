@@ -20,6 +20,7 @@ import matplotlib.pyplot as plt
 from sklearn.datasets import make_swiss_roll
 from netCDF4 import Dataset
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+import seaborn as sns
 
 from sde_scheme import euler_maruyama_sampler,heun_sampler,rk4_stratonovich_sampler
 from own_plotting import plot_selected_inds
@@ -184,33 +185,26 @@ if __name__ == '__main__':
                     plt.close('all')
                     dimplot_max = 8
                     dimplot = np.min([dimplot_max,xtest.shape[1]])
-                    pddatatest = pd.DataFrame(xtest[:,0:dimplot], columns=range(1,1+dimplot))
-                    fig, axes = plt.subplots(nrows=dimplot, ncols=dimplot, figsize=(2*dimplot,dimplot))
-                    color='blue'
-                    scatter = pd.plotting.scatter_matrix(pddatatest, diagonal=None,s=ssize,hist_kwds={"bins": 20},
-                        color=color, ax=axes) 
-                    # Customize the diagonal manually
-                    for i, col in enumerate(pddatatest.columns):
-                        ax = scatter[i, i]
-                        ax.clear()
-                        pddatatest[col].plot.kde(ax=ax, color=color, label='test')
-                        ax.legend(fontsize=8, loc='upper right')
-                        if not normalized_data:
-                            plot_ylim_row = plot_xlim * std_test[i]
-                        for j, col in enumerate(pddatatest.columns):
-                            ax = scatter[i, j]
-                            if not normalized_data:
-                                plot_xlim_col = plot_xlim * std_test[j]
-                            ax.axis(xmin=-plot_xlim_col,xmax=plot_xlim_col)
-                            if (i != j):
-                                ax.axis(ymin=-plot_ylim_row,ymax=plot_ylim_row)
-                                if (sampler.name == 'swiss'):
-                                    ax.set_aspect('equal', 'box')
+
+                    if (datatype == 'era5') and xtest.shape[1]>= 9:
+                        dimplot = 6
+                        pddatatest = pd.DataFrame(torch.cat( ((std_norm * xtest)[:,6:9], \
+                                                                (std_norm * xtest)[:,0:3]),dim=1).to('cpu').data.numpy(), \
+                                                columns=columns \
+                                                )
+                    else:
+                        pddatatest = pd.DataFrame((std_norm * xtest).data.numpy()[:,0:dimplot], columns=range(1,1+dimplot))
+
+                    plot_kws={"s": ssize}
+                    scatter = sns.pairplot(pddatatest, aspect=1, height=height_seaborn, corner=True,plot_kws=plot_kws)
                     plt.tight_layout()
-                    plt.show(block=False)    
+                    if plt_show:
+                        plt.show(block=False)   
+                        plt.pause(0.1)
+                    plt.savefig("results/" + sampler.name + ".png", dpi=dpi)
+                    plt.close()
                     plt.pause(0.1)
-                    plt.savefig("results/" + sampler.name + ".png", dpi=1200)
-                    plt.pause(0.1)
+                    plt.close('all')
                     plt.close()
                     
 
@@ -435,54 +429,50 @@ if __name__ == '__main__':
                             mmd[i_MGMM, i_dims, i_Res, i_num_stepss_backward] = dist / dist_ref
                             print("mmd = " + str(dist.item()) )
 
-                            if (scatter_plots):
-                                pddatagen = pd.DataFrame(xgen[:,0:dimplot].to('cpu'), columns=range(1,1+dimplot))
+                            if (scatter_plots) and (i_run == 0):
 
-                                if (sampler.name == 'swiss'):
-                                    fig, axes = plt.subplots(nrows=dimplot, ncols=dimplot, figsize=(2*dimplot,4/3*dimplot))
+                                if (datatype == 'era5') and xtest.shape[1]>= 9:
+                                    pddatagen = pd.DataFrame(torch.cat( ((std_norm * xgen)[:,6:9],(std_norm * xgen)[:,0:3]),dim=1).to('cpu'), \
+                                                                columns=columns \
+                                                            )
                                 else:
-                                    fig, axes = plt.subplots(nrows=dimplot, ncols=dimplot, figsize=(2*dimplot,dimplot))
+                                    pddatagen = pd.DataFrame((std_norm * xgen)[:,0:dimplot].to('cpu'), columns=range(1,1+dimplot))
 
-                                color='blue'
-                                scatter = pd.plotting.scatter_matrix(pddatatest, diagonal=None,s=ssize,hist_kwds={"bins": 20},
-                                    color=color, ax=axes) 
-                                color='red'
-                                scatter = pd.plotting.scatter_matrix(pddatagen, diagonal=None,s=ssize,hist_kwds={"bins": 20},
-                                    color=color, ax=axes) 
-                                for i, col in enumerate(pddatatest.columns):
-                                    ax = scatter[i, i]
-                                    ax.clear()
-                                    color='blue'
-                                    pddatatest[col].plot.kde(ax=ax, color=color, label='test')
-                                    if not normalized_data:
-                                        plot_ylim_row = plot_xlim * std_test[i]
-                                    for j, col in enumerate(pddatatest.columns):
-                                        ax = scatter[i, j]
-                                        if not normalized_data:
-                                            plot_xlim_col = plot_xlim * std_test[j]
-                                        ax.axis(xmin=-plot_xlim_col,xmax=plot_xlim_col)
-                                        if (i != j):
-                                            ax.axis(ymin=-plot_ylim_row,ymax=plot_ylim_row)
-                                            if (sampler.name == 'swiss'):
-                                                ax.set_aspect('equal', 'box')
+                                pddata = pd.concat([pddatatest.assign(samples="test"), pddatagen.assign(samples="gen.")])
+
+                                plot_kws={'alpha':0.1, "s": ssize}
+                                scatter = sns.pairplot(pddata, kind='scatter', hue="samples", aspect=1, height=height_seaborn, corner=True,plot_kws=plot_kws)
+                                handles = scatter._legend_data.values()
+                                labels = scatter._legend_data.keys()
+                                scatter.figure.legend(handles=handles, labels=labels, loc='upper right', markerscale=5*ssize )
+                                scatter._legend.remove()
+
+                                for i, row in enumerate(scatter.axes):
+                                    plot_ylim_row = plot_xlim * std_norm[i]* std_test[i]
+                                    for j, ax in enumerate(row):
+                                        plot_xlim_col = plot_xlim * std_norm[j]* std_test[j]
+                                        if ax is not None:
+                                            if i == j:  # Diagonal
+                                                ax.set_xlim((-plot_xlim_col,plot_xlim_col))
+                                            if j < i:  # since corner=True, we only have lower triangle
+                                                ax.set_xlim((-plot_xlim_col,plot_xlim_col))
+                                                ax.set_ylim((-plot_ylim_row,plot_ylim_row))
                                 plt.tight_layout()
                                 time.sleep(0.5)
-                                plt.show(block=False)
-                                plt.pause(1)
-                                # Customize the diagonal manually
-                                for i, col in enumerate(pddatatest.columns):
-                                    ax = scatter[i, i]
-                                    color='red'
-                                    pddatagen[col].plot.kde(ax=ax, color=color, label='gen')
-                                    ax.legend(fontsize=8, loc='upper right')
-                                plt.tight_layout()
-                                # plt.show()
-                                time.sleep(0.5)
-                                plt.show(block=False)
-                                name_fig = name_simu + "_multDim.png" 
-                                plt.savefig(name_fig, dpi=1200)
-                                plt.pause(1)
-                                plt.close()
+                                if plt_show:
+                                    plt.show(block=False)
+                                    plt.pause(1)
+                                    plt.tight_layout()
+                                    # plt.show()
+                                    time.sleep(0.5)
+                                    if plt_show:
+                                        plt.show(block=False)
+                                    name_fig = name_simu + "_multDim.png" 
+                                    plt.savefig(name_fig, dpi=dpi)
+                                    if plt_show:
+                                        plt.pause(1)
+                                    plt.close()
+                                    del pddatagen, pddata, scatter
 
                             if (denoising_plots):
                                 plot_selected_inds(xs, inds, True, False, lmbd, include_t0=include_t0_reverse) # plot
