@@ -361,13 +361,17 @@ if __name__ == '__main__':
                         if (noising_plots):
                             plot_selected_inds(xs_forward, inds_forward, \
                                 use_xticks= True, use_yticks=False, lmbd = 0., \
-                                include_t0=True, backward=False) # plot
+                                include_t0=True, backward=False,
+                                plt_show=plt_show) # plot
                             time.sleep(0.5)
-                            plt.show(block=False)
-                            name_fig = name_simu_root + "_Forward.png" 
+                            if plt_show:
+                                plt.show(block=False)
+                            name_fig = folder_results + "/" + name_simu_root + "_Forward.png" 
                             plt.savefig(name_fig)
-                            plt.pause(1)
+                            if plt_show:
+                                plt.pause(1)
                             plt.close()
+                            plt.close('all')
 
                         print("data = " + sampler.name )
                         print("iterations = " + str(iterations) )
