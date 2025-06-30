@@ -98,6 +98,9 @@ if __name__ == '__main__':
                 i_Res = -1
                 for Re in Res:
                     i_Res +=1
+
+                    np.random.seed(0)
+                    torch.manual_seed(0) 
                     ## 1. Initialize dataset
                     sampler = SwissRoll()
                     # sampler = PODmodes(Re,dim, normalized=normalized_data)
