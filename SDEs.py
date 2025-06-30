@@ -395,12 +395,12 @@ class multiplicativeNoise(SDE):
         return yT
     
     def log_latent_pdf(self,yT):
-        r_T = self.r_T.reshape(len(self.r_T),1)
+        # WARNING : the nomalizing constant is not correct here
+        # WARNING : miss || x ||^{d-1} / S_{d-1}
         r_yT = torch.linalg.norm(yT.clone().detach(), dim= 1)
         del yT
         r_yT = r_yT.reshape(len(r_yT),1)
         return torch.tensor(self.kde.score_samples(r_yT.cpu())).to(torch.float32).to(device) - self.cst_log_dens
-        return log_dens_yT.to(torch.float32).to(device)
 
 ###################################################################################################
 
