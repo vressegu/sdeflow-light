@@ -341,17 +341,15 @@ if __name__ == '__main__':
                         cov_xgen_forward = torch.cov(xgen_forward.T)
                         xgen_forward_var = torch.var(xgen_forward.T,dim=1)
                         xgen_forward_var_mean = xgen_forward_var.mean()
-                        print("cov(x_test)")
-                        print(cov_xtest.clone().detach().cpu().numpy())
-                        print("cov(xgen_forward)")
-                        print(cov_xgen_forward.clone().detach().cpu().numpy())
 
                         xtest_var = torch.var(xtest.T,dim=1)
                         xtest_var_mean = xtest_var.mean()
                         cov_xgen_forward_converged = xtest_var_mean * torch.eye(sampler.dim).to(device)
                         # since tr(cov)=E||X||^2 is theoretically conserved
-                        print("cov(cov_xgen_forward) in theory when converged")
-                        print(cov_xgen_forward_converged.clone().detach().cpu().numpy())
+                        d_cov_xtest = torch.norm(cov_xtest - cov_xgen_forward_converged)/torch.norm(cov_xgen_forward_converged)
+                        d_cov_xgen_forward = torch.norm(cov_xgen_forward - cov_xgen_forward_converged)/torch.norm(cov_xgen_forward_converged)
+                        print("dist cov_xtest to  cov_xgen_forward_converged = " + str(d_cov_xtest.item()))
+                        print("dist cov_xgen_forward  to  cov_xgen_forward_converged = " + str(d_cov_xgen_forward.item()))
 
                         # indices to visualize
                         fig_step = int(num_steps_forward/10) #100
