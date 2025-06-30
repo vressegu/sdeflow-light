@@ -57,9 +57,48 @@ include_t0_reverse = True # for plots
 num_samples = 10000
 
 # Dataset
-dims = [30]
-dims = [4]
-Res=[300]
+# datatype = 'swissroll'
+datatype = 'POD'
+# datatype = 'era5'
+
+match datatype:
+    case 'swissroll': # Swiss roll
+        dims = [2]
+        Res=[1]
+    case 'POD': # POD
+        dims = [2,4,8,16]
+        Res=[300,3900]
+
+        dims = [16]
+        Res=[300,3900]
+
+    # case 'lorenz':
+ 
+    # case 'eof_pressure':        
+ 
+    # case 'weather_station':
+         
+    # case 'ncar':
+         
+    case 'era5': # ERA5
+        # dims = [2,4,8,16,32]
+        # # dims = [2]
+        # Res=[1]
+
+        # ERA5-3var
+        # dims = [3,6,9,18,30]
+        dims = [30]
+        Res=[1]
+
+# # # DEBUG set:
+# print('WARNING : DEBUG !!!!!!')
+# iterations = 2
+# iterations = 10000
+# num_stepss_backward = [10]
+# num_steps_forward = 10
+# num_samples = 10
+# batch_sizes = [2]
+
 MSGMs = [0,1]
 normalized_data = True
 
