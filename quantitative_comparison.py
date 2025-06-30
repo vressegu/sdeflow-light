@@ -19,6 +19,7 @@ import torchvision.utils as vutils
 import torch.backends.cudnn as cudnn
 import gc
 
+@torch.no_grad()
 def compute_kernel(x, y):
     x_size = x.size(0)
     y_size = y.size(0)
@@ -33,6 +34,7 @@ def compute_kernel(x, y):
     gc.collect()
     return result # (x_size, y_size)
 
+@torch.no_grad()
 def compute_mmd(x, y):
     x_kernel = compute_kernel(x, x)
     y_kernel = compute_kernel(y, y)

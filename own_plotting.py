@@ -15,6 +15,7 @@ import torch.nn as nn
 import matplotlib.pyplot as plt
 
 ### 4.1. Define plotting tools
+@torch.no_grad()
 def get_2d_histogram_plot(data, val=3, num=64, vmax=10, use_grid=False, origin='lower'):
     xmin = -val
     xmax = val
@@ -61,7 +62,7 @@ def get_2d_histogram_plot(data, val=3, num=64, vmax=10, use_grid=False, origin='
     plt.close()
     return image
 
-def plot_selected_inds(xs, inds, use_xticks=True, use_yticks=True, lmbd = 0.,include_t0=False, backward=True):
+@torch.no_grad()
     imgs_ = []
     l_inds = len(inds)
     if backward:

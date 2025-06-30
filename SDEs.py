@@ -71,6 +71,7 @@ class SDE(torch.nn.Module):
     def beta(self, t):
         return self.beta_min + (self.beta_max-self.beta_min)*t
 
+    @torch.no_grad()
     def sample_scheme(self, t, y0, return_noise=False):
         """
         sample yt | y0
@@ -103,6 +104,7 @@ class SDE(torch.nn.Module):
                 del ytemp
         
         del y_allt, num_steps_int
+    @torch.no_grad()
     def sample_scheme_allt(self, y0, include_t0=True):
         """
         sample y0, y_t_1, y_t_2, ..., y_T | y0
@@ -180,6 +182,7 @@ class VariancePreservingSDE(SDE):
         beta_t = self.beta(t)
         return torch.ones_like(y) * beta_t**0.5
 
+    @torch.no_grad()
     def sample(self, t, y0, return_noise=False):
         # return self.sample_scheme(t, y0)
         return self.sample_Song_et_al(t, y0, return_noise)
@@ -466,11 +469,7 @@ class PluginReverseSDE(torch.nn.Module):
         estimating the SSM loss of the plug-in reverse SDE by sampling t uniformly between [0, T], and by estimating
         div(mu) using the Hutchinson trace estimator
         """
-        t_ = torch.rand([x.size(0), ] + [1 for _ in range(x.ndim - 1)]).to(x) * self.T
-        # truncated at t_epsilon for t < t_epsilon
-        mask_le_t_eps = (t_ <= self.base_sde.t_epsilon).float()
-        t_ = mask_le_t_eps * self.base_sde.t_epsilon + (1. - mask_le_t_eps) * t_
-
+    @torch.enable_grad()
         qt = 1 / self.T
         y = self.base_sde.sample(t_, x).requires_grad_()
 

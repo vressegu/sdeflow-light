@@ -15,6 +15,7 @@ import torch.nn as nn
 import sys
 import os
 
+@torch.no_grad()
 def EMstep(mu, delta , sigma , dW):
     if len(sigma.shape)>2 :
         dx = torch.einsum('bij, bj -> bi', sigma, dW )
@@ -23,6 +24,7 @@ def EMstep(mu, delta , sigma , dW):
     return mu * delta + dx
 
 ### 2.0 Define Euler Maruyama method with a step size $\Delta t$
+@torch.no_grad()
 def euler_maruyama_sampler(sde, x_0, num_steps=1000, lmbd=0., keep_all_samples=True, include_t0=False, T_ = -1, norm_correction = False):
     """
     Euler Maruyama method with a step size delta
@@ -58,13 +60,7 @@ def euler_maruyama_sampler(sde, x_0, num_steps=1000, lmbd=0., keep_all_samples=T
             if norm_correction:
                 x_t = x_t * (norm_x_0/torch.norm(x_t,dim=1))[:,None]
             if keep_all_samples:
-                xs[:,:,i+include_t0]=x_t
-            elif i == num_steps - 1:
-                xs=x_t
-
-    xs = torch.permute(xs, (2, 0, 1))
-    return xs
-
+@torch.no_grad()
 def heun_sampler(sde, x_0, num_steps=1000, lmbd=0., keep_all_samples=True, include_t0=False, T_=-1, norm_correction = False):
     """
     Heun method (Runge-Kutta 2) for SDEs in Stratonovich form.
@@ -120,9 +116,7 @@ def heun_sampler(sde, x_0, num_steps=1000, lmbd=0., keep_all_samples=True, inclu
             elif i == num_steps - 1:
                 xs=x_t
 
-    xs = torch.permute(xs, (2, 0, 1))
-    return xs
-
+@torch.no_grad()
 def rk4_stratonovich_sampler(sde, x_0, num_steps=1000, lmbd=0., keep_all_samples=True, include_t0=False, T_=-1, norm_correction = False):
     """
     Runge-Kutta 4th order method for Stratonovich SDEs with skew-symmetric noise.
