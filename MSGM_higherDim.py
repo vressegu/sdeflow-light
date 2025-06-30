@@ -187,9 +187,9 @@ def evaluate(gen_sde, x_test):
 if torch.cuda.is_available():
     device = 'cuda'
     print('use gpu\n')
-elif torch.backends.mps.is_available():
-    device = 'mps'
-    print('use mps\n')
+# elif torch.backends.mps.is_available():
+#     device = 'mps'
+#     print('use mps\n')
 else:
     device = 'cpu'
     print('use cpu\n')
