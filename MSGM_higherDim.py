@@ -182,6 +182,16 @@ def evaluate(gen_sde, x_test):
     gen_sde.train()
     return test_elbo.mean(), test_elbo.std() / num_samples_ ** 0.5
 
+# init device
+if torch.cuda.is_available():
+    device = 'cuda'
+    print('use gpu\n')
+# elif torch.backends.mps.is_available():
+#     device = 'mps'
+#     print('use mps\n')
+else:
+    device = 'cpu'
+    print('use cpu\n')
 
 if __name__ == '__main__':
 
@@ -286,16 +296,6 @@ if __name__ == '__main__':
                     
 
                     ## 3. Train
-                    # init device
-                    if torch.cuda.is_available():
-                        device = 'cuda'
-                        print('use gpu\n')
-                    elif torch.backends.mps.is_available():
-                        device = 'mps'
-                        print('use mps\n')
-                    else:
-                        device = 'cpu'
-                        print('use cpu\n')
 
                     # iterationss = [100000, 10000, 1000, 100, 10]
                     # for iterations in iterationss:
