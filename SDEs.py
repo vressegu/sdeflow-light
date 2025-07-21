@@ -480,13 +480,7 @@ class PluginReverseSDE(torch.nn.Module):
         """
         estimating the SSM loss of the plug-in reverse SDE
         """
-        with torch.no_grad():
-            if self.ssm_intT:
-                # GRIDDED t uniformly between [0, T], truncated at t_epsilon
-                t_,x,y = self.sample_txy_intT(x)
-            else: 
-                # sampling t uniformly between [0, T], truncated at t_epsilon
-                t_,x,y = self.sample_txy(x)
+        t_,x,y = self.sample_txy(x)
         y.requires_grad_()
         return self.ssm_loss(t_,x,y)
 
@@ -524,10 +518,35 @@ class PluginReverseSDE(torch.nn.Module):
 
     def sample_txy(self, x):
         """
-        sampling t uniformly between [0, T], truncated at t_epsilon
+        sampling t,x,y
         """
-        t_ = self.sample_t(x)
-        y = self.base_sde.sample(t_, x)
+        with torch.no_grad():
+            if self.ssm_intT:
+                # GRIDDED t uniformly between [0, T], truncated at t_epsilon
+                batchsize = x.shape[0]
+                dim = x.shape[1]
+                t_, mask_le_t_eps = self.sample_t_linspace(x)
+                y = self.base_sde.sample_scheme_allt(x, include_t0=False)
+                y = y[~mask_le_t_eps,:,:]
+
+                # n_subsample = 4
+                # t_ = t_[0:-1:n_subsample]  # subsample in time
+                # y = y[0:-1:n_subsample,:,:]
+
+                if any(mask_le_t_eps):
+                    print(str((100*mask_le_t_eps.sum().item()/mask_le_t_eps.shape[0])) + '%' + ' of time steps are truncated at t_epsilon')
+
+                num_steps = t_.shape[0]
+                t_ = t_[:,None].repeat(1, batchsize)
+                x = x[None,:,:].repeat(num_steps,1,1)
+
+                t_ = t_.reshape((batchsize*num_steps,1))
+                x = x.reshape((batchsize*num_steps,dim))
+                y = y.reshape((batchsize*num_steps,dim))
+            else:
+                # sampling t uniformly between [0, T], truncated at t_epsilon
+                t_ = self.sample_t(x)
+                y = self.base_sde.sample(t_, x)
         return t_,x,y
 
     def sample_t(self, x):
@@ -554,33 +573,6 @@ class PluginReverseSDE(torch.nn.Module):
         
         return t_,mask_le_t_eps
     
-    def sample_txy_intT(self, x):
-        """
-        GRIDDED t uniformly between [0, T], , truncated at t_epsilon
-        """
-        batchsize = x.shape[0]
-        dim = x.shape[1]
-        t_, mask_le_t_eps = self.sample_t_linspace(x)
-        y = self.base_sde.sample_scheme_allt(x, include_t0=False)
-        y = y[~mask_le_t_eps,:,:]
-
-        if any(mask_le_t_eps):
-            print(str((100*mask_le_t_eps.sum().item()/mask_le_t_eps.shape[0])) + '%' + ' of time steps are truncated at t_epsilon')
-
-        num_steps = t_.shape[0]
-        t_ = t_[:,None].repeat(1, batchsize)
-        x = x[None,:,:].repeat(num_steps,1,1)
-
-        t_ = t_.reshape((batchsize*num_steps,1))
-        x = x.reshape((batchsize*num_steps,dim))
-        y = y.reshape((batchsize*num_steps,dim))
-
-        # print('ssm_intT')
-        # print(t_.shape)
-        # print(x.shape)
-        # print(y.shape)
-
-        return t_,x,y
     def elbo_random_t_slice(self, x):
         """
         estimating the ELBO of the plug-in reverse SDE by sampling t uniformly between [0, T], and by estimating
@@ -590,14 +582,7 @@ class PluginReverseSDE(torch.nn.Module):
         qt = 1 / self.T
         loss_ssm = self.ssm(x)/ qt
 
-        with torch.no_grad():
-            if self.ssm_intT:
-                # GRIDDED t uniformly between [0, T], truncated at t_epsilon
-                t_,x,y = self.sample_txy_intT(x)
-            else: 
-                # sampling t uniformly between [0, T], truncated at t_epsilon
-                t_,x,y = self.sample_txy(x)
-
+        t_,x,y = self.sample_txy(x)
         yT = self.cond_latent_sample(t_, self.base_sde.T, x)
         lp = self.base_sde.log_latent_pdf(yT).view(x.size(0), -1).sum(1)
 
