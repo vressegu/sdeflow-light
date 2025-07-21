@@ -477,20 +477,20 @@ class PluginReverseSDE(torch.nn.Module):
     @torch.enable_grad()
     def ssm(self, x):
         """
-        estimating the SSM loss of the plug-in reverse SDE by sampling t uniformly between [0, T], and by estimating
-        div(mu) using the Hutchinson trace estimator
+        estimating the SSM loss of the plug-in reverse SDE
         """
         with torch.no_grad():
-            t_ = torch.rand([x.size(0), ] + [1 for _ in range(x.ndim - 1)]).to(x) * self.T
-            # truncated at t_epsilon for t < t_epsilon
-            mask_le_t_eps = (t_ <= self.base_sde.t_epsilon).float()
-            t_ = mask_le_t_eps * self.base_sde.t_epsilon + (1. - mask_le_t_eps) * t_
-            y = self.base_sde.sample(t_, x)
+            # sampling t uniformly between [0, T], truncated at t_epsilon
+            t_,x,y = self.sample_txy(x)
         y.requires_grad_()
         return self.ssm_loss(t_,x,y)
 
     @torch.enable_grad()
     def ssm_loss(self, t_, x, y):
+        """
+        estimating the SSM loss of the plug-in reverse SDE by estimating div(mu) using the Hutchinson trace estimator
+        """
+        # WARNING : is x dependency needed here? maybe shape is needed to be independent of y for autograd?
         qt = 1 / self.T
 
         a = self.a(y, t_.squeeze())
@@ -517,20 +517,41 @@ class PluginReverseSDE(torch.nn.Module):
 
         return mMu + mNu
 
-    @torch.enable_grad()
+    def sample_txy(self, x):
+        """
+        sampling t uniformly between [0, T], truncated at t_epsilon
+        """
+        t_ = self.sample_t(x)
+        y = self.base_sde.sample(t_, x)
+        return t_,x,y
+
+    def sample_t(self, x):
+        """
+        sampling t uniformly between [0, T], truncated at t_epsilon
+        """
+        t_ = torch.rand([x.size(0), ] + [1 for _ in range(x.ndim - 1)]).to(x) * self.T
+
+        # truncated at t_epsilon for t < t_epsilon
+        mask_le_t_eps = (t_ <= self.base_sde.t_epsilon).float()
+        t_ = mask_le_t_eps * self.base_sde.t_epsilon + (1. - mask_le_t_eps) * t_
+        return t_
+    
     def elbo_random_t_slice(self, x):
         """
         estimating the ELBO of the plug-in reverse SDE by sampling t uniformly between [0, T], and by estimating
         div(mu) using the Hutchinson trace estimator
         """
-        t_ = torch.rand([x.size(0), ] + [1 for _ in range(x.ndim - 1)]).to(x) * self.T
+
         qt = 1 / self.T
-        y = self.base_sde.sample(t_, x).requires_grad_()
+        loss_ssm = self.ssm(x)/ qt
+
+            # sampling t uniformly between [0, T], truncated at t_epsilon
+            t_,x,y = self.sample_txy(x)
 
         yT = self.cond_latent_sample(t_, self.base_sde.T, x)
         lp = self.base_sde.log_latent_pdf(yT).view(x.size(0), -1).sum(1)
 
-        return lp - self.ssm(x) / qt
+        return lp - loss_ssm
     
     def latent_sample(self,num_samples, n):
         # init from prior
