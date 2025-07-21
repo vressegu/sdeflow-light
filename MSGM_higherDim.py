@@ -343,7 +343,7 @@ if __name__ == '__main__':
 
 
                         folder_results = "results"
-                        name_simu_root = folder_results + "/" + sampler.name + "_" \
+                        name_simu_root = sampler.name + "_" \
                             + gen_sde.base_sde.name_SDE + "_" + str(iterations) + "iteLearning_" \
                             + str(batch_size) + "batchSize_" \
                             + str(num_steps_forward) + "stepsForw_" \
