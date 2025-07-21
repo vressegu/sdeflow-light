@@ -59,6 +59,11 @@ num_stepss_backward = [1000,100,50,10]
 include_t0_reverse = True # for plots
 num_samples = 10000
 
+if ssm_intT:
+    batch_sizes = [4]
+else:
+    batch_sizes = [256]
+
 # Dataset
 # datatype = 'swissroll'
 datatype = 'POD'
@@ -304,7 +309,6 @@ if __name__ == '__main__':
                     # iterationss = [100000, 10000, 1000, 100, 10]
                     # for iterations in iterationss:
                     # batch_sizes = [256, 128, 64, 32, 16, 8, 4]
-                    batch_sizes = [256]
 
                     # nosamples = np.linspace( n0, sampler.max_nsamples, sampler.max_nsamples/10)  1000 2000 3000.... 10000
                     # if iter = k * 1000     (assume iterations = 10000)
@@ -335,7 +339,7 @@ if __name__ == '__main__':
                                 del x_init
                             else:
                                 inf_sde = VariancePreservingSDE(beta_min=beta_min_SGM, beta_max=beta_max_SGM, t_epsilon=t_eps, T=T, num_steps_forward=num_steps_forward,device=device)
-                        gen_sde = PluginReverseSDE(inf_sde, drift_q, T, vtype=vtype, debias=False).to(device)
+                        gen_sde = PluginReverseSDE(inf_sde, drift_q, T, vtype=vtype, debias=False, ssm_intT=ssm_intT).to(device)
 
 
                         folder_results = "results"
@@ -345,6 +349,8 @@ if __name__ == '__main__':
                             + str(num_steps_forward) + "stepsForw_" \
                             + str(beta_min) + "beta_min" \
                             + str(beta_max) + "beta_max" 
+                        if ssm_intT:
+                            name_simu_root += "_intLoss"
                         
                         # Forward SDE
                         with torch.no_grad():
@@ -405,6 +411,7 @@ if __name__ == '__main__':
                                 optim.zero_grad() # init optimizer
                                 with torch.no_grad():
                                     x = sampler.sample(batch_size).to(device) # sample data
+                                loss = gen_sde.ssm(x).mean() # forward and compute loss
                                 loss.backward() # backward
                                 optim.step() # update
 
