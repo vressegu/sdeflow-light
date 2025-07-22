@@ -42,7 +42,11 @@ T0 = 1
 
 MSGMs = [0,1]
 
-ssm_intT_ref = False
+fair_comparison = False # comparaison SGM vs MSGM with same RAM usage and same learning time
+if fair_comparison:
+    ssm_intT_ref = True
+else:   
+    ssm_intT_ref = False
 
 num_steps_forward = 100
 beta_min=1
@@ -55,7 +59,7 @@ beta_maxs = [beta_max]
 
 vtype = 'rademacher'
 lr = 0.001
-iterations = 10000
+iterations_ref = 10000
 print_every = 1000
 
 # Inference
@@ -101,7 +105,7 @@ match datatype:
 
 # # # DEBUG set:
 # print('WARNING : DEBUG !!!!!!')
-# iterations = 2
+# iterations_ref = 2
 # iterations = 10000
 # num_stepss_backward = [10]
 # num_steps_forward = 10
@@ -208,8 +212,10 @@ if __name__ == '__main__':
 
             if not MSGM:
                 normalized_data = True
+                ssm_intT = False
             else:
                 normalized_data = False
+                ssm_intT = ssm_intT_ref
 
             i_dims = -1
             for dim in dims:
@@ -222,7 +228,7 @@ if __name__ == '__main__':
                     np.random.seed(0)
                     torch.manual_seed(0) 
 
-                    num_samples_init = min(int(1e6),iterations*batch_sizes[-1])
+                    num_samples_init = min(int(1e6),iterations_ref*batch_sizes[-1])
 
                     ## 1. Initialize dataset
                     match datatype:
@@ -301,9 +307,7 @@ if __name__ == '__main__':
 
                     ## 3. Train
 
-                    # iterationss = [100000, 10000, 1000, 100, 10]
-                    # for iterations in iterationss:
-                    # batch_sizes = [256, 128, 64, 32, 16, 8, 4]
+                    # for iterations_ref in iterationss:
 
                     # nosamples = np.linspace( n0, sampler.max_nsamples, sampler.max_nsamples/10)  1000 2000 3000.... 10000
                     # if iter = k * 1000     (assume iterations = 10000)
@@ -312,7 +316,13 @@ if __name__ == '__main__':
                     
                     xtest = xtest.to(device)             
 
-                    for batch_size in batch_sizes:
+                    for batch_size_ref in batch_sizes:
+                        if (ssm_intT and fair_comparison and MSGM):# for a fair comparison
+                            batch_size = int(batch_size_ref/num_steps_forward) # for a fair comparison in term of RAM
+                            iterations = int(iterations_ref/4) # for a fair comparison in term of learning time 
+                        else:  
+                            batch_size = batch_size_ref
+                            iterations = iterations_ref
                         num_samples_init = min(int(1e6),iterations*batch_size)
                     
                         # init models
