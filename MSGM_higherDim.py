@@ -40,6 +40,10 @@ pd.set_option('display.max_rows', DISPLAY_MAX_ROWS)
 # Train
 T0 = 1
 
+MSGMs = [0,1]
+
+ssm_intT_ref = False
+
 num_steps_forward = 100
 beta_min=1
 beta_max=20
@@ -58,11 +62,8 @@ print_every = 1000
 num_stepss_backward = [1000,100,50,10]
 include_t0_reverse = True # for plots
 num_samples = 10000
-
-if ssm_intT:
-    batch_sizes = [4]
-else:
-    batch_sizes = [256]
+# nruns_mmd = 1
+nruns_mmd = 10
 
 # Dataset
 # datatype = 'swissroll'
@@ -107,9 +108,6 @@ match datatype:
 # num_samples = 10
 # batch_sizes = [2]
 
-MSGMs = [0,1]
-normalized_data = True
-
 # Plots
 scatter_plots = True
 noising_plots = True
@@ -119,9 +117,6 @@ plot_xlim = 3.0
 height_seaborn = 1.2
 ssize = height_seaborn
 dpi=200
-
-# nruns_mmd = 1
-nruns_mmd = 10
 
 # Load results 
 justLoad = False
@@ -314,11 +309,6 @@ if __name__ == '__main__':
                     # if iter = k * 1000     (assume iterations = 10000)
                     #  -> choose nosamples[k] samples
                     # Technique to "generate" new sampler : boostrapping
-
-                    print("num_steps_forward = " + str(num_steps_forward))
-                    print("beta_min = " + str(beta_min))
-                    print("beta_max = " + str(beta_max))
-                    print("t_eps = " + str(t_eps))                    
                     
                     xtest = xtest.to(device)             
 
@@ -341,6 +331,15 @@ if __name__ == '__main__':
                                 inf_sde = VariancePreservingSDE(beta_min=beta_min_SGM, beta_max=beta_max_SGM, t_epsilon=t_eps, T=T, num_steps_forward=num_steps_forward,device=device)
                         gen_sde = PluginReverseSDE(inf_sde, drift_q, T, vtype=vtype, debias=False, ssm_intT=ssm_intT).to(device)
 
+                        print("data = " + sampler.name )
+                        print("name_SDE = " + str(inf_sde.name_SDE) )   
+                        print("num_steps_forward = " + str(num_steps_forward))
+                        print("beta_min = " + str(beta_min))
+                        print("beta_max = " + str(beta_max))
+                        print("t_eps = " + str(t_eps))     
+                        print("iterations = " + str(iterations) )
+                        print("batch_size = " + str(batch_size) ) 
+                        print("ssm_intT = " + str(ssm_intT) )  
 
                         folder_results = "results"
                         name_simu_root = sampler.name + "_" \
@@ -354,6 +353,7 @@ if __name__ == '__main__':
                         
                         # Forward SDE
                         with torch.no_grad():
+                            print('integrate forward SDE')
                             for_sde = forward_SDE(inf_sde, T)
                             xs_forward = rk4_stratonovich_sampler(for_sde, xtest.clone(), num_steps_forward,  \
                                                                 lmbd=0., keep_all_samples=True, \
@@ -396,10 +396,6 @@ if __name__ == '__main__':
                         del xs_forward, xgen_forward, cov_xgen_forward, cov_xgen_forward_converged, xgen_forward_var, xgen_forward_var_mean
                         del for_sde
                         gc.collect()
-
-                        print("data = " + sampler.name )
-                        print("iterations = " + str(iterations) )
-                        print("name_SDE = " + inf_sde.name_SDE )
 
                         if (not justLoad):
                             # init optimizer
