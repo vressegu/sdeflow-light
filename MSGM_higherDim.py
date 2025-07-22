@@ -328,7 +328,9 @@ if __name__ == '__main__':
                                                               device=device, estim_cst_norm_dens_r_T = False)
                                 del x_init
                             else:
-                                inf_sde = VariancePreservingSDE(beta_min=beta_min_SGM, beta_max=beta_max_SGM, t_epsilon=t_eps, T=T, num_steps_forward=num_steps_forward,device=device)
+                                inf_sde = VariancePreservingSDE(beta_min=beta_min_SGM, beta_max=beta_max_SGM, \
+                                                                t_epsilon=t_eps, T=T, num_steps_forward=num_steps_forward, \
+                                                                device=device)
                         gen_sde = PluginReverseSDE(inf_sde, drift_q, T, vtype=vtype, debias=False, ssm_intT=ssm_intT).to(device)
 
                         print("data = " + sampler.name )
