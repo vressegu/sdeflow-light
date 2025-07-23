@@ -204,26 +204,28 @@ if __name__ == '__main__':
         mmd_SGM = torch.zeros((len(dims),len(Res),len(num_stepss_backward),nruns_mmd))
         mmd_MSGM = torch.zeros((len(dims),len(Res),len(num_stepss_backward),nruns_mmd))
         mmd_ref = torch.zeros((len(dims),len(Res),len(num_stepss_backward),nruns_mmd))
-        i_MGMM = -1
-        for MSGM in MSGMs:
-            i_MGMM +=1
-            plot_ylim_row = plot_xlim
-            plot_xlim_col = plot_xlim
 
-            if not MSGM:
-                normalized_data = True
-                ssm_intT = False
-            else:
-                normalized_data = False
-                ssm_intT = ssm_intT_ref
-
+        i_Res = -1
+        for Re in Res:
+            i_Res +=1
+            
             i_dims = -1
             for dim in dims:
                 i_dims +=1
-                
-                i_Res = -1
-                for Re in Res:
-                    i_Res +=1
+
+                i_MGMM = -1
+                for MSGM in MSGMs:
+                    i_MGMM +=1
+
+                    plot_ylim_row = plot_xlim
+                    plot_xlim_col = plot_xlim
+
+                    if not MSGM:
+                        normalized_data = True
+                        ssm_intT = False
+                    else:
+                        normalized_data = False
+                        ssm_intT = ssm_intT_ref
 
                     np.random.seed(0)
                     torch.manual_seed(0) 
