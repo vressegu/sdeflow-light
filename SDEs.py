@@ -89,12 +89,14 @@ class SDE(torch.nn.Module):
 
         # WARNING : this sampler is used (many times) for t=T 
         # another method should be used here instead
-        for k in range(y0.shape[0]):
-            if t[k] >= self.T: 
-                if include_t0:
-                    num_steps_int[k] = num_steps_tot
-                else:
-                    num_steps_int[k] = num_steps_tot - 1
+        if any(t >= self.T):
+            print('warning : t >= T')
+            for k in range(y0.shape[0]):
+                if t[k] >= self.T: 
+                    if include_t0:
+                        num_steps_int[k] = num_steps_tot
+                    else:
+                        num_steps_int[k] = num_steps_tot - 1
 
         yt = torch.zeros_like(y0)
         for k in range(y0.shape[0]):
