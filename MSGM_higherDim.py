@@ -466,7 +466,7 @@ if __name__ == '__main__':
                             print("energy_xgen_forward / energy_xtest = " + str(energy_xgen_forward.item()/energy_xtest.item()))
 
                             # indices to visualize
-                            fig_step = int(num_steps_forward/10) #100
+                            fig_step = int(num_steps_forward/8) #4
                             if fig_step < 1:
                                 fig_step = 1
                             inds_forward = range(0, num_steps_forward+1, fig_step)
