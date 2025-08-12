@@ -393,6 +393,12 @@ if __name__ == '__main__':
                                 batch_size = int(batch_size_ref/num_steps_forward) # for a fair comparison in term of RAM
                             else:  
                                 batch_size = batch_size_ref
+                            if (fair_comparison and MSGM):# for a fair comparison
+                                ratio_ite = max([1, int(np.sqrt(sampler.dim) * num_steps_forward / 16)])
+                                print('ratio_ite = ' + str(ratio_ite))
+                                iterations = int(iterations_ref/ratio_ite) # for a fair comparison in term of learning time 
+                                iterations = max([1,iterations])
+                            else:  
                                 iterations = iterations_ref
                             num_samples_init = min(int(1e6),iterations*batch_size)
                         
@@ -424,6 +430,7 @@ if __name__ == '__main__':
                             print("iterations_ref = " + str(iterations_ref) )
                             print("batch_size = " + str(batch_size) ) 
                             print("ssm_intT = " + str(ssm_intT) )  
+                            print("fair_comparison = " + str(fair_comparison) )  
 
                             name_simu_root = m_name_simu_root(sampler.name, gen_sde.base_sde.name_SDE, \
                                                                 iterations_ref, batch_size, num_steps_forward, \
