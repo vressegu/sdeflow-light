@@ -267,6 +267,10 @@ if __name__ == '__main__':
                         case _:
                             raise ValueError("Unknown datatype: {}".format(datatype))
 
+                    folder_results = "results"
+                    directory = folder_results + "/" + sampler.name
+                    if not os.path.exists(directory):
+                        os.makedirs(directory)
 
                     with torch.no_grad():
                         xtest = sampler.sampletest(num_samples)
@@ -496,6 +500,9 @@ if __name__ == '__main__':
                                 for i_run in range(nruns_mmd):
                                     print("Run number : " + str(i_run))
                                     if i_run > 0 :
+                                        directory = "runs" + "/" + sampler.name
+                                        if not os.path.exists(directory):
+                                            os.makedirs(directory)
                                         name_simu = "runs/" + name_simu_root \
                                             + str(t_eps) + "t_eps" \
                                             + str(num_steps_backward) + "stepsBack_" \
