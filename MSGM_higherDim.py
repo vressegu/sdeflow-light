@@ -388,7 +388,9 @@ if __name__ == '__main__':
                         
                         xtest = xtest.to(device)             
 
+                        i_batch_size = -1
                         for batch_size_ref in batch_sizes:
+                            i_batch_size +=1
                             if (ssm_intT):# for a fair comparison
                                 batch_size = int(batch_size_ref/num_steps_forward) # for a fair comparison in term of RAM
                             else:  
