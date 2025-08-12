@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 
 ### 4.1. Define plotting tools
 @torch.no_grad()
-def get_2d_histogram_plot(data, val=3, num=64, vmax=10, use_grid=False, origin='lower'):
+def get_2d_histogram_plot(data, val=3, num=64, vmin = 0, vmax=10, use_grid=False, origin='lower',logscale=True):
 
     # get data
     x = data[:, 0]
@@ -33,11 +33,17 @@ def get_2d_histogram_plot(data, val=3, num=64, vmax=10, use_grid=False, origin='
 
     # get histogram
     heatmap, xedges, yedges = np.histogram2d(x, y, range=[[xmin, xmax], [ymin, ymax]], bins=num)
+    if logscale:
+        heatmap_val = heatmap.copy()  # copy heatmap for vmin calculation
+        vmin = heatmap_val[heatmap > heatmap.min()].min() /2  # use the minimum value from the heatmap / 2
+        heatmap = np.log(heatmap + 1e-10)  # log scale for better visibility
+        vmin = np.log(vmin)  # adjust vmin for log scale
+        vmax = heatmap.max()  # adjust vmax for log scale
     extent = [xedges[0], xedges[-1], yedges[0], yedges[-1]]
 
     # plot heatmap
     fig, ax = plt.subplots(figsize=(5, 5))
-    im = ax.imshow(heatmap.T, extent=extent, origin=origin, vmin=0, vmax=vmax)
+    im = ax.imshow(heatmap.T, extent=extent, origin=origin, vmin=vmin, vmax=vmax)
     ax.grid(False)
     if use_grid:
         plt.xticks(np.arange(-val, val+1, step=1))
