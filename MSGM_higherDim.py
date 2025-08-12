@@ -540,7 +540,7 @@ if __name__ == '__main__':
                                 # num_samples = 100000
 
                                 # indices to visualize
-                                fig_step = int(num_steps_backward/10) #100
+                                fig_step = int(num_steps_backward/8) #4
                                 if fig_step < 1:
                                     fig_step = 1
                                 if include_t0_reverse:
