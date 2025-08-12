@@ -362,3 +362,23 @@ class SwissRoll:
     
     def sampletest(self, n, noise=0.5):
         return self.sample(n, noise)
+
+class Cauchy:
+    """
+    multi-dimensional Cauchy distribution sampler.
+    """
+    def __init__(self, dim = 2, correlation = False):
+        self.dim = dim
+        self.name='cauchy' + str(self.dim)
+        if correlation:
+            self.A = torch.randn(dim, dim)
+            self.name = self.name + "cor"
+        else:
+            self.A = torch.eye(dim)
+        self.cauchy = torch.distributions.Cauchy(0.0, 1.0)
+
+    def sample(self, n):
+        return  (1.0/50) * self.cauchy.sample((n, self.dim)) @ self.A.T
+    
+    def sampletest(self, n):
+        return self.sample(n)

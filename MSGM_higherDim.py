@@ -25,7 +25,7 @@ import seaborn as sns
 from sde_scheme import euler_maruyama_sampler,heun_sampler,rk4_stratonovich_sampler
 from own_plotting import plot_selected_inds
 from SDEs import forward_SDE,SDE,VariancePreservingSDE,PluginReverseSDE,multiplicativeNoise
-from data import ERA5,ncar_weather_station,weather_station,eof_pressure,Lorenz96,PODmodes,SwissRoll
+from data import ERA5,ncar_weather_station,weather_station,eof_pressure,Lorenz96,PODmodes,SwissRoll,Cauchy
 from quantitative_comparison import compute_mmd
 import gc
 
@@ -71,12 +71,16 @@ nruns_mmd = 10
 
 # Dataset
 # datatype = 'swissroll'
+# datatype = 'cauchy'
 datatype = 'POD'
 # datatype = 'era5'
 
 match datatype:
     case 'swissroll': # Swiss roll
         dims = [2]
+        Res=[1]
+    case 'cauchy': # multi-dimesnional Cauchy
+        dims = [2,4,8,16,32]
         Res=[1]
     case 'POD': # POD
         dims = [2,4,8,16]
@@ -102,6 +106,10 @@ match datatype:
         # dims = [3,6,9,18,30]
         dims = [30]
         Res=[1]
+
+
+    case _:
+        raise ValueError("Unknown datatype: {}".format(datatype))
 
 # # # DEBUG set:
 # print('WARNING : DEBUG !!!!!!')
@@ -237,6 +245,9 @@ if __name__ == '__main__':
                         case 'swissroll':
                             sampler = SwissRoll()
                             normalized_data = False
+                        case 'cauchy':
+                            sampler = Cauchy(dim, correlation = False)
+                            normalized_data = False
                         case 'POD':
                             sampler = PODmodes(Re,dim, normalized=normalized_data)
                         case 'lorenz':
@@ -252,6 +263,9 @@ if __name__ == '__main__':
                             normalized_data = False
                             columns=["$u$, Berlin", "$v$, Berlin", "$\omega$, Berlin",\
                                      "$u$, Paris", "$v$, Paris", "$\omega$, Paris"]
+                        case _:
+                            raise ValueError("Unknown datatype: {}".format(datatype))
+
 
                     with torch.no_grad():
                         xtest = sampler.sampletest(num_samples)
