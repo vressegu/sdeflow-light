@@ -427,6 +427,16 @@ if __name__ == '__main__':
                                                             iterations_ref, batch_size, num_steps_forward, \
                                                             beta_min, beta_max, ssm_intT, fair_comparison)
 
+                        
+                        # Forward SDE
+                        with torch.no_grad():
+                            print('integrate forward SDE')
+                            for_sde = forward_SDE(inf_sde, T)
+                            xs_forward = rk4_stratonovich_sampler(for_sde, xtest.clone(), num_steps_forward,  \
+                                                                lmbd=0., keep_all_samples=True, \
+                                                                include_t0=True, norm_correction = MSGM) # sample
+                            xgen_forward = xs_forward[-1,:,:].to(device)
+                                
                             # indices to visualize
                             fig_step = int(num_steps_forward/10) #100
                             if fig_step < 1:
