@@ -129,6 +129,7 @@ plot_xlim = 3.0
 height_seaborn = 1.2
 ssize = height_seaborn
 dpi=200
+dimplot_max = 8
 
 # Load results 
 justLoad = False
@@ -277,17 +278,18 @@ if __name__ == '__main__':
                             std_norm = torch.ones((xtest.shape[1]))
 
                         plt.close('all')
-                        dimplot_max = 8
                         dimplot = np.min([dimplot_max,xtest.shape[1]])
+
+                        xtest_plot = std_norm * xtest
 
                         if (datatype == 'era5') and xtest.shape[1]>= 9:
                             dimplot = 6
-                            pddatatest = pd.DataFrame(torch.cat( ((std_norm * xtest)[:,6:9], \
-                                                                    (std_norm * xtest)[:,0:3]),dim=1).to('cpu').data.numpy(), \
+                            pddatatest = pd.DataFrame(torch.cat( ((xtest_plot)[:,6:9], \
+                                                                    (xtest_plot)[:,0:3]),dim=1).to('cpu').data.numpy(), \
                                                     columns=columns \
                                                     )
                         else:
-                            pddatatest = pd.DataFrame((std_norm * xtest).data.numpy()[:,0:dimplot], columns=range(1,1+dimplot))
+                            pddatatest = pd.DataFrame((xtest_plot).data.numpy()[:,0:dimplot], columns=range(1,1+dimplot))
 
                         plot_kws={"s": ssize}
                         scatter = sns.pairplot(pddatatest, aspect=1, height=height_seaborn, corner=True,plot_kws=plot_kws)
@@ -299,14 +301,15 @@ if __name__ == '__main__':
                         plt.close()
                         plt.pause(0.1)
                         plt.close('all')
-                        
+
+                        xtrain_plot = std_norm * sampler.sample(num_samples_init).to('cpu')
                         if (datatype == 'era5') and xtest.shape[1]>= 9:
-                            pddatatrain = pd.DataFrame(torch.cat( ((std_norm * sampler.sample(num_samples_init).to('cpu'))[:,6:9], \
-                                                                    (std_norm * sampler.sample(num_samples_init).to('cpu'))[:,0:3]),dim=1).to('cpu').data.numpy(), \
+                            pddatatrain = pd.DataFrame(torch.cat( (xtrain_plot[:,6:9], \
+                                                                    xtrain_plot[:,0:3]),dim=1).data.numpy(), \
                                                     columns=columns \
                                                     )
                         else:
-                            pddatatrain = pd.DataFrame((std_norm *  sampler.sample(num_samples_init)).data.numpy()[:,0:dimplot], columns=range(1,1+dimplot))
+                            pddatatrain = pd.DataFrame(xtrain_plot.data.numpy()[:,0:dimplot], columns=range(1,1+dimplot))
 
                         plot_kws={"s": ssize}
                         scatter = sns.pairplot(pddatatrain, aspect=1, height=height_seaborn, corner=True,plot_kws=plot_kws)
