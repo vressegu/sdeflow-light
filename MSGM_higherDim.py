@@ -60,7 +60,6 @@ beta_maxs = [beta_max]
 
 vtype = 'rademacher'
 lr = 0.001
-iterations_ref = 10000
 print_every = 1000
 
 # Inference
@@ -68,6 +67,7 @@ num_stepss_backward = [1000,100,50,10]
 include_t0_reverse = True # for plots
 num_samples = 10000
 # nruns_mmd = 1
+iterationss = [ 2**20, 2**16, 2**12, 2**8, 2**4 ]
 nruns_mmd = 10
 
 # Dataset
@@ -114,8 +114,7 @@ match datatype:
 
 # # # DEBUG set:
 # print('WARNING : DEBUG !!!!!!')
-# iterations_ref = 2
-# iterations = 10000
+# iterationss = [16,8]
 # num_stepss_backward = [10]
 # num_steps_forward = 10
 # num_samples = 10
@@ -226,9 +225,9 @@ else:
 if __name__ == '__main__':
 
     for beta_max in beta_maxs:
-        mmd_SGM = torch.zeros((len(dims),len(Res),len(num_stepss_backward),nruns_mmd))
-        mmd_MSGM = torch.zeros((len(dims),len(Res),len(num_stepss_backward),nruns_mmd))
-        mmd_ref = torch.zeros((len(dims),len(Res),len(num_stepss_backward),nruns_mmd))
+        mmd_SGM = torch.zeros((len(dims),len(Res),len(num_stepss_backward),len(iterationss),nruns_mmd))
+        mmd_MSGM = torch.zeros((len(dims),len(Res),len(num_stepss_backward),len(iterationss),nruns_mmd))
+        mmd_ref = torch.zeros((len(dims),len(Res),len(num_stepss_backward),len(iterationss),nruns_mmd))
 
         i_Res = -1
         for Re in Res:
@@ -255,7 +254,7 @@ if __name__ == '__main__':
                     np.random.seed(0)
                     torch.manual_seed(0) 
 
-                    num_samples_init = min(int(1e6),iterations_ref*batch_sizes[-1])
+                    num_samples_init = min(int(1e6),iterationss[0]*batch_sizes[0])
 
                     ## 1. Initialize dataset
                     match datatype:
@@ -378,401 +377,439 @@ if __name__ == '__main__':
 
                     ## 3. Train
 
-                    # for iterations_ref in iterationss:
+                    i_iterations = -1
+                    for iterations_ref in iterationss:
+                        i_iterations +=1
 
-                    # nosamples = np.linspace( n0, sampler.max_nsamples, sampler.max_nsamples/10)  1000 2000 3000.... 10000
-                    # if iter = k * 1000     (assume iterations = 10000)
-                    #  -> choose nosamples[k] samples
-                    # Technique to "generate" new sampler : boostrapping
-                    
-                    xtest = xtest.to(device)             
-
-                    for batch_size_ref in batch_sizes:
-                        if (ssm_intT and fair_comparison and MSGM):# for a fair comparison
-                            batch_size = int(batch_size_ref/num_steps_forward) # for a fair comparison in term of RAM
-                            iterations = int(iterations_ref/4) # for a fair comparison in term of learning time 
-                        else:  
-                            batch_size = batch_size_ref
-                            iterations = iterations_ref
-                        num_samples_init = min(int(1e6),iterations*batch_size)
-                    
-                        # init models
-                        drift_q = MLP(input_dim=sampler.dim, index_dim=1, hidden_dim=128).to(device)
-                        T = torch.nn.Parameter(torch.FloatTensor([T0]), requires_grad=False)
-
-
-                        with torch.no_grad():
-                            if MSGM:
-                                x_init = sampler.sample(num_samples_init).to(device)
-                                inf_sde = multiplicativeNoise(x_init,beta_min=beta_min, beta_max=beta_max, \
-                                                              t_epsilon=t_eps, T=T, num_steps_forward=num_steps_forward, \
-                                                              device=device, estim_cst_norm_dens_r_T = False)
-                                del x_init
-                            else:
-                                inf_sde = VariancePreservingSDE(beta_min=beta_min_SGM, beta_max=beta_max_SGM, \
-                                                                t_epsilon=t_eps, T=T, num_steps_forward=num_steps_forward, \
-                                                                device=device)
-                        gen_sde = PluginReverseSDE(inf_sde, drift_q, T, vtype=vtype, debias=False, ssm_intT=ssm_intT).to(device)
-
-                        print("data = " + sampler.name )
-                        print("name_SDE = " + str(inf_sde.name_SDE) )   
-                        print("num_steps_forward = " + str(num_steps_forward))
-                        print("beta_min = " + str(beta_min))
-                        print("beta_max = " + str(beta_max))
-                        print("t_eps = " + str(t_eps))     
-                        print("iterations = " + str(iterations) )
-                        print("batch_size = " + str(batch_size) ) 
-                        print("ssm_intT = " + str(ssm_intT) )  
-
-                        name_simu_root = m_name_simu_root(sampler.name, gen_sde.base_sde.name_SDE, \
-                                                            iterations_ref, batch_size, num_steps_forward, \
-                                                            beta_min, beta_max, ssm_intT, fair_comparison)
-
+                        # nosamples = np.linspace( n0, sampler.max_nsamples, sampler.max_nsamples/10)  1000 2000 3000.... 10000
+                        # if iter = k * 1000     (assume iterations = 10000)
+                        #  -> choose nosamples[k] samples
+                        # Technique to "generate" new sampler : boostrapping
                         
-                        # Forward SDE
-                        with torch.no_grad():
-                            print('integrate forward SDE')
-                            for_sde = forward_SDE(inf_sde, T)
-                            xs_forward = rk4_stratonovich_sampler(for_sde, xtest.clone(), num_steps_forward,  \
-                                                                lmbd=0., keep_all_samples=True, \
-                                                                include_t0=True, norm_correction = MSGM) # sample
-                            xgen_forward = xs_forward[-1,:,:].to(device)
+                        xtest = xtest.to(device)             
+
+                        for batch_size_ref in batch_sizes:
+                            if (ssm_intT):# for a fair comparison
+                                batch_size = int(batch_size_ref/num_steps_forward) # for a fair comparison in term of RAM
+                            else:  
+                                batch_size = batch_size_ref
+                                iterations = iterations_ref
+                            num_samples_init = min(int(1e6),iterations*batch_size)
+                        
+                            # init models
+                            drift_q = MLP(input_dim=sampler.dim, index_dim=1, hidden_dim=128).to(device)
+                            T = torch.nn.Parameter(torch.FloatTensor([T0]), requires_grad=False)
+
+
+                            with torch.no_grad():
+                                if MSGM:
+                                    x_init = sampler.sample(num_samples_init).to(device)
+                                    inf_sde = multiplicativeNoise(x_init,beta_min=beta_min, beta_max=beta_max, \
+                                                                t_epsilon=t_eps, T=T, num_steps_forward=num_steps_forward, \
+                                                                device=device, estim_cst_norm_dens_r_T = False)
+                                    del x_init
+                                else:
+                                    inf_sde = VariancePreservingSDE(beta_min=beta_min_SGM, beta_max=beta_max_SGM, \
+                                                                    t_epsilon=t_eps, T=T, num_steps_forward=num_steps_forward, \
+                                                                    device=device)
+                            gen_sde = PluginReverseSDE(inf_sde, drift_q, T, vtype=vtype, debias=False, ssm_intT=ssm_intT).to(device)
+
+                            print("data = " + sampler.name )
+                            print("name_SDE = " + str(inf_sde.name_SDE) )   
+                            print("num_steps_forward = " + str(num_steps_forward))
+                            print("beta_min = " + str(beta_min))
+                            print("beta_max = " + str(beta_max))
+                            print("t_eps = " + str(t_eps))     
+                            print("iterations = " + str(iterations) )
+                            print("iterations_ref = " + str(iterations_ref) )
+                            print("batch_size = " + str(batch_size) ) 
+                            print("ssm_intT = " + str(ssm_intT) )  
+
+                            name_simu_root = m_name_simu_root(sampler.name, gen_sde.base_sde.name_SDE, \
+                                                                iterations_ref, batch_size, num_steps_forward, \
+                                                                beta_min, beta_max, ssm_intT, fair_comparison)
+
                             
-                            # metrics of convergence for the forward SDE
-                            cov_xtest = torch.cov(xtest.T)
-                            cov_xgen_forward = torch.cov(xgen_forward.T)
-                            xgen_forward_var = torch.var(xgen_forward.T,dim=1)
-                            xgen_forward_var_mean = xgen_forward_var.mean()
-                            xtest_var = torch.var(xtest.T,dim=1)
-                            xtest_var_mean = xtest_var.mean()
-
-                            # comparaison to cov ot X_inf
-                            cov_xgen_forward_converged = xtest_var_mean * torch.eye(sampler.dim).to(device)
-                            # since tr(cov)=E||X||^2 is theoretically conserved
-                            d_cov_xtest = torch.norm(cov_xtest - cov_xgen_forward_converged)/torch.norm(cov_xgen_forward_converged)
-                            d_cov_xgen_forward = torch.norm(cov_xgen_forward - cov_xgen_forward_converged)/torch.norm(cov_xgen_forward_converged)
-                            print("dist cov_xtest to  cov_xgen_forward_converged (dist to  weak white noise)= " + str(d_cov_xtest.item()))
-                            print("dist cov_xgen_forward  to  cov_xgen_forward_converged = " + str(d_cov_xgen_forward.item()))
-
-                            # comparaison to cov of weak white noise (with same variance)
-                            cov_wwn = xgen_forward_var_mean * torch.eye(sampler.dim).to(device)
-                            d_cov_xgen_forward = torch.norm(cov_xgen_forward - cov_wwn)/torch.norm(cov_wwn)
-                            print("dist cov_xgen_forward  to  weak white noise (w. same var.)= " + str(d_cov_xgen_forward.item()))
-
-                            # print energy
-                            energy_xtest = torch.sum((xtest**2),dim=1).mean()
-                            energy_xgen_forward = torch.sum((xgen_forward**2),dim=1).mean()
-                            print("energy_xtest = " + str(energy_xtest.item()))
-                            print("energy_xgen_forward = " + str(energy_xgen_forward.item()))
-                            print("energy_xgen_forward / energy_xtest = " + str(energy_xgen_forward.item()/energy_xtest.item()))
-
-                            # indices to visualize
-                            fig_step = int(num_steps_forward/8) #4
-                            if fig_step < 1:
-                                fig_step = 1
-                            inds_forward = range(0, num_steps_forward+1, fig_step)
-                            if (noising_plots):
-                                plot_selected_inds(xs_forward, inds_forward, \
-                                    use_xticks= True, use_yticks=False, lmbd = 0., \
-                                    include_t0=True, backward=False,
-                                    plt_show=plt_show,
-                                    val=val_hist) # plot
-                                time.sleep(0.5)
-                                if plt_show:
-                                    plt.show(block=False)
-                                name_fig = folder_results + "/" + name_simu_root + "_Forward.png" 
-                                plt.savefig(name_fig)
-                                if plt_show:
-                                    plt.pause(1)
-                                plt.close()
-                                plt.close('all')
-
-                        del xs_forward, xgen_forward, cov_xgen_forward, cov_xgen_forward_converged, xgen_forward_var, xgen_forward_var_mean
-                        del for_sde
-                        gc.collect()
-
-                        if (not justLoad):
-                            # init optimizer
-                            optim = torch.optim.Adam(gen_sde.parameters(), lr=lr)
-
-                            # train
-                            start_time = time.time()
-                            for i in range(iterations):
-                                optim.zero_grad() # init optimizer
-                                with torch.no_grad():
-                                    x = sampler.sample(batch_size).to(device) # sample data
-                                loss = gen_sde.ssm(x).mean() # forward and compute loss
-                                loss.backward() # backward
-                                optim.step() # update
-
-                                # print
-                                if (i == 0) or ((i+1) % print_every == 0):
-                                    # elbo
-                                    elbo, elbo_std = evaluate(gen_sde, x)
-
-                                    # print
-                                    elapsed = time.time() - start_time
-                                    print('| iter {:6d} | {:5.2f} ms/step | loss {:8.3f} | elbo {:8.3f} | elbo std {:8.3f} '
-                                        .format(i+1, elapsed*1000/print_every, loss.item(), elbo.item(), elbo_std.item()))
-                                    start_time = time.time()
-
-                                    del elbo, elbo_std
-                                    gc.collect()
+                            # Forward SDE
+                            with torch.no_grad():
+                                print('integrate forward SDE')
+                                for_sde = forward_SDE(inf_sde, T)
+                                xs_forward = rk4_stratonovich_sampler(for_sde, xtest.clone(), num_steps_forward,  \
+                                                                    lmbd=0., keep_all_samples=True, \
+                                                                    include_t0=True, norm_correction = MSGM) # sample
+                                xgen_forward = xs_forward[-1,:,:].to(device)
                                 
-                                del x
-                                # torch.mps.empty_cache()  # does not do much on MPS, but still good practice
-                                # gc.collect()
-                            del loss, optim
-                            gc.collect()
+                                # metrics of convergence for the forward SDE
+                                cov_xtest = torch.cov(xtest.T)
+                                cov_xgen_forward = torch.cov(xgen_forward.T)
+                                xgen_forward_var = torch.var(xgen_forward.T,dim=1)
+                                xgen_forward_var_mean = xgen_forward_var.mean()
+                                xtest_var = torch.var(xtest.T,dim=1)
+                                xtest_var_mean = xtest_var.mean()
 
+                                # comparaison to cov ot X_inf
+                                cov_xgen_forward_converged = xtest_var_mean * torch.eye(sampler.dim).to(device)
+                                # since tr(cov)=E||X||^2 is theoretically conserved
+                                d_cov_xtest = torch.norm(cov_xtest - cov_xgen_forward_converged)/torch.norm(cov_xgen_forward_converged)
+                                d_cov_xgen_forward = torch.norm(cov_xgen_forward - cov_xgen_forward_converged)/torch.norm(cov_xgen_forward_converged)
+                                print("dist cov_xtest to  cov_xgen_forward_converged (dist to  weak white noise)= " + str(d_cov_xtest.item()))
+                                print("dist cov_xgen_forward  to  cov_xgen_forward_converged = " + str(d_cov_xgen_forward.item()))
 
-                        ## 4. Visualize
-                        with torch.no_grad():
+                                # comparaison to cov of weak white noise (with same variance)
+                                cov_wwn = xgen_forward_var_mean * torch.eye(sampler.dim).to(device)
+                                d_cov_xgen_forward = torch.norm(cov_xgen_forward - cov_wwn)/torch.norm(cov_wwn)
+                                print("dist cov_xgen_forward  to  weak white noise (w. same var.)= " + str(d_cov_xgen_forward.item()))
 
-                            ### 4.3. Simulate SDEs
-                            """
-                            Simulate the generative SDE by using RK4 method
-                            """
-                            i_num_stepss_backward = -1
-                            for num_steps_backward in num_stepss_backward:
-                                i_num_stepss_backward +=1
-                                print("Generation : num_steps_backward = " + str(num_steps_backward))
-                                # init param
-                                # num_samples = 100000
+                                # print energy
+                                energy_xtest = torch.sum((xtest**2),dim=1).mean()
+                                energy_xgen_forward = torch.sum((xgen_forward**2),dim=1).mean()
+                                print("energy_xtest = " + str(energy_xtest.item()))
+                                print("energy_xgen_forward = " + str(energy_xgen_forward.item()))
+                                print("energy_xgen_forward / energy_xtest = " + str(energy_xgen_forward.item()/energy_xtest.item()))
 
                                 # indices to visualize
-                                fig_step = int(num_steps_backward/8) #4
+                                fig_step = int(num_steps_forward/8) #4
                                 if fig_step < 1:
                                     fig_step = 1
-                                if include_t0_reverse:
-                                    inds = range(0, num_steps_backward+1, fig_step)
-                                else:
-                                    inds = range(fig_step-1, num_steps_backward, fig_step)
-                                # sample and plot
-                                plt.close('all')
-                                lmbd = 0.
-                                name_simu = folder_results + "/" + name_simu_root \
-                                    + str(t_eps) + "t_eps" \
-                                    + str(num_steps_backward) + "stepsBack_" \
-                                    + str(include_t0_reverse) + "t0infer"
-                                
-                                for i_run in range(nruns_mmd):
-                                    print("Run number : " + str(i_run))
-                                    if i_run > 0 :
-                                        directory = "runs" + "/" + sampler.name
-                                        if not os.path.exists(directory):
-                                            os.makedirs(directory)
-                                        name_simu = "runs/" + name_simu_root \
-                                            + str(t_eps) + "t_eps" \
-                                            + str(num_steps_backward) + "stepsBack_" \
-                                            + str(include_t0_reverse) + "t0infer" \
-                                            + "_run"+ str(i_run)
+                                inds_forward = range(0, num_steps_forward+1, fig_step)
+                                if (noising_plots):
+                                    plot_selected_inds(xs_forward, inds_forward, \
+                                        use_xticks= True, use_yticks=False, lmbd = 0., \
+                                        include_t0=True, backward=False,
+                                        plt_show=plt_show,
+                                        val=val_hist) # plot
+                                    time.sleep(0.5)
+                                    if plt_show:
+                                        plt.show(block=False)
+                                    name_fig = folder_results + "/" + name_simu_root + "_Forward.png" 
+                                    plt.savefig(name_fig)
+                                    if plt_show:
+                                        plt.pause(1)
+                                    plt.close()
+                                    plt.close('all')
+
+                            del xs_forward, xgen_forward, cov_xgen_forward, cov_xgen_forward_converged, xgen_forward_var, xgen_forward_var_mean
+                            del for_sde
+                            gc.collect()
+
+                            if (not justLoad):
+                                # init optimizer
+                                optim = torch.optim.Adam(gen_sde.parameters(), lr=lr)
+
+                                # train
+                                start_time = time.time()
+                                for i in range(iterations):
+                                    optim.zero_grad() # init optimizer
+                                    with torch.no_grad():
+                                        x = sampler.sample(batch_size).to(device) # sample data
+                                    loss = gen_sde.ssm(x).mean() # forward and compute loss
+                                    loss.backward() # backward
+                                    optim.step() # update
+
+                                    # print
+                                    if (i == 0) or ((i+1) % print_every == 0):
+                                        # elbo
+                                        elbo, elbo_std = evaluate(gen_sde, x)
+
+                                        # print
+                                        elapsed = time.time() - start_time
+                                        print('| iter {:6d} | {:5.2f} ms/step | loss {:8.3f} | elbo {:8.3f} | elbo std {:8.3f} '
+                                            .format(i+1, elapsed*1000/print_every, loss.item(), elbo.item(), elbo_std.item()))
+                                        start_time = time.time()
+
+                                        del elbo, elbo_std
+                                        gc.collect()
                                     
-                                    if (justLoad):
-                                        save_results = False
-                                        xs = torch.load(name_simu + ".pt", weights_only=True)
+                                    del x
+                                    # torch.mps.empty_cache()  # does not do much on MPS, but still good practice
+                                    # gc.collect()
+                                del loss, optim
+                                gc.collect()
+
+
+                            ## 4. Visualize
+                            with torch.no_grad():
+
+                                ### 4.3. Simulate SDEs
+                                """
+                                Simulate the generative SDE by using RK4 method
+                                """
+                                i_num_stepss_backward = -1
+                                for num_steps_backward in num_stepss_backward:
+                                    i_num_stepss_backward +=1
+                                    print("Generation : num_steps_backward = " + str(num_steps_backward))
+                                    # init param
+                                    # num_samples = 100000
+
+                                    # indices to visualize
+                                    fig_step = int(num_steps_backward/8) #4
+                                    if fig_step < 1:
+                                        fig_step = 1
+                                    if include_t0_reverse:
+                                        inds = range(0, num_steps_backward+1, fig_step)
                                     else:
-                                        x_0 = gen_sde.latent_sample(num_samples, sampler.dim) # init from prior
-                                        xs = rk4_stratonovich_sampler(gen_sde, x_0, num_steps_backward, lmbd=lmbd,\
-                                                                    keep_all_samples=True, 
-                                                                    include_t0=include_t0_reverse, 
-                                                                    norm_correction = MSGM) # sample
-                                        del x_0
-                                        if (save_results):
-                                            torch.save(xs, name_simu + ".pt")
-                                    xgen = xs[-1,:,:].to(device)
-
-                                    if save_results and not justLoad:
-                                        np.save(name_simu + ".pt", xgen.clone().detach().cpu().numpy())
-
-                                    # Identify rows with NaN values
-                                    nan_mask = (torch.isnan(xgen) | (torch.abs(xgen) > 1e3 )).any(dim=1)
-                                    # Count rows with NaN values
-                                    nan_count = nan_mask.sum().item()
-                                    if nan_count > 0:
-                                        print(f"Number of rows with NaN or large value: {nan_count}")
-                                    # Remove rows with NaN values
-                                    xgen = xgen[~nan_mask,:]
-                                    del nan_mask
-
-
-                                    # MMD
-                                    if not justLoadmmmd:
-                                        with torch.no_grad():
-                                            x_mmd1 = sampler.sample(xtest.shape[0]).to(device)
-                                            x_mmd2 = sampler.sample(xtest.shape[0]).to(device)
-                                            dist_train_to_test = compute_mmd(std_norm * x_mmd1,std_norm * xtest)
-                                            dist_test_to_test = compute_mmd(std_norm * x_mmd1,std_norm * xtest)
-                                            dist = compute_mmd(std_norm * xgen,std_norm * xtest)
-                                        mmd_ref[i_dims, i_Res, i_num_stepss_backward,i_run] = dist_train_to_test
-                                        if MSGM:
-                                            mmd_MSGM[i_dims, i_Res, i_num_stepss_backward,i_run] = dist
-                                        else:
-                                            mmd_SGM[i_dims, i_Res, i_num_stepss_backward,i_run] = dist
-                                        del dist
-
-                                    if (scatter_plots) and (i_run == 0):
-                                        xgen_plot = std_norm * xgen
-                                        boolean_mask = (xgen_plot.abs() < (plot_xlim * std_norm * std_test)).all(axis=1)
-                                        print( str( (1 - boolean_mask.sum()/ len(boolean_mask)).item() * 100) + " % of samples outside plot limits")
-                                        xgen_plot = xgen_plot[boolean_mask,:]
+                                        inds = range(fig_step-1, num_steps_backward, fig_step)
+                                    # sample and plot
+                                    plt.close('all')
+                                    lmbd = 0.
+                                    name_simu = folder_results + "/" + name_simu_root \
+                                        + str(t_eps) + "t_eps" \
+                                        + str(num_steps_backward) + "stepsBack_" \
+                                        + str(include_t0_reverse) + "t0infer"
+                                    
+                                    for i_run in range(nruns_mmd):
+                                        print("Run number : " + str(i_run))
+                                        if i_run > 0 :
+                                            directory = "runs" + "/" + sampler.name
+                                            if not os.path.exists(directory):
+                                                os.makedirs(directory)
+                                            name_simu = "runs/" + name_simu_root \
+                                                + str(t_eps) + "t_eps" \
+                                                + str(num_steps_backward) + "stepsBack_" \
+                                                + str(include_t0_reverse) + "t0infer" \
+                                                + "_run"+ str(i_run)
                                         
-                                        if (datatype == 'era5') and xtest.shape[1]>= 9:
-                                            pddatagen = pd.DataFrame(torch.cat( (xgen_plot[:,6:9],xgen_plot[:,0:3]),dim=1).to('cpu'), \
-                                                                    columns=columns \
-                                                                    )
+                                        if (justLoad):
+                                            save_results = False
+                                            xs = torch.load(name_simu + ".pt", weights_only=True)
                                         else:
-                                            pddatagen = pd.DataFrame(xgen_plot[:,0:dimplot].to('cpu'), columns=range(1,1+dimplot))
+                                            x_0 = gen_sde.latent_sample(num_samples, sampler.dim) # init from prior
+                                            xs = rk4_stratonovich_sampler(gen_sde, x_0, num_steps_backward, lmbd=lmbd,\
+                                                                        keep_all_samples=True, 
+                                                                        include_t0=include_t0_reverse, 
+                                                                        norm_correction = MSGM) # sample
+                                            del x_0
+                                            if (save_results):
+                                                torch.save(xs, name_simu + ".pt")
+                                        xgen = xs[-1,:,:].to(device)
 
-                                        pddata = pd.concat([pddatatest.assign(samples="test"), pddatagen.assign(samples="gen.")])
+                                        if save_results and not justLoad:
+                                            np.save(name_simu + ".pt", xgen.clone().detach().cpu().numpy())
 
-                                        plot_kws={'alpha':0.1, "s": ssize}
-                                        scatter = sns.pairplot(pddata, kind='scatter', hue="samples", aspect=1, height=height_seaborn, corner=True,plot_kws=plot_kws)
-                                        handles = scatter._legend_data.values()
-                                        labels = scatter._legend_data.keys()
-                                        scatter.figure.legend(handles=handles, labels=labels, loc='upper right', markerscale=5*ssize )
-                                        scatter._legend.remove()
+                                        # Identify rows with NaN values
+                                        nan_mask = (torch.isnan(xgen) | (torch.abs(xgen) > 1e3 )).any(dim=1)
+                                        # Count rows with NaN values
+                                        nan_count = nan_mask.sum().item()
+                                        if nan_count > 0:
+                                            print(f"Number of rows with NaN or large value: {nan_count}")
+                                        # Remove rows with NaN values
+                                        xgen = xgen[~nan_mask,:]
+                                        del nan_mask
 
-                                        for i, row in enumerate(scatter.axes):
-                                            plot_ylim_row = plot_xlim * std_norm[i]* std_test[i]
-                                            for j, ax in enumerate(row):
-                                                plot_xlim_col = plot_xlim * std_norm[j]* std_test[j]
-                                                if ax is not None:
-                                                    if i == j:  # Diagonal
-                                                        ax.set_xlim((-plot_xlim_col,plot_xlim_col))
-                                                    if j < i:  # since corner=True, we only have lower triangle
-                                                        ax.set_xlim((-plot_xlim_col,plot_xlim_col))
-                                                        ax.set_ylim((-plot_ylim_row,plot_ylim_row))
-                                        plt.tight_layout()
-                                        time.sleep(0.5)
-                                        if plt_show:
-                                            plt.show(block=False)
-                                            plt.pause(1)
-                                        plt.tight_layout()
-                                        # plt.show()
-                                        time.sleep(0.5)
-                                        if plt_show:
-                                            plt.show(block=False)
-                                        name_fig = name_simu + "_multDim.png" 
-                                        plt.savefig(name_fig, dpi=dpi)
-                                        if plt_show:
-                                            plt.pause(1)
-                                        plt.close()
-                                        del pddatagen, pddata, scatter
 
-                                    if (denoising_plots) and (i_run == 0):
-                                        plot_selected_inds(xs, inds, True, False, lmbd, 
-                                                            include_t0=include_t0_reverse, 
-                                                            plt_show=plt_show, 
-                                                            val=val_hist) # plot
-                                        time.sleep(0.5)
-                                        if plt_show:
-                                            plt.show(block=False)
-                                        name_fig = name_simu + ".png" 
-                                        plt.savefig(name_fig)
-                                        if plt_show:
-                                            plt.pause(1)
-                                        plt.close()
-                                        plt.close('all')
+                                        # MMD
+                                        if not justLoadmmmd:
+                                            with torch.no_grad():
+                                                x_mmd1 = sampler.sample(xtest.shape[0]).to(device)
+                                                x_mmd2 = sampler.sample(xtest.shape[0]).to(device)
+                                                dist_train_to_test = compute_mmd(std_norm * x_mmd1,std_norm * xtest)
+                                                dist_test_to_test = compute_mmd(std_norm * x_mmd1,std_norm * xtest)
+                                                dist = compute_mmd(std_norm * xgen,std_norm * xtest)
+                                            mmd_ref[i_dims, i_Res, i_num_stepss_backward,i_iterations,i_run] = dist_train_to_test
+                                            if MSGM:
+                                                mmd_MSGM[i_dims, i_Res, i_num_stepss_backward,i_iterations,i_run] = dist
+                                            else:
+                                                mmd_SGM[i_dims, i_Res, i_num_stepss_backward,i_iterations,i_run] = dist
+                                            del dist
 
-                                    del xs, xgen
-                                    gc.collect()
+                                        if (scatter_plots) and (i_run == 0):
+                                            xgen_plot = std_norm * xgen
+                                            boolean_mask = (xgen_plot.abs() < (plot_xlim * std_norm * std_test)).all(axis=1)
+                                            print( str( (1 - boolean_mask.sum()/ len(boolean_mask)).item() * 100) + " % of samples outside plot limits")
+                                            xgen_plot = xgen_plot[boolean_mask,:]
+                                            
+                                            if (datatype == 'era5') and xtest.shape[1]>= 9:
+                                                pddatagen = pd.DataFrame(torch.cat( (xgen_plot[:,6:9],xgen_plot[:,0:3]),dim=1).to('cpu'), \
+                                                                        columns=columns \
+                                                                        )
+                                            else:
+                                                pddatagen = pd.DataFrame(xgen_plot[:,0:dimplot].to('cpu'), columns=range(1,1+dimplot))
 
-                ## Convergence plots (with MMD)
+                                            pddata = pd.concat([pddatatest.assign(samples="test"), pddatagen.assign(samples="gen.")])
 
-                # if justLoadmmmd and (not MSGM):
-                if justLoadmmmd:
-                    if not MSGM:
-                        print("filename = " + folder_results + "/" + name_simu_root + "_globalMMDfile_SGM_" + str(nruns_mmd) + "runs.pt")
-                        mmd_SGM = torch.load(folder_results + "/" + name_simu_root + "_globalMMDfile_SGM_" + str(nruns_mmd) + "runs.pt")
+                                            plot_kws={'alpha':0.1, "s": ssize}
+                                            scatter = sns.pairplot(pddata, kind='scatter', hue="samples", aspect=1, height=height_seaborn, corner=True,plot_kws=plot_kws)
+                                            handles = scatter._legend_data.values()
+                                            labels = scatter._legend_data.keys()
+                                            scatter.figure.legend(handles=handles, labels=labels, loc='upper right', markerscale=5*ssize )
+                                            scatter._legend.remove()
+
+                                            for i, row in enumerate(scatter.axes):
+                                                plot_ylim_row = plot_xlim * std_norm[i]* std_test[i]
+                                                for j, ax in enumerate(row):
+                                                    plot_xlim_col = plot_xlim * std_norm[j]* std_test[j]
+                                                    if ax is not None:
+                                                        if i == j:  # Diagonal
+                                                            ax.set_xlim((-plot_xlim_col,plot_xlim_col))
+                                                        if j < i:  # since corner=True, we only have lower triangle
+                                                            ax.set_xlim((-plot_xlim_col,plot_xlim_col))
+                                                            ax.set_ylim((-plot_ylim_row,plot_ylim_row))
+                                            plt.tight_layout()
+                                            time.sleep(0.5)
+                                            if plt_show:
+                                                plt.show(block=False)
+                                                plt.pause(1)
+                                            plt.tight_layout()
+                                            # plt.show()
+                                            time.sleep(0.5)
+                                            if plt_show:
+                                                plt.show(block=False)
+                                            name_fig = name_simu + "_multDim.png" 
+                                            plt.savefig(name_fig, dpi=dpi)
+                                            if plt_show:
+                                                plt.pause(1)
+                                            plt.close()
+                                            del pddatagen, pddata, scatter
+
+                                        if (denoising_plots) and (i_run == 0):
+                                            plot_selected_inds(xs, inds, True, False, lmbd, 
+                                                                include_t0=include_t0_reverse, 
+                                                                plt_show=plt_show, 
+                                                                val=val_hist) # plot
+                                            time.sleep(0.5)
+                                            if plt_show:
+                                                plt.show(block=False)
+                                            name_fig = name_simu + ".png" 
+                                            plt.savefig(name_fig)
+                                            if plt_show:
+                                                plt.pause(1)
+                                            plt.close()
+                                            plt.close('all')
+
+                                        del xs, xgen
+                                        gc.collect()
+
+                    ## Convergence plots (with MMD)
+
+                    # if justLoadmmmd and (not MSGM):
+                    if justLoadmmmd:
+                        if not MSGM:
+                            print("filename = " + folder_results + "/" + name_simu_root + "_globalMMDfile_SGM_" + str(nruns_mmd) + "runs.pt")
+                            mmd_SGM = torch.load(folder_results + "/" + name_simu_root + "_globalMMDfile_SGM_" + str(nruns_mmd) + "runs.pt")
+                        else:
+                            print("filename = " + folder_results + "/" + name_simu_root + "_globalMMDfile_MSGM_" + str(nruns_mmd) + "runs.pt")
+                            mmd_MSGM = torch.load(folder_results + "/" + name_simu_root + "_globalMMDfile_MSGM_" + str(nruns_mmd) + "runs.pt") 
+                            print("filename = " + folder_results + "/" + name_simu_root + "_globalMMDfile_ref_" + str(nruns_mmd) + "runs.pt")
+                            mmd_ref = torch.load(folder_results + "/" + name_simu_root + "_globalMMDfile_ref_" + str(nruns_mmd) + "runs.pt") 
                     else:
-                        print("filename = " + folder_results + "/" + name_simu_root + "_globalMMDfile_MSGM_" + str(nruns_mmd) + "runs.pt")
-                        mmd_MSGM = torch.load(folder_results + "/" + name_simu_root + "_globalMMDfile_MSGM_" + str(nruns_mmd) + "runs.pt") 
-                        print("filename = " + folder_results + "/" + name_simu_root + "_globalMMDfile_ref_" + str(nruns_mmd) + "runs.pt")
-                        mmd_ref = torch.load(folder_results + "/" + name_simu_root + "_globalMMDfile_ref_" + str(nruns_mmd) + "runs.pt") 
-                else:
-                    if not MSGM:
-                        torch.save(mmd_SGM, folder_results + "/" + name_simu_root + "_globalMMDfile_SGM_" + str(nruns_mmd) + "runs.pt")
-                    else:
-                        torch.save(mmd_MSGM, folder_results + "/" + name_simu_root + "_globalMMDfile_MSGM_" + str(nruns_mmd) + "runs.pt")
-                        torch.save(mmd_ref, folder_results + "/" + name_simu_root + "_globalMMDfile_ref_" + str(nruns_mmd) + "runs.pt")
+                        if not MSGM:
+                            torch.save(mmd_SGM, folder_results + "/" + name_simu_root + "_globalMMDfile_SGM_" + str(nruns_mmd) + "runs.pt")
+                        else:
+                            torch.save(mmd_MSGM, folder_results + "/" + name_simu_root + "_globalMMDfile_MSGM_" + str(nruns_mmd) + "runs.pt")
+                            torch.save(mmd_ref, folder_results + "/" + name_simu_root + "_globalMMDfile_ref_" + str(nruns_mmd) + "runs.pt")
 
 
-            fig = plt.figure(figsize=(5,3))
-            
-            # Take square root and evaluate mean and quantiles
-            mmmd_SGM = mmd_SGM.sqrt().mean(dim=3)
-            q10mmd_SGM = mmd_SGM.sqrt().quantile(0.1,dim=3)
-            q90mmd_SGM = mmd_SGM.sqrt().quantile(0.9,dim=3)
-            mmmd_MSGM = mmd_MSGM.sqrt().mean(dim=3)
-            q10mmd_MSGM = mmd_MSGM.sqrt().quantile(0.1,dim=3)
-            q90mmd_MSGM = mmd_MSGM.sqrt().quantile(0.9,dim=3)
-            mmmd_ref = mmd_ref.sqrt().mean(dim=3)
-            q10mmd_ref = mmd_ref.sqrt().quantile(0.1,dim=3)
-            q90mmd_ref = mmd_ref.sqrt().quantile(0.9,dim=3)
+                fig = plt.figure(figsize=(5,3))
+                
+                # Take square root and evaluate mean and quantiles
+                mmmd_SGM = mmd_SGM.sqrt().mean(dim=4)
+                q10mmd_SGM = mmd_SGM.sqrt().quantile(0.1,dim=4)
+                q90mmd_SGM = mmd_SGM.sqrt().quantile(0.9,dim=4)
+                mmmd_MSGM = mmd_MSGM.sqrt().mean(dim=4)
+                q10mmd_MSGM = mmd_MSGM.sqrt().quantile(0.1,dim=4)
+                q90mmd_MSGM = mmd_MSGM.sqrt().quantile(0.9,dim=4)
+                mmmd_ref = mmd_ref.sqrt().mean(dim=4)
+                q10mmd_ref = mmd_ref.sqrt().quantile(0.1,dim=4)
+                q90mmd_ref = mmd_ref.sqrt().quantile(0.9,dim=4)
 
-            alpha_plot = 0.2
-            i_num_stepss_backward = range(len(num_stepss_backward))
-            plt.loglog(num_stepss_backward,mmmd_SGM[i_dims,i_Res,i_num_stepss_backward].flatten(),label='SGM')
-            plt.fill_between(num_stepss_backward, q10mmd_SGM[i_dims,i_Res,i_num_stepss_backward].flatten(), q90mmd_SGM[i_dims,i_Res,i_num_stepss_backward].flatten(),
-                alpha=alpha_plot)
-            plt.loglog(num_stepss_backward,mmmd_MSGM[i_dims,i_Res,i_num_stepss_backward].flatten(),label='MSGM')
-            plt.fill_between(num_stepss_backward, q10mmd_MSGM[i_dims,i_Res,i_num_stepss_backward].flatten(), q90mmd_MSGM[i_dims,i_Res,i_num_stepss_backward].flatten(),
-                alpha=alpha_plot)
-            plt.loglog(num_stepss_backward,mmmd_ref[i_dims,i_Res,i_num_stepss_backward].flatten(),label='train data')
-            plt.fill_between(num_stepss_backward, q10mmd_ref[i_dims,i_Res,i_num_stepss_backward].flatten(), q90mmd_ref[i_dims,i_Res,i_num_stepss_backward].flatten(),
-                alpha=alpha_plot)
-            plt.legend()
-            plt.ylabel('MMD')
-            plt.xlabel('nb timesteps in backward SDE')
-            xx = num_stepss_backward
-            labels = [f'$2^{{{int(np.log2(idx))}}}$' for idx in xx]
-            ax = plt.gca()
-            ax.set_xticks(xx)
-            ax.xaxis.set_major_locator(FixedLocator(xx))
-            ax.xaxis.set_major_formatter(FixedFormatter(labels))
-            plt.tight_layout()
-            if plt_show:
-                plt.show(block=False)
-            name_fig = folder_results + "/" + name_simu_root + "_MMD_wBckWardSteps_" + str(nruns_mmd) + "runs.png" 
-            plt.savefig(name_fig)
-            if plt_show:
-                plt.pause(1)
-            plt.close(fig)
-            plt.close()
-            del fig
-
-        if mmd_SGM.shape[0]>1:
-            range_dims = range(len(dims))
-            fig = plt.figure(figsize=(5,3))
-            plt.loglog(dims,mmmd_SGM[range_dims,i_Res,0].flatten(),label='SGM')
-            plt.fill_between(dims, q10mmd_SGM[range_dims,i_Res,0].flatten(), q90mmd_SGM[range_dims,i_Res,0].flatten(),
-                alpha=alpha_plot)
-            plt.loglog(dims,mmmd_MSGM[range_dims,i_Res,0].flatten(),label='MSGM')
-            plt.fill_between(dims, q10mmd_MSGM[range_dims,i_Res,0].flatten(), q90mmd_MSGM[range_dims,i_Res,0].flatten(),
-                alpha=alpha_plot)
-            plt.loglog(dims,mmmd_ref[range_dims,i_Res,0].flatten(),label='train data')
-            plt.fill_between(dims, q10mmd_ref[range_dims,i_Res,0].flatten(), q90mmd_ref[range_dims,i_Res,0].flatten(),
-                alpha=alpha_plot)
-            plt.legend()
-            plt.ylabel('MMD')
-            plt.xlabel('dimension')
-            if datatype == 'era5':
-                plt.xticks(ticks=num_stepss_backward, labels=labels )
-            else:
-                xx = dims
+                alpha_plot = 0.2
+                range_num_stepss_backward = range(len(num_stepss_backward))
+                plt.loglog(num_stepss_backward,mmmd_SGM[i_dims,i_Res,range_num_stepss_backward,0].flatten(),label='SGM')
+                plt.fill_between(num_stepss_backward, q10mmd_SGM[i_dims,i_Res,range_num_stepss_backward,0].flatten(), \
+                                                        q90mmd_SGM[i_dims,i_Res,range_num_stepss_backward,0].flatten(),
+                    alpha=alpha_plot)
+                plt.loglog(num_stepss_backward,mmmd_MSGM[i_dims,i_Res,range_num_stepss_backward,0].flatten(),label='MSGM')
+                plt.fill_between(num_stepss_backward, q10mmd_MSGM[i_dims,i_Res,range_num_stepss_backward,0].flatten(), \
+                                                        q90mmd_MSGM[i_dims,i_Res,range_num_stepss_backward,0].flatten(),
+                    alpha=alpha_plot)
+                plt.loglog(num_stepss_backward,mmmd_ref[i_dims,i_Res,range_num_stepss_backward,0].flatten(),label='train data')
+                plt.fill_between(num_stepss_backward, q10mmd_ref[i_dims,i_Res,range_num_stepss_backward,0].flatten(), 
+                                                        q90mmd_ref[i_dims,i_Res,range_num_stepss_backward,0].flatten(),
+                    alpha=alpha_plot)
+                plt.legend()
+                plt.ylabel('MMD')
+                plt.xlabel('nb timesteps in backward SDE')
+                xx = num_stepss_backward
                 labels = [f'$2^{{{int(np.log2(idx))}}}$' for idx in xx]
                 ax = plt.gca()
                 ax.set_xticks(xx)
                 ax.xaxis.set_major_locator(FixedLocator(xx))
                 ax.xaxis.set_major_formatter(FixedFormatter(labels))
-            plt.tight_layout()
-            if plt_show:
-                plt.show(block=False)
-            name_fig = folder_results + "/" + name_simu_root + "_MMD_wDim_" + str(nruns_mmd) + "runs.png" 
-            plt.savefig(name_fig)
-            if plt_show:
-                plt.pause(1)
-            plt.close(fig)
-            plt.close()
-            del fig
+                plt.tight_layout()
+                if plt_show:
+                    plt.show(block=False)
+                name_fig = folder_results + "/" + name_simu_root + "_MMD_wBckWardSteps_" + str(nruns_mmd) + "runs.png" 
+                plt.savefig(name_fig)
+                if plt_show:
+                    plt.pause(1)
+                plt.close(fig)
+                plt.close()
+                del fig
+
+
+                if mmd_SGM.shape[3]>1:
+                    range_iterations = range(len(iterationss))
+                    fig = plt.figure(figsize=(5,3))
+                    plt.loglog(iterationss,mmmd_SGM[i_dims,i_Res,0,range_iterations].flatten(),label='SGM')
+                    plt.fill_between(iterationss, q10mmd_SGM[i_dims,i_Res,0,range_iterations].flatten(), q90mmd_SGM[i_dims,i_Res,0,range_iterations].flatten(),
+                        alpha=alpha_plot)
+                    plt.loglog(iterationss,mmmd_MSGM[i_dims,i_Res,0,range_iterations].flatten(),label='MSGM')
+                    plt.fill_between(iterationss, q10mmd_MSGM[i_dims,i_Res,0,range_iterations].flatten(), q90mmd_MSGM[i_dims,i_Res,0,range_iterations].flatten(),
+                        alpha=alpha_plot)
+                    plt.loglog(iterationss,mmmd_ref[i_dims,i_Res,0,range_iterations].flatten(),label='train data')
+                    plt.fill_between(iterationss, q10mmd_ref[i_dims,i_Res,0,range_iterations].flatten(), q90mmd_ref[i_dims,i_Res,0,range_iterations].flatten(),
+                        alpha=alpha_plot)
+                    plt.legend()
+                    plt.ylabel('MMD')
+                    plt.xlabel('effective number of iterations')
+                    xx = iterationss
+                    labels = [f'$2^{{{int(np.log2(idx))}}}$' for idx in xx]
+                    ax = plt.gca()
+                    ax.set_xticks(xx)
+                    ax.xaxis.set_major_locator(FixedLocator(xx))
+                    ax.xaxis.set_major_formatter(FixedFormatter(labels))
+                    plt.tight_layout()
+                    if plt_show:
+                        plt.show(block=False)
+                    name_fig = folder_results + "/" + name_simu_root + "_MMD_wIte_" + str(nruns_mmd) + "runs.png" 
+                    plt.savefig(name_fig)
+                    if plt_show:
+                        plt.pause(1)
+                    plt.close(fig)
+                    plt.close()
+                    del fig
+
+            if mmd_SGM.shape[0]>1:
+                range_dims = range(len(dims))
+                fig = plt.figure(figsize=(5,3))
+                plt.loglog(dims,mmmd_SGM[range_dims,i_Res,0,0].flatten(),label='SGM')
+                plt.fill_between(dims, q10mmd_SGM[range_dims,i_Res,0,0].flatten(), q90mmd_SGM[range_dims,i_Res,0,0].flatten(),
+                    alpha=alpha_plot)
+                plt.loglog(dims,mmmd_MSGM[range_dims,i_Res,0,0].flatten(),label='MSGM')
+                plt.fill_between(dims, q10mmd_MSGM[range_dims,i_Res,0,0].flatten(), q90mmd_MSGM[range_dims,i_Res,0,0].flatten(),
+                    alpha=alpha_plot)
+                plt.loglog(dims,mmmd_ref[range_dims,i_Res,0,0].flatten(),label='train data')
+                plt.fill_between(dims, q10mmd_ref[range_dims,i_Res,0,0].flatten(), q90mmd_ref[range_dims,i_Res,0,0].flatten(),
+                    alpha=alpha_plot)
+                plt.legend()
+                plt.ylabel('MMD')
+                plt.xlabel('dimension')
+                if datatype == 'era5':
+                    plt.xticks(ticks=num_stepss_backward, labels=labels )
+                else:
+                    xx = dims
+                    labels = [f'$2^{{{int(np.log2(idx))}}}$' for idx in xx]
+                    ax = plt.gca()
+                    ax.set_xticks(xx)
+                    ax.xaxis.set_major_locator(FixedLocator(xx))
+                    ax.xaxis.set_major_formatter(FixedFormatter(labels))
+                plt.tight_layout()
+                if plt_show:
+                    plt.show(block=False)
+                name_fig = folder_results + "/" + name_simu_root + "_MMD_wDim_" + str(nruns_mmd) + "runs.png" 
+                plt.savefig(name_fig)
+                if plt_show:
+                    plt.pause(1)
+                plt.close(fig)
+                plt.close()
+                del fig
