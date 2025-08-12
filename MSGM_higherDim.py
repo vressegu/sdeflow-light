@@ -43,11 +43,6 @@ T0 = 1
 
 MSGMs = [0,1]
 
-fair_comparison = False # comparaison SGM vs MSGM with same RAM usage and same learning time
-if fair_comparison:
-    ssm_intT_ref = True
-else:   
-    ssm_intT_ref = False
 
 num_steps_forward = 100
 beta_min=1
