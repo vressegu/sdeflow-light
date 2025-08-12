@@ -617,11 +617,11 @@ if __name__ == '__main__':
                                         xgen_plot = xgen_plot[boolean_mask,:]
                                         
                                         if (datatype == 'era5') and xtest.shape[1]>= 9:
-                                            pddatagen = pd.DataFrame(torch.cat( ((std_norm * xgen)[:,6:9],(std_norm * xgen)[:,0:3]),dim=1).to('cpu'), \
-                                                                     columns=columns \
+                                            pddatagen = pd.DataFrame(torch.cat( (xgen_plot[:,6:9],xgen_plot[:,0:3]),dim=1).to('cpu'), \
+                                                                    columns=columns \
                                                                     )
                                         else:
-                                            pddatagen = pd.DataFrame((std_norm * xgen)[:,0:dimplot].to('cpu'), columns=range(1,1+dimplot))
+                                            pddatagen = pd.DataFrame(xgen_plot[:,0:dimplot].to('cpu'), columns=range(1,1+dimplot))
 
                                         pddata = pd.concat([pddatatest.assign(samples="test"), pddatagen.assign(samples="gen.")])
 
