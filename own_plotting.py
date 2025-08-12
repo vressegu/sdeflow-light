@@ -17,10 +17,6 @@ import matplotlib.pyplot as plt
 ### 4.1. Define plotting tools
 @torch.no_grad()
 def get_2d_histogram_plot(data, val=3, num=64, vmax=10, use_grid=False, origin='lower'):
-    xmin = -val
-    xmax = val
-    ymin = -val
-    ymax = val
 
     # get data
     x = data[:, 0]
@@ -28,6 +24,12 @@ def get_2d_histogram_plot(data, val=3, num=64, vmax=10, use_grid=False, origin='
         y = data[:, 1]
     else:
         y = data[:, 2]
+        val = val/2
+
+    xmin = -val
+    xmax = val
+    ymin = -val
+    ymax = val
 
     # get histogram
     heatmap, xedges, yedges = np.histogram2d(x, y, range=[[xmin, xmax], [ymin, ymax]], bins=num)
@@ -63,13 +65,13 @@ def get_2d_histogram_plot(data, val=3, num=64, vmax=10, use_grid=False, origin='
     return image
 
 @torch.no_grad()
-def plot_selected_inds(xs, inds, use_xticks=True, use_yticks=True, lmbd = 0.,include_t0=False, backward=True, plt_show=True):
+def plot_selected_inds(xs, inds, use_xticks=True, use_yticks=True, lmbd = 0.,include_t0=False, backward=True, plt_show=True, val=3):
     imgs_ = []
     l_inds = len(inds)
     if backward:
         inds = reversed(inds)
     for ind in inds:
-        imgs_ += [get_2d_histogram_plot(xs[ind].to('cpu').numpy())]
+        imgs_ += [get_2d_histogram_plot(xs[ind].to('cpu').numpy(), val)]
     img_ = np.concatenate(imgs_, axis=1)
 
     height, width, _ = img_.shape

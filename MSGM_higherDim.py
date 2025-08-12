@@ -130,6 +130,7 @@ height_seaborn = 1.2
 ssize = height_seaborn
 dpi=200
 dimplot_max = 8
+val_hist = 3
 
 # Load results 
 justLoad = False
@@ -263,6 +264,10 @@ if __name__ == '__main__':
                         case 'cauchy':
                             sampler = Cauchy(dim, correlation = False)
                             normalized_data = False
+                            if MSGM:
+                                val_hist = 0.3
+                            else:
+                                val_hist = 3.0
                         case 'POD':
                             sampler = PODmodes(Re,dim, normalized=normalized_data)
                         case 'lorenz':
@@ -278,6 +283,7 @@ if __name__ == '__main__':
                             normalized_data = False
                             columns=["$u$, Berlin", "$v$, Berlin", "$\omega$, Berlin",\
                                      "$u$, Paris", "$v$, Paris", "$\omega$, Paris"]
+                            val_hist = 10.0
                         case _:
                             raise ValueError("Unknown datatype: {}".format(datatype))
 
@@ -403,7 +409,8 @@ if __name__ == '__main__':
                                 plot_selected_inds(xs_forward, inds_forward, \
                                     use_xticks= True, use_yticks=False, lmbd = 0., \
                                     include_t0=True, backward=False,
-                                    plt_show=plt_show) # plot
+                                    plt_show=plt_show,
+                                    val=val_hist) # plot
                                 time.sleep(0.5)
                                 if plt_show:
                                     plt.show(block=False)
@@ -584,7 +591,10 @@ if __name__ == '__main__':
                                         del pddatagen, pddata, scatter
 
                                     if (denoising_plots) and (i_run == 0):
-                                        plot_selected_inds(xs, inds, True, False, lmbd, include_t0=include_t0_reverse, plt_show=plt_show) # plot
+                                        plot_selected_inds(xs, inds, True, False, lmbd, 
+                                                            include_t0=include_t0_reverse, 
+                                                            plt_show=plt_show, 
+                                                            val=val_hist) # plot
                                         time.sleep(0.5)
                                         if plt_show:
                                             plt.show(block=False)
