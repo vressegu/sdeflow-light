@@ -196,6 +196,20 @@ def evaluate(gen_sde, x_test):
     gen_sde.train()
     return test_elbo.mean(), test_elbo.std() / num_samples_ ** 0.5
 
+
+def m_name_simu_root(sampler_name, gen_sde_name_SDE, iterations_ref, batch_size, num_steps_forward, beta_min, beta_max, ssm_intT, fair_comparison):
+    name_simu_root = sampler_name + "/" \
+        + gen_sde_name_SDE + "_" + str(iterations_ref) + "iteRefLearning_" \
+        + str(batch_size) + "batchSize_" \
+        + str(num_steps_forward) + "stepsForw_" \
+        + str(beta_min) + "beta_min" \
+        + str(beta_max) + "beta_max" 
+    if ssm_intT:
+        name_simu_root += "_intLoss"
+    if fair_comparison:
+        name_simu_root += "_fairComp"
+    return name_simu_root
+
 # init device
 if torch.cuda.is_available():
     device = 'cuda'
@@ -376,37 +390,9 @@ if __name__ == '__main__':
                         print("batch_size = " + str(batch_size) ) 
                         print("ssm_intT = " + str(ssm_intT) )  
 
-                        folder_results = "results"
-                        name_simu_root = sampler.name + "_" \
-                            + gen_sde.base_sde.name_SDE + "_" + str(iterations) + "iteLearning_" \
-                            + str(batch_size) + "batchSize_" \
-                            + str(num_steps_forward) + "stepsForw_" \
-                            + str(beta_min) + "beta_min" \
-                            + str(beta_max) + "beta_max" 
-                        if ssm_intT:
-                            name_simu_root += "_intLoss"
-                        
-                        # Forward SDE
-                        with torch.no_grad():
-                            print('integrate forward SDE')
-                            for_sde = forward_SDE(inf_sde, T)
-                            xs_forward = rk4_stratonovich_sampler(for_sde, xtest.clone(), num_steps_forward,  \
-                                                                lmbd=0., keep_all_samples=True, \
-                                                                include_t0=True, norm_correction = MSGM) # sample
-                            xgen_forward = xs_forward[-1,:,:].to(device)
-                            cov_xtest = torch.cov(xtest.T)
-                            cov_xgen_forward = torch.cov(xgen_forward.T)
-                            xgen_forward_var = torch.var(xgen_forward.T,dim=1)
-                            xgen_forward_var_mean = xgen_forward_var.mean()
-
-                            xtest_var = torch.var(xtest.T,dim=1)
-                            xtest_var_mean = xtest_var.mean()
-                            cov_xgen_forward_converged = xtest_var_mean * torch.eye(sampler.dim).to(device)
-                            # since tr(cov)=E||X||^2 is theoretically conserved
-                            d_cov_xtest = torch.norm(cov_xtest - cov_xgen_forward_converged)/torch.norm(cov_xgen_forward_converged)
-                            d_cov_xgen_forward = torch.norm(cov_xgen_forward - cov_xgen_forward_converged)/torch.norm(cov_xgen_forward_converged)
-                            print("dist cov_xtest to  cov_xgen_forward_converged = " + str(d_cov_xtest.item()))
-                            print("dist cov_xgen_forward  to  cov_xgen_forward_converged = " + str(d_cov_xgen_forward.item()))
+                        name_simu_root = m_name_simu_root(sampler.name, gen_sde.base_sde.name_SDE, \
+                                                            iterations_ref, batch_size, num_steps_forward, \
+                                                            beta_min, beta_max, ssm_intT, fair_comparison)
 
                             # indices to visualize
                             fig_step = int(num_steps_forward/10) #100
