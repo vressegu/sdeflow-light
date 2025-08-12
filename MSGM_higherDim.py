@@ -17,6 +17,7 @@ import os
 import pandas as pd
 import matplotlib
 import matplotlib.pyplot as plt
+from matplotlib.ticker import FixedLocator, FixedFormatter
 from sklearn.datasets import make_swiss_roll
 from netCDF4 import Dataset
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -724,11 +725,16 @@ if __name__ == '__main__':
             plt.legend()
             plt.ylabel('MMD')
             plt.xlabel('nb timesteps in backward SDE')
-            plt.xticks(num_stepss_backward)
+            xx = num_stepss_backward
+            labels = [f'$2^{{{int(np.log2(idx))}}}$' for idx in xx]
+            ax = plt.gca()
+            ax.set_xticks(xx)
+            ax.xaxis.set_major_locator(FixedLocator(xx))
+            ax.xaxis.set_major_formatter(FixedFormatter(labels))
             plt.tight_layout()
             if plt_show:
                 plt.show(block=False)
-            name_fig = folder_results + "/" + name_simu_root + "_MMD_" + str(nruns_mmd) + "runs.png" 
+            name_fig = folder_results + "/" + name_simu_root + "_MMD_wBckWardSteps_" + str(nruns_mmd) + "runs.png" 
             plt.savefig(name_fig)
             if plt_show:
                 plt.pause(1)
@@ -751,11 +757,19 @@ if __name__ == '__main__':
             plt.legend()
             plt.ylabel('MMD')
             plt.xlabel('dimension')
-            plt.xticks(dims)
+            if datatype == 'era5':
+                plt.xticks(ticks=num_stepss_backward, labels=labels )
+            else:
+                xx = dims
+                labels = [f'$2^{{{int(np.log2(idx))}}}$' for idx in xx]
+                ax = plt.gca()
+                ax.set_xticks(xx)
+                ax.xaxis.set_major_locator(FixedLocator(xx))
+                ax.xaxis.set_major_formatter(FixedFormatter(labels))
             plt.tight_layout()
             if plt_show:
                 plt.show(block=False)
-            name_fig = folder_results + "/" + name_simu_root + "_MMD_withDim_" + str(nruns_mmd) + "runs.png" 
+            name_fig = folder_results + "/" + name_simu_root + "_MMD_wDim_" + str(nruns_mmd) + "runs.png" 
             plt.savefig(name_fig)
             if plt_show:
                 plt.pause(1)
