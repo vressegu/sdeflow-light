@@ -317,6 +317,17 @@ if __name__ == '__main__':
 
                         plot_kws={"s": ssize}
                         scatter = sns.pairplot(pddatatest, aspect=1, height=height_seaborn, corner=True,plot_kws=plot_kws)
+                        for i, row in enumerate(scatter.axes):
+                            plot_ylim_row = plot_xlim * std_norm[i]* std_test[i]
+                            for j, ax in enumerate(row):
+                                plot_xlim_col = plot_xlim * std_norm[j]* std_test[j]
+                                if ax is not None:
+                                    if i == j:  # Diagonal
+                                        ax.set_xlim((-plot_xlim_col,plot_xlim_col))
+                                    if j < i:  # since corner=True, we only have lower triangle
+                                        ax.set_xlim((-plot_xlim_col,plot_xlim_col))
+                                        ax.set_ylim((-plot_ylim_row,plot_ylim_row))
+
                         plt.tight_layout()
                         if plt_show:
                             plt.show(block=False)   
@@ -337,6 +348,16 @@ if __name__ == '__main__':
 
                         plot_kws={"s": ssize}
                         scatter = sns.pairplot(pddatatrain, aspect=1, height=height_seaborn, corner=True,plot_kws=plot_kws)
+                        for i, row in enumerate(scatter.axes):
+                            plot_ylim_row = plot_xlim * std_norm[i]* std_test[i]
+                            for j, ax in enumerate(row):
+                                plot_xlim_col = plot_xlim * std_norm[j]* std_test[j]
+                                if ax is not None:
+                                    if i == j:  # Diagonal
+                                        ax.set_xlim((-plot_xlim_col,plot_xlim_col))
+                                    if j < i:  # since corner=True, we only have lower triangle
+                                        ax.set_xlim((-plot_xlim_col,plot_xlim_col))
+                                        ax.set_ylim((-plot_ylim_row,plot_ylim_row))
 
                         plt.tight_layout()
                         if plt_show:
