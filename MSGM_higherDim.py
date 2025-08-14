@@ -641,25 +641,88 @@ if __name__ == '__main__':
 
                                             pddata = pd.concat([pddatatest.assign(samples="test"), pddatagen.assign(samples="gen.")])
 
-                                            plot_kws={'alpha':0.1, "s": ssize}
-                                            scatter = sns.pairplot(pddata, kind='scatter', hue="samples", aspect=1, height=height_seaborn, corner=True,plot_kws=plot_kws)
-                                            handles = scatter._legend_data.values()
-                                            labels = scatter._legend_data.keys()
-                                            scatter.figure.legend(handles=handles, labels=labels, loc='upper right', markerscale=5*ssize )
-                                            scatter._legend.remove()
+                                            plot_kws = {'alpha': 0.1, "s": ssize, "edgecolor": "none", "rasterized": True}
+                                            palette = {"test": sns.color_palette()[0], "gen.": sns.color_palette()[1]}
+                                            g = sns.PairGrid(pddata, hue="samples",
+                                                            corner=True, height=height_seaborn, aspect=1,
+                                                            palette=palette, diag_sharey=False)
 
-                                            for i, row in enumerate(scatter.axes):
+                                            # lower triangle: scatter like before
+                                            g.map_lower(sns.scatterplot, **plot_kws)
+
+                                            def diag_plot(x, color=None, label=None, **kws):
+                                                ax = plt.gca()
+
+                                                if label == "test":
+                                                    # compute peak density from TEST values only (NumPy, not torch)
+                                                    x_np = np.asarray(x, dtype=np.float64)
+                                                    x_np = x_np[np.isfinite(x_np)]
+                                                    counts, _ = np.histogram(x_np, bins=80, density=True)
+                                                    ymax = float(counts.max()) if counts.size else 0.0
+
+                                                    # draw the test histogram
+                                                    sns.histplot(
+                                                        x=x, bins=80, stat="density",
+                                                        element="step", fill=True, alpha=0.25,
+                                                        color=palette["test"], **kws
+                                                    )
+
+                                                    # set Y limit for this diagonal axis only
+                                                    if ymax > 0:
+                                                        ax.set_ylim(0, 1.05 * ymax)
+
+                                                elif label == "gen.":
+                                                    # draw the gen KDE — it will use the same y-scale set by the "test" pass
+                                                    sns.kdeplot(x=x, color=palette["gen."], lw=1.5, **kws)
+
+                                            g.map_diag(diag_plot)
+
+                                            # legend like before
+                                            handles = [plt.Line2D([], [], marker='o', linestyle='',
+                                                                # color=palette[k], markersize=8, alpha=0.6) for k in ["test", "gen."]]
+                                                                color=palette[k], markersize=ssize, alpha=0.6) for k in ["test", "gen."]]
+                                            labels = ["test", "gen."]
+                                            g.figure.legend(handles=handles, labels=labels, loc='upper right', markerscale=ssize)
+
+                                            # --- Pass 1: lower triangle only ---
+                                            for i, row in enumerate(g.axes):
                                                 plot_ylim_row = plot_xlim * std_norm[i]* std_test_plot[i]
                                                 for j, ax in enumerate(row):
+                                                    if ax is None:
+                                                        continue
                                                     plot_xlim_col = plot_xlim * std_norm[j]* std_test_plot[j]
-                                                    if ax is not None:
-                                                        if i == j:  # Diagonal
-                                                            ax.set_xlim((-plot_xlim_col,plot_xlim_col))
-                                                        if j < i:  # since corner=True, we only have lower triangle
-                                                            ax.set_xlim((-plot_xlim_col,plot_xlim_col))
-                                                            ax.set_ylim((-plot_ylim_row,plot_ylim_row))
+                                                    if j < i:  # lower triangle
+                                                        ax.set_xlim((-plot_xlim_col, plot_xlim_col))
+                                                        ax.set_ylim((-plot_ylim_row,  plot_ylim_row))
+
+                                            # --- Pass 2: diagonals only ---
+                                            for i in range(len(g.diag_vars)):
+                                                ax = g.axes[i, i]
+                                                if ax is None:
+                                                    continue
+                                                var = g.diag_vars[i]
+                                                plot_xlim_col = plot_xlim * std_norm[i] * std_test_plot[i]
+                                                x_min, x_max = -plot_xlim_col, plot_xlim_col
+                                                ax.set_xlim((x_min, x_max))
+                                                ax.set_ylabel("density")
+
+                                            for i, row in enumerate(g.axes):
+                                                for j, ax in enumerate(row):
+                                                    if ax is None:
+                                                        continue
+                                                    # reduce the number of ticks
+                                                    ax.xaxis.set_major_locator(mticker.MaxNLocator(nbins=4))  # max 4 x-ticks
+                                                    ax.yaxis.set_major_locator(mticker.MaxNLocator(nbins=4))  # max 4 y-ticks
+                                                    # remove the "0.0" label but keep the tick itself (gridlines if any)
+                                                    def fmt_tick(val, pos):
+                                                        # if not log_scale_pdf and abs(val) < 1e-8:   # close to zero
+                                                        if abs(val) < 1e-8:   # close to zero
+                                                            return ""         # empty label
+                                                        return f"{val:g}"     # compact formatting
+                                                    ax.xaxis.set_major_formatter(mticker.FuncFormatter(fmt_tick))
+                                                    ax.yaxis.set_major_formatter(mticker.FuncFormatter(fmt_tick))
+
                                             plt.tight_layout()
-                                            time.sleep(0.5)
                                             if plt_show:
                                                 plt.show(block=False)
                                                 plt.pause(1)
@@ -673,7 +736,7 @@ if __name__ == '__main__':
                                             if plt_show:
                                                 plt.pause(1)
                                             plt.close()
-                                            del pddatagen, pddata, scatter
+                                            del pddatagen, pddata, g
 
                                         if (denoising_plots) and (i_run == 0):
                                             plot_selected_inds(xs, inds, True, False, lmbd, 
