@@ -295,12 +295,16 @@ if __name__ == '__main__':
                             std_norm = sampler.get_std()
                         else:
                             std_norm = torch.ones((xtest.shape[1]))
+                        if (datatype == 'cauchy') :
+                            std_test_plot = torch.ones_like(std_test)
+                        else:
+                            std_test_plot = std_test
 
                         plt.close('all')
                         dimplot = np.min([dimplot_max,xtest.shape[1]])
 
                         xtest_plot = std_norm * xtest
-                        boolean_mask = (xtest_plot.abs() < (plot_xlim * std_norm * std_test)).all(axis=1)
+                        boolean_mask = (xtest_plot.abs() < (plot_xlim * std_norm * std_test_plot)).all(axis=1)
                         print( str( (1 - boolean_mask.sum()/ len(boolean_mask)).item() * 100) + " % of samples outside plot limits")
                         xtest_plot = xtest_plot[boolean_mask,:]
 
@@ -316,9 +320,9 @@ if __name__ == '__main__':
                         plot_kws={"s": ssize}
                         scatter = sns.pairplot(pddatatest, aspect=1, height=height_seaborn, corner=True,plot_kws=plot_kws)
                         for i, row in enumerate(scatter.axes):
-                            plot_ylim_row = plot_xlim * std_norm[i]* std_test[i]
+                            plot_ylim_row = plot_xlim * std_norm[i]* std_test_plot[i]
                             for j, ax in enumerate(row):
-                                plot_xlim_col = plot_xlim * std_norm[j]* std_test[j]
+                                plot_xlim_col = plot_xlim * std_norm[j]* std_test_plot[j]
                                 if ax is not None:
                                     if i == j:  # Diagonal
                                         ax.set_xlim((-plot_xlim_col,plot_xlim_col))
@@ -336,7 +340,7 @@ if __name__ == '__main__':
                         plt.close('all')
 
                         xtrain_plot = std_norm * sampler.sample(num_samples_init).to('cpu')
-                        boolean_mask = (xtrain_plot.abs() < (plot_xlim * std_norm * std_test)).all(axis=1)
+                        boolean_mask = (xtrain_plot.abs() < (plot_xlim * std_norm * std_test_plot)).all(axis=1)
                         print( str( (1 - boolean_mask.sum()/ len(boolean_mask)).item() * 100) + " % of samples outside plot limits")
                         xtrain_plot = xtrain_plot[boolean_mask,:]
                         if (datatype == 'era5') and xtest.shape[1]>= 9:
@@ -350,9 +354,9 @@ if __name__ == '__main__':
                         plot_kws={"s": ssize}
                         scatter = sns.pairplot(pddatatrain, aspect=1, height=height_seaborn, corner=True,plot_kws=plot_kws)
                         for i, row in enumerate(scatter.axes):
-                            plot_ylim_row = plot_xlim * std_norm[i]* std_test[i]
+                            plot_ylim_row = plot_xlim * std_norm[i]* std_test_plot[i]
                             for j, ax in enumerate(row):
-                                plot_xlim_col = plot_xlim * std_norm[j]* std_test[j]
+                                plot_xlim_col = plot_xlim * std_norm[j]* std_test_plot[j]
                                 if ax is not None:
                                     if i == j:  # Diagonal
                                         ax.set_xlim((-plot_xlim_col,plot_xlim_col))
@@ -618,7 +622,7 @@ if __name__ == '__main__':
 
                                         if (scatter_plots) and (i_run == 0):
                                             xgen_plot = std_norm * xgen
-                                            boolean_mask = (xgen_plot.abs() < (plot_xlim * std_norm * std_test)).all(axis=1)
+                                            boolean_mask = (xgen_plot.abs() < (plot_xlim * std_norm * std_test_plot)).all(axis=1)
                                             print( str( (1 - boolean_mask.sum()/ len(boolean_mask)).item() * 100) + " % of samples outside plot limits")
                                             xgen_plot = xgen_plot[boolean_mask,:]
                                             
@@ -639,9 +643,9 @@ if __name__ == '__main__':
                                             scatter._legend.remove()
 
                                             for i, row in enumerate(scatter.axes):
-                                                plot_ylim_row = plot_xlim * std_norm[i]* std_test[i]
+                                                plot_ylim_row = plot_xlim * std_norm[i]* std_test_plot[i]
                                                 for j, ax in enumerate(row):
-                                                    plot_xlim_col = plot_xlim * std_norm[j]* std_test[j]
+                                                    plot_xlim_col = plot_xlim * std_norm[j]* std_test_plot[j]
                                                     if ax is not None:
                                                         if i == j:  # Diagonal
                                                             ax.set_xlim((-plot_xlim_col,plot_xlim_col))
