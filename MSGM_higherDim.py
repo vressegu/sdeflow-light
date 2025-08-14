@@ -125,7 +125,7 @@ height_seaborn = 1.2
 ssize = height_seaborn
 dpi=200
 dimplot_max = 8
-val_hist = 3
+val_hist = plot_xlim
 crop_data_plot = False
 
 # Load results 
@@ -261,6 +261,7 @@ if __name__ == '__main__':
                             sampler = Cauchy(dim, correlation = False)
                             normalized_data = False
                             crop_data_plot = True
+                            plot_xlim = 0.1
                             if MSGM:
                                 val_hist = 0.3
                             else:
