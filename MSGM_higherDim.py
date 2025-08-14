@@ -126,6 +126,7 @@ ssize = height_seaborn
 dpi=200
 dimplot_max = 8
 val_hist = 3
+crop_data_plot = False
 
 # Load results 
 justLoad = False
@@ -259,6 +260,7 @@ if __name__ == '__main__':
                         case 'cauchy':
                             sampler = Cauchy(dim, correlation = False)
                             normalized_data = False
+                            crop_data_plot = True
                             if MSGM:
                                 val_hist = 0.3
                             else:
@@ -304,9 +306,10 @@ if __name__ == '__main__':
                         dimplot = np.min([dimplot_max,xtest.shape[1]])
 
                         xtest_plot = std_norm * xtest
-                        boolean_mask = (xtest_plot.abs() < (plot_xlim * std_norm * std_test_plot)).all(axis=1)
-                        print( str( (1 - boolean_mask.sum()/ len(boolean_mask)).item() * 100) + " % of samples outside plot limits")
-                        xtest_plot = xtest_plot[boolean_mask,:]
+                        if crop_data_plot:
+                            boolean_mask = (xtest_plot.abs() < (plot_xlim * std_norm * std_test_plot)).all(axis=1)
+                            print( str( (1 - boolean_mask.sum()/ len(boolean_mask)).item() * 100) + " % of samples outside plot limits")
+                            xtest_plot = xtest_plot[boolean_mask,:]
 
                         if (datatype == 'era5') and xtest.shape[1]>= 9:
                             dimplot = 6
@@ -340,9 +343,10 @@ if __name__ == '__main__':
                         plt.close('all')
 
                         xtrain_plot = std_norm * sampler.sample(num_samples_init).to('cpu')
-                        boolean_mask = (xtrain_plot.abs() < (plot_xlim * std_norm * std_test_plot)).all(axis=1)
-                        print( str( (1 - boolean_mask.sum()/ len(boolean_mask)).item() * 100) + " % of samples outside plot limits")
-                        xtrain_plot = xtrain_plot[boolean_mask,:]
+                        if crop_data_plot:
+                            boolean_mask = (xtrain_plot.abs() < (plot_xlim * std_norm * std_test_plot)).all(axis=1)
+                            print( str( (1 - boolean_mask.sum()/ len(boolean_mask)).item() * 100) + " % of samples outside plot limits")
+                            xtrain_plot = xtrain_plot[boolean_mask,:]
                         if (datatype == 'era5') and xtest.shape[1]>= 9:
                             pddatatrain = pd.DataFrame(torch.cat( (xtrain_plot[:,6:9], \
                                                                     xtrain_plot[:,0:3]),dim=1).data.numpy(), \
@@ -622,9 +626,10 @@ if __name__ == '__main__':
 
                                         if (scatter_plots) and (i_run == 0):
                                             xgen_plot = std_norm * xgen
-                                            boolean_mask = (xgen_plot.abs() < (plot_xlim * std_norm * std_test_plot)).all(axis=1)
-                                            print( str( (1 - boolean_mask.sum()/ len(boolean_mask)).item() * 100) + " % of samples outside plot limits")
-                                            xgen_plot = xgen_plot[boolean_mask,:]
+                                            if crop_data_plot:
+                                                boolean_mask = (xgen_plot.abs() < (plot_xlim * std_norm * std_test_plot)).all(axis=1)
+                                                print( str( (1 - boolean_mask.sum()/ len(boolean_mask)).item() * 100) + " % of samples outside plot limits")
+                                                xgen_plot = xgen_plot[boolean_mask,:]
                                             
                                             if (datatype == 'era5') and xtest.shape[1]>= 9:
                                                 pddatagen = pd.DataFrame(torch.cat( (xgen_plot[:,6:9],xgen_plot[:,0:3]),dim=1).to('cpu'), \
