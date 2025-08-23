@@ -176,7 +176,6 @@ def rk4_stratonovich_sampler(sde, x_0, num_steps=1000, lmbd=0., keep_all_samples
 
             # Compute Wiener increments
             dW = sqrt_delta * torch.randn_like(x_t)
-            dW_half = dW / 2  # Used for intermediate steps
             
             # Stage 1
             mu_Strato_1 = sde.mu_Strato(t, x_t, lmbd=lmbd)
@@ -188,14 +187,13 @@ def rk4_stratonovich_sampler(sde, x_0, num_steps=1000, lmbd=0., keep_all_samples
             x_mid = x_t + K1 / 2
             mu_Strato_2 = sde.mu_Strato(t + delta / 2, x_mid, lmbd=lmbd)
             sigma_2 = sde.sigma(t + delta / 2, x_mid, lmbd=lmbd)
-            K2 = EMstep(mu_Strato_2 , delta, sigma_2 , dW_half)
-            # K1 = EMstep(delta, mu_Strato_1, sigma_1, dW)
+            K2 = EMstep(mu_Strato_2 , delta, sigma_2 , dW)
             
             # Stage 3
             x_mid = x_t + K2 / 2
             mu_Strato_3 = sde.mu_Strato(t + delta / 2, x_mid, lmbd=lmbd)
             sigma_3 = sde.sigma(t + delta / 2, x_mid, lmbd=lmbd)
-            K3 = EMstep(mu_Strato_3 ,delta,  sigma_3 , dW_half)
+            K3 = EMstep(mu_Strato_3 ,delta,  sigma_3 , dW)
             
             # Stage 4
             x_end = x_t + K3
