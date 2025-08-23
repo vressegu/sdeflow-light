@@ -412,3 +412,25 @@ class Gaussian:
     
     def get_std(self):
         return self.std
+    
+class GaussianCauchy:
+    """
+    multi-dimensional Gaussian distribution scaled with one-dim Cauchy.
+    """
+    def __init__(self, dim = 2, correlation = True, normalized = False):
+
+        self.gaussian = Gaussian(dim, correlation, normalized)
+        self.cauchy = torch.distributions.Cauchy(0.0, 1.0)
+        self.dim = dim
+        self.name='gaussianCauchy' + str(self.dim)
+        if correlation:
+            self.name = self.name + "cor"
+
+    def get_std(self):
+        return self.gaussian.std
+
+    def sample(self, n):
+        return self.gaussian.sample(n) * self.cauchy.sample((1, 1))
+    
+    def sampletest(self, n):
+        return self.sample(n)
