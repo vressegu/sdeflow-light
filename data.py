@@ -382,3 +382,33 @@ class Cauchy:
     
     def sampletest(self, n):
         return self.sample(n)
+    
+
+class Gaussian:
+    """
+    multi-dimensional Gaussian distribution sampler.
+    """
+    def __init__(self, dim = 2, correlation = True, normalized = False):
+        self.dim = dim
+        self.name='gaussian' + str(self.dim)
+        if correlation:
+            self.A = torch.randn(dim, dim)
+            self.name = self.name + "cor"
+        else:
+            self.A = torch.eye(dim)
+        cov = self.A @ self.A.T
+        self.std = torch.sqrt(torch.diag(cov))
+        if normalized:
+            self.name = self.name + '_norm'
+            self.A = torch.diag(1/self.std) @ self.A 
+            cov = self.A @ self.A.T
+        self.normal = torch.distributions.Normal(0.0, 1.0)
+
+    def sample(self, n):
+        return  self.normal.sample((n, self.dim)) @ self.A.T
+    
+    def sampletest(self, n):
+        return self.sample(n)
+    
+    def get_std(self):
+        return self.std
