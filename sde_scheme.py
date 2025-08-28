@@ -15,6 +15,7 @@ import torch.nn as nn
 import sys
 import os
 
+@torch.no_grad()
 def EMstep(mu, delta , sigma , dW):
     if len(sigma.shape)>2 :
         dx = torch.einsum('bij, bj -> bi', sigma, dW )
@@ -23,7 +24,8 @@ def EMstep(mu, delta , sigma , dW):
     return mu * delta + dx
 
 ### 2.0 Define Euler Maruyama method with a step size $\Delta t$
-def euler_maruyama_sampler(sde, x_0, num_steps, lmbd=0., keep_all_samples=True, include_t0=False, T_ = -1):
+@torch.no_grad()
+def euler_maruyama_sampler(sde, x_0, num_steps=1000, lmbd=0., keep_all_samples=True, include_t0=False, T_ = -1, norm_correction = False):
     """
     Euler Maruyama method with a step size delta
     """
@@ -32,17 +34,22 @@ def euler_maruyama_sampler(sde, x_0, num_steps, lmbd=0., keep_all_samples=True, 
     batch_size = x_0.size(0)
     ndim = x_0.dim()-1
     if T_ == -1 :
-        T_ = sde.T.cpu().item()
+        T_ = sde.T.item()
     else:
-        T_ = T_.cpu().item()
+        T_ = T_.item()
     delta = T_ / num_steps
     ts = torch.linspace(0, 1, num_steps + 1) * T_
 
     # sample
-    xs = []
     x_t = x_0.detach().clone().to(device)
-    if include_t0 and keep_all_samples :
-        xs.append(x_t.to('cpu'))
+    if norm_correction:
+        norm_x_0 = torch.norm(x_t,dim=1)
+    if keep_all_samples :
+        if (not include_t0) :
+            xs = torch.zeros((x_0.shape[0],x_0.shape[1],num_steps),device='cpu')
+        else :
+            xs = torch.zeros((x_0.shape[0],x_0.shape[1],num_steps+1),device='cpu')
+            xs[:,:,0]=x_t.clone().to('cpu')
     t = torch.zeros(batch_size, *([1]*ndim), device=device)
     with torch.no_grad():
         for i in range(num_steps):
@@ -50,13 +57,20 @@ def euler_maruyama_sampler(sde, x_0, num_steps, lmbd=0., keep_all_samples=True, 
             mu = sde.mu(t, x_t, lmbd=lmbd)
             sigma = sde.sigma(t, x_t, lmbd=lmbd)
             x_t = x_t + EMstep(mu, delta , sigma , delta ** 0.5 * torch.randn_like(x_t)) # one step update of Euler Maruyama method with a step size delta
-            if keep_all_samples or i == num_steps-1:
-                xs.append(x_t.to('cpu'))
-            else:
-                pass
-    return xs
+            if norm_correction:
+                x_t = x_t * (norm_x_0/torch.norm(x_t,dim=1))[:,None]
+            if keep_all_samples:
+                xs[:,:,i+include_t0]=x_t.clone().to('cpu')
+                
+    if keep_all_samples:
+        xs = torch.permute(xs, (2, 0, 1))
+    else:
+        xs=x_t.clone().to('cpu')
+    
+    return xs.to('cpu')
 
-def heun_sampler(sde, x_0, num_steps, lmbd=0., keep_all_samples=True, include_t0=False, T_=-1):
+@torch.no_grad()
+def heun_sampler(sde, x_0, num_steps=1000, lmbd=0., keep_all_samples=True, include_t0=False, T_=-1, norm_correction = False):
     """
     Heun method (Runge-Kutta 2) for SDEs in Stratonovich form.
     """
@@ -65,18 +79,23 @@ def heun_sampler(sde, x_0, num_steps, lmbd=0., keep_all_samples=True, include_t0
     batch_size = x_0.size(0)
     ndim = x_0.dim() - 1
     if T_ == -1 :
-        T_ = sde.T.cpu().item()
+        T_ = sde.T.item()
     else:
-        T_ = T_.cpu().item()
+        T_ = T_.item()
     delta = T_ / num_steps
     ts = torch.linspace(0, 1, num_steps + 1) * T_
 
     # Sampling
-    xs = []
     x_t = x_0.detach().clone().to(device)
+    if norm_correction:
+        norm_x_0 = torch.norm(x_t,dim=1)
     t = torch.zeros(batch_size, *([1] * ndim), device=device)
-    if include_t0 and keep_all_samples :
-        xs.append(x_t.to('cpu'))
+    if keep_all_samples :
+        if (not include_t0) :
+            xs = torch.zeros((x_0.shape[0],x_0.shape[1],num_steps),device='cpu')
+        else :
+            xs = torch.zeros((x_0.shape[0],x_0.shape[1],num_steps+1),device='cpu')
+            xs[:,:,0]=x_t.clone().to('cpu')
         
     with torch.no_grad():
         for i in range(num_steps):
@@ -98,14 +117,21 @@ def heun_sampler(sde, x_0, num_steps, lmbd=0., keep_all_samples=True, include_t0
             # Average drift and diffusion terms
             # x_t = x_t + (delta / 2) * (mu_1 + mu_2) + (sigma_1 + sigma_2) * (dW / 2)
             x_t = x_t + EMstep(mu_1 + mu_2, delta / 2 , sigma_1 + sigma_2 , dW / 2)
+            if norm_correction:
+                x_t = x_t * (norm_x_0/torch.norm(x_t,dim=1))[:,None]
 
+            if keep_all_samples:
+                xs[:,:,i+include_t0]=x_t.clone().to('cpu')
 
-            if keep_all_samples or i == num_steps - 1:
-                xs.append(x_t.to('cpu'))
+    if keep_all_samples:
+        xs = torch.permute(xs, (2, 0, 1))
+    else:
+        xs=x_t.clone().to('cpu')
+    
+    return xs.to('cpu')
 
-    return xs
-
-def rk4_stratonovich_sampler(sde, x_0, num_steps, lmbd=0., keep_all_samples=True, include_t0=False, T_=-1):
+@torch.no_grad()
+def rk4_stratonovich_sampler(sde, x_0, num_steps=1000, lmbd=0., keep_all_samples=True, include_t0=False, T_=-1, norm_correction = False):
     """
     Runge-Kutta 4th order method for Stratonovich SDEs with skew-symmetric noise.
     
@@ -125,17 +151,22 @@ def rk4_stratonovich_sampler(sde, x_0, num_steps, lmbd=0., keep_all_samples=True
     batch_size = x_0.size(0)
     ndim = x_0.dim() - 1
     if T_ == -1 :
-        T_ = sde.T.cpu().item()
+        T_ = sde.T.item()
     else:
-        T_ = T_.cpu().item()
+        T_ = T_.item()
     delta = T_ / num_steps
     ts = torch.linspace(0, 1, num_steps + 1) * T_
 
-    xs = []
     x_t = x_0.detach().clone().to(device)
+    if norm_correction:
+        norm_x_0 = torch.norm(x_t,dim=1)
     t = torch.zeros(batch_size, *([1] * ndim), device=device)
-    if include_t0 and keep_all_samples :
-        xs.append(x_t.to('cpu'))
+    if keep_all_samples :
+        if (not include_t0) :
+            xs = torch.zeros((x_0.shape[0],x_0.shape[1],num_steps),device='cpu')
+        else :
+            xs = torch.zeros((x_0.shape[0],x_0.shape[1],num_steps+1),device='cpu')
+            xs[:,:,0]=x_t.clone().to('cpu')
     
     sqrt_delta = delta**0.5
 
@@ -145,7 +176,6 @@ def rk4_stratonovich_sampler(sde, x_0, num_steps, lmbd=0., keep_all_samples=True
 
             # Compute Wiener increments
             dW = sqrt_delta * torch.randn_like(x_t)
-            dW_half = dW / 2  # Used for intermediate steps
             
             # Stage 1
             mu_Strato_1 = sde.mu_Strato(t, x_t, lmbd=lmbd)
@@ -157,14 +187,13 @@ def rk4_stratonovich_sampler(sde, x_0, num_steps, lmbd=0., keep_all_samples=True
             x_mid = x_t + K1 / 2
             mu_Strato_2 = sde.mu_Strato(t + delta / 2, x_mid, lmbd=lmbd)
             sigma_2 = sde.sigma(t + delta / 2, x_mid, lmbd=lmbd)
-            K2 = EMstep(mu_Strato_2 , delta, sigma_2 , dW_half)
-            # K1 = EMstep(delta, mu_Strato_1, sigma_1, dW)
+            K2 = EMstep(mu_Strato_2 , delta, sigma_2 , dW)
             
             # Stage 3
             x_mid = x_t + K2 / 2
             mu_Strato_3 = sde.mu_Strato(t + delta / 2, x_mid, lmbd=lmbd)
             sigma_3 = sde.sigma(t + delta / 2, x_mid, lmbd=lmbd)
-            K3 = EMstep(mu_Strato_3 ,delta,  sigma_3 , dW_half)
+            K3 = EMstep(mu_Strato_3 ,delta,  sigma_3 , dW)
             
             # Stage 4
             x_end = x_t + K3
@@ -174,93 +203,15 @@ def rk4_stratonovich_sampler(sde, x_0, num_steps, lmbd=0., keep_all_samples=True
             
             # Combine stages (weighted sum)
             x_t = x_t + (K1 + 2 * K2 + 2 * K3 + K4) / 6
+            if norm_correction:
+                x_t = x_t * (norm_x_0/torch.norm(x_t,dim=1))[:,None]
 
-            if keep_all_samples or i == num_steps - 1:
-                xs.append(x_t.to('cpu'))
+            if keep_all_samples:
+                xs[:,:,i+include_t0]=x_t.clone().to('cpu')
 
-    return xs
-
-
-# def own_EM_sampler(sde, final_times, x_0s, dt):
-
-#     x_ts = torch.zeros_like(x_0s)
-
-#     # Build a common time grid for all path-samples with discretization smaller or equal to dt
-#     #  
-#     #  t^1   t^2 t^3     t^4   : finaltimes
-#     # -o------o--o-------o
-
-#     # ---d---d---d---d---d     : dt-linspace
-
-#     # -x-x---xx--x---x---x     : commont time grid
-
-
-#     dts = []    # common time points at worst with dt width 
-#     sorted_final_times = sorted(final_times)
-#     sorted_x_0s  = sorted(x_0s, key = sort(final_times))
-#     curr_t = 0.
-#     for t_final in sorted_final_times :
-        
-#         if curr_t + dt > t_final: 
-#             dts.append(curr_)
-
-#         < dt : 
-
-
-#     # EM Steps based on the common time grid in vectorized version only updating the batch of particles with respective final times 
-#     # larger than the current time position 
-#     k_update = 0 # initially all particles need to be updated
-#     curr_t = 0   # current time step 
-#     for dt in dts: 
-        
-#         # if the current EM time is larger then the requested time horizon for k_updat-th  x_0 guy only continue to EM-update 
-#         if curr_t > sorted_final_times[k_update]:
-#             k_update +=1
-
-#         xt[k_update,:] = EM_update
-
-#         curr_t += dt
-
-
-
-    ### 2.0 Define Euler Maruyama method with a step size $\Delta t$
-def own_euler_maruyama_sampler(sde, x_0, num_steps, lmbd=0., keep_all_samples=True, include_t0=False):
-    """
-    Euler Maruyama method with a step size delta
-    """
-    # init
-    device = sde.T.device
-    batch_size = x_0.size(0)
-    ndim = x_0.dim()-1
-    T_ = sde.T.cpu().item()
-    delta = T_ / num_steps
-
-
+    if keep_all_samples:
+        xs = torch.permute(xs, (2, 0, 1))
+    else:
+        xs=x_t.clone().to('cpu')
     
-
-
-    #dt  -> num_steps vector 
-
-
-    ts = torch.linspace(0, 1, num_steps + 1) * T_
-
-    # sample
-    xs = []
-    x_t = x_0.detach().clone().to(device)
-    t = torch.zeros(batch_size, *([1]*ndim), device=device)
-    if include_t0 and keep_all_samples :
-        xs.append(x_t.to('cpu'))
-
-
-    with torch.no_grad():
-        for i in range(num_steps):
-            t.fill_(ts[i].item())
-            mu = sde.mu(t, x_t, lmbd=lmbd)
-            sigma = sde.sigma(t, x_t, lmbd=lmbd)
-            x_t = x_t + delta * mu + delta ** 0.5 * sigma * torch.randn_like(x_t) # one step update of Euler Maruyama method with a step size delta
-            if keep_all_samples or i == num_steps-1:
-                xs.append(x_t.to('cpu'))
-            else:
-                xs = x_t
-                pass
-    return xs
+    return xs.to('cpu')

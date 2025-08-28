@@ -12,6 +12,107 @@ from netCDF4 import Dataset
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 
+class ERA5:
+    def __init__(self, dim = 40, \
+                 variables = ["10m_u_component_of_wind", "10m_v_component_of_wind", "2m_temperature", "vorticity"],\
+                 cities = ["Paris", "London", "Berlin", "Madrid", "Rome", "Vienna", "Amsterdam", "Stockholm", "Athens", "Warsaw"]):
+        self.dim = dim
+        self.name='ERA5'
+        if len(variables)*len(cities)<self.dim:
+            self.dim = len(variables)*len(cities)
+        if len(variables)<4:
+            self.name = self.name + str(len(variables)) + 'vars'
+        if len(cities)<10:
+            self.name = self.name + str(len(cities)) + 'cities'
+        self.name = self.name + str(self.dim)
+
+        pathData = '../MultiplicativeDiffusion/'
+        folder = pathData + 'ERA5-cities'
+
+        # # Define variables and cities
+        # variables = ["10m_u_component_of_wind", "10m_v_component_of_wind", "2m_temperature", "vorticity"]
+        # # variables = ["10m_u_component_of_wind", "10m_v_component_of_wind"]
+        # # variables = ["10m_u_component_of_wind", "vorticity"]
+        # cities = ["Paris", "London", "Berlin", "Madrid", "Rome", "Vienna", "Amsterdam", "Stockholm", "Athens", "Warsaw"]
+        # # cities = ["Paris", "London", "Berlin", "Madrid"]
+        # # cities = ["Paris", "London"]
+
+        # Load all data into a dictionary
+        city_data = {}
+
+        for city in cities:
+            city_data[city] = {}
+            print(city)
+            for var in variables:
+                filename = folder + '/' + f"{city}_{var}_2010_2020.npy"
+                print(filename)
+                if os.path.exists(filename):
+                    city_data[city][var] = np.load(filename)
+                    if var == "vorticity":
+                        city_data[city][var]=city_data[city][var][:,0]
+                        city_data[city][var]=city_data[city][var]/0.000015
+                    if var == "10m_u_component_of_wind":
+                        city_data[city][var]=city_data[city][var]/3
+                    if var == "10m_v_component_of_wind":
+                        city_data[city][var]=city_data[city][var]/3
+                    if var == "2m_temperature":
+                        city_data[city][var]=city_data[city][var]/7
+
+                    # city_data[city][var]=city_data[city][var]*3
+                else:
+                    print(f"⚠️ Warning: File {filename} not found!")
+
+        # Convert to a structured NumPy array
+        num_timesteps = next(iter(city_data["Paris"].values())).shape[0]  # Get the number of time steps
+
+        # 🚀 **Step 1: Find valid time steps (where vorticity is not NaN)**
+        valid_mask = np.ones(num_timesteps, dtype=bool)
+        for city in cities:
+            vorticity_values = city_data[city]["vorticity"]
+            valid_mask &= ~np.isnan(vorticity_values)  # Check across all levels
+        print(f"✅ Keeping {valid_mask.sum()} out of {num_timesteps} time steps.")
+        # 🚀 **Step 2: Filter out invalid time steps for all variables**
+        for city in cities:
+            for var in variables:
+                city_data[city][var] = city_data[city][var][valid_mask]  # Apply mask
+
+        # 🚀 **Step 3: Store in a single NumPy array**
+        num_timesteps_filtered = valid_mask.sum()
+        data_array = np.zeros((len(cities), len(variables), num_timesteps_filtered))
+
+        for i, city in enumerate(cities):
+            for j, var in enumerate(variables):
+                data_array[i, j, :] = city_data[city][var]
+
+        # print("✅ Data stored in NumPy array with shape:", data_array.shape)
+        data_array = np.transpose(data_array,(2,1,0))
+        # print("✅ Data stored in NumPy array with shape:", data_array.shape)
+        data_array = np.reshape(data_array, (data_array.shape[0],data_array.shape[1]*data_array.shape[2]), order='F') # Fortran-like index ordering
+        # print("✅ Data stored in NumPy array with shape:", data_array.shape)
+
+        npdata = data_array
+        npdata = npdata - npdata.mean(axis=0)
+
+        # keep only dim dimension
+        npdata = npdata[:,0:self.dim]
+
+        n_test = npdata.shape[0] // 3
+
+        self.npdata = npdata[0:-n_test:1,:]
+        self.npdatatest = npdata[-n_test:-1:1,:]
+
+        self.max_nsamples = self.npdata.shape[0]
+        self.max_nsamplestest = self.npdatatest.shape[0]
+
+    def sample(self, n):               
+        idx = np.random.randint(0,self.npdata.shape[0], size = n) #% self.max_nsamples
+        return torch.from_numpy(self.npdata[idx,:]).to(torch.float32)
+
+    def sampletest(self, n):               
+        idx = np.random.randint(0,self.npdatatest.shape[0], size = n) #% self.max_nsamples
+        return torch.from_numpy(self.npdatatest[idx,:]).to(torch.float32)
+
+
 class ncar_weather_station:
     def __init__(self, dim = 90):
         self.dim = dim
@@ -161,7 +262,7 @@ class eof_pressure:
         return torch.from_numpy(self.npdatatest[idx,:]).to(torch.float32)
 
 class Lorenz96:
-    def __init__(self, n_dim_L96 = 100, dim = 8):
+    def __init__(self, n_dim_L96 = 100, dim = 8, normalized = False):
         self.dim = dim
         # n_dim_L96 = 100
         # # n_dim_L96 = 4
@@ -178,6 +279,12 @@ class Lorenz96:
         npdatatest = np.load(pathData + '_test.npy')
         npdata = npdata/10
         npdatatest = npdatatest/10
+
+        if normalized:
+            std = npdata.std(axis=0)
+            npdata = npdata/std
+            npdatatest = npdatatest/std
+
         self.npdata = npdata[:,0:self.dim]
         self.npdatatest = npdatatest[:,0:self.dim]
 
@@ -209,16 +316,24 @@ class PODmodes:
         npdatatest = np.load(pathData + '_test/U.npy')
         npdata = npdata/10
         npdatatest = npdatatest/10
-        if normalized:
-            std = npdata.std(axis=0)
-            npdata = npdata/std
-            npdatatest = npdatatest/std
 
-        self.npdata = npdata[:,0:self.dim]
-        self.npdatatest = npdatatest[:,0:self.dim]
+        npdata = npdata[:,0:self.dim]
+        npdatatest = npdatatest[:,0:self.dim]
+
+        self.std = npdata.std(axis=0)
+        self.mean = npdata.mean(axis=0)
+        print(self.mean/self.std)
+        if normalized:
+            npdata = npdata/self.std
+            npdatatest = npdatatest/self.std
+
+        self.npdata = npdata
+        self.npdatatest = npdatatest
 
         self.max_nsamples = npdata.shape[0]
         self.max_nsamplestest = npdatatest.shape[0]
+        print("max nb train samples = " + str(self.max_nsamples))
+        print("max nb test samples = " + str(self.max_nsamplestest))
 
     def sample(self, n):               
         idx = np.random.randint(0,self.npdata.shape[0], size = n) #% self.max_nsamples
@@ -227,6 +342,9 @@ class PODmodes:
     def sampletest(self, n):               
         idx = np.random.randint(0,self.npdatatest.shape[0], size = n) #% self.max_nsamples
         return torch.from_numpy(self.npdatatest[idx,:]).to(torch.float32)
+    
+    def get_std(self):
+        return torch.from_numpy(self.std).to(torch.float32)
 
 class SwissRoll:
     """
@@ -244,3 +362,75 @@ class SwissRoll:
     
     def sampletest(self, n, noise=0.5):
         return self.sample(n, noise)
+
+class Cauchy:
+    """
+    multi-dimensional Cauchy distribution sampler.
+    """
+    def __init__(self, dim = 2, correlation = False):
+        self.dim = dim
+        self.name='cauchy' + str(self.dim)
+        if correlation:
+            self.A = torch.randn(dim, dim)
+            self.name = self.name + "cor"
+        else:
+            self.A = torch.eye(dim)
+        self.cauchy = torch.distributions.Cauchy(0.0, 1.0)
+
+    def sample(self, n):
+        return  (1.0/50) * self.cauchy.sample((n, self.dim)) @ self.A.T
+    
+    def sampletest(self, n):
+        return self.sample(n)
+    
+
+class Gaussian:
+    """
+    multi-dimensional Gaussian distribution sampler.
+    """
+    def __init__(self, dim = 2, correlation = True, normalized = False):
+        self.dim = dim
+        self.name='gaussian' + str(self.dim)
+        if correlation:
+            self.A = torch.randn(dim, dim)
+            self.name = self.name + "cor"
+        else:
+            self.A = torch.eye(dim)
+        cov = self.A @ self.A.T
+        self.std = torch.sqrt(torch.diag(cov))
+        if normalized:
+            self.name = self.name + '_norm'
+            self.A = torch.diag(1/self.std) @ self.A 
+            cov = self.A @ self.A.T
+        self.normal = torch.distributions.Normal(0.0, 1.0)
+
+    def sample(self, n):
+        return  self.normal.sample((n, self.dim)) @ self.A.T
+    
+    def sampletest(self, n):
+        return self.sample(n)
+    
+    def get_std(self):
+        return self.std
+    
+class GaussianCauchy:
+    """
+    multi-dimensional Gaussian distribution scaled with one-dim Cauchy.
+    """
+    def __init__(self, dim = 2, correlation = True, normalized = False):
+
+        self.gaussian = Gaussian(dim, correlation, normalized)
+        self.cauchy = torch.distributions.Cauchy(0.0, 1.0)
+        self.dim = dim
+        self.name='gaussianCauchy' + str(self.dim)
+        if correlation:
+            self.name = self.name + "cor"
+
+    def get_std(self):
+        return self.gaussian.std
+
+    def sample(self, n):
+        return self.gaussian.sample(n) * self.cauchy.sample((1, 1))
+    
+    def sampletest(self, n):
+        return self.sample(n)
