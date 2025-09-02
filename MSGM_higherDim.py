@@ -43,37 +43,97 @@ pd.set_option('display.max_rows', DISPLAY_MAX_ROWS)
 T0 = 1
 
 MSGMs = [0,1]
-
-
-num_steps_forward = 100
-beta_min=1
+beta_min=0.1 # new default
 beta_max=20
 t_eps = 1/1000  
 norm_sampler = "ecdf"
 norm_map = None
 num_samples_init_max = int(1e4)
 # default values from git repo
-beta_min_SGM = 0.1
-beta_max_SGM = 20
+beta_min_SGM = 0.1 # default
+beta_max_SGM = 20 # default
 beta_maxs = [beta_max]
 
 vtype = 'rademacher'
-lr = 0.001
+lr = 0.001 # default
 print_every = 1000
 
 # Inference
-num_stepss_backward = [1000,100,50,10]
 include_t0_reverse = True # for plots
 num_samples = 10000
+
+
+# # Fair convergence comparison
+# # num_steps_forward = 100
+# # num_steps_forward = 128
+# num_steps_forward = 64
+# # iterationss = [ 2**24, 2**20, 2**16, 2**12, 2**8, 2**4 ] # swissroll
+# iterationss = [ 2**20, 2**16, 2**12, 2**8, 2**4 ]
+# # iterationss = [ 2**4 ]
+# # num_stepss_backward = [1000,100,50,10,4,2]
+# # num_stepss_backward = [1024,256,64,16,4,1]
+# num_stepss_backward = [512,128,32,8,2]
+# nruns_mmd = 10
+# fair_comparison = True # comparaison SGM vs MSGM with same RAM usage and same learning time
+# # ssm_intT_ref = True
+# ssm_intT_ref = False
+
+
+# # Fair comparison more CV
+# iterationss = [ 2**20]
+# num_steps_forward = 64
+# # num_steps_forward = 1024
+# # num_steps_forward = 128
+# num_stepss_backward = [128]
 # nruns_mmd = 1
-iterationss = [ 2**20, 2**16, 2**12, 2**8, 2**4 ]
-nruns_mmd = 10
+# fair_comparison = True # comparaison SGM vs MSGM with same RAM usage and same learning time
+# # ssm_intT_ref = True
+# ssm_intT_ref = False
+
+
+# # No Fair comparison
+# iterationss = [ 2**14]
+# num_steps_forward = 64
+# # num_steps_forward = 128
+# num_stepss_backward = [128]
+# nruns_mmd = 1
+# # fair_comparison = True # comparaison SGM vs MSGM with same RAM usage and same learning time
+# fair_comparison = False # comparaison SGM vs MSGM with same RAM usage and same learning time
+# # ssm_intT_ref = True
+# ssm_intT_ref = False
+
+
+# # Optimal (expressivity) (long to run)
+# # iterationss = [ 2**20]
+# iterationss = [2**19, 2**20]
+# # num_steps_forward = 128
+# # num_stepss_backward = [128]
+# num_steps_forward = 256
+# num_stepss_backward = [64,128,256,512]
+# nruns_mmd = 1
+# fair_comparison = False # comparaison SGM vs MSGM with same RAM usage and same learning time
+# ssm_intT_ref = False
+
+
+# expressivity for cauchy (long to run)
+iterationss = [ 2**20]
+num_steps_forward = 512
+num_stepss_backward = [512]
+nruns_mmd = 1
+fair_comparison = False # comparaison SGM vs MSGM with same RAM usage and same learning time
+ssm_intT_ref = False
+beta_min=0.1
+beta_max=1
+MSGMs = [1]
+
+batch_sizes = [256]
 
 # Dataset
 # datatype = 'swissroll'
 # datatype = 'gaussian'
 # datatype = 'cauchy'
 # datatype = 'gaussianCauchy'
+# datatype = 'POD'
 # datatype = 'era5'
 # datatype = 'era5temp'
 # datatype = 'era5vorttemp'
@@ -184,6 +244,7 @@ plot_crop = plot_xlim
 justLoad = False
 justLoadmmmd = False
 plt_show = False
+plot_validate = False
 print_RAM = False
 log_scale_pdf = True
 
@@ -482,7 +543,7 @@ if __name__ == '__main__':
                         plt.pause(0.1)
                         plt.close('all')
 
-                        xtrain_plot = std_norm * sampler.sample(num_samples_init).to('cpu')
+                        xtrain_plot = std_norm * sampler.sample(num_samples).to('cpu')
                         if crop_data_plot:
                             boolean_mask = (xtrain_plot.abs() < (plot_crop * std_norm * std_test_plot)).all(axis=1)
                             print( str( (1 - boolean_mask.sum()/ len(boolean_mask)).item() * 100) + " % of samples outside plot limits")
