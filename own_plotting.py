@@ -36,7 +36,9 @@ def get_2d_histogram_plot(data, val=3, num=64, vmin = 0, vmax=10, use_grid=False
     heatmap, xedges, yedges = np.histogram2d(x, y, range=[[xmin, xmax], [ymin, ymax]], bins=num)
     if logscale:
         heatmap_val = heatmap.copy()  # copy heatmap for vmin calculation
-        vmin = heatmap_val[heatmap > heatmap.min()].min() /2  # use the minimum value from the heatmap / 2
+        if (heatmap > heatmap.min()).any():
+            vmin = heatmap_val[heatmap > heatmap.min()].min()  # use the minimum value from the heatmap
+            vmin /=2
         heatmap = np.log(heatmap + 1e-10)  # log scale for better visibility
         vmin = np.log(vmin)  # adjust vmin for log scale
         vmax = heatmap.max()  # adjust vmax for log scale
