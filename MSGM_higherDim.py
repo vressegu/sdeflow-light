@@ -255,6 +255,8 @@ def m_name_simu_root(sampler_name, gen_sde_name_SDE, iterations_ref, batch_size,
         + str(num_steps_forward) + "stepsForw_" \
         + str(beta_min) + "beta_min" \
         + str(beta_max) + "beta_max" 
+    if (not (lr == 0.001)):
+        name_simu_root += str(lr) + "lr"
     if ssm_intT:
         name_simu_root += "_intLoss"
     if fair_comparison:
