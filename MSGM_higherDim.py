@@ -49,6 +49,8 @@ num_steps_forward = 100
 beta_min=1
 beta_max=20
 t_eps = 1/1000  
+norm_sampler = "ecdf"
+norm_map = None
 # default values from git repo
 beta_min_SGM = 0.1
 beta_max_SGM = 20
@@ -518,7 +520,10 @@ if __name__ == '__main__':
                                     x_init = sampler.sample(num_samples_init).to(device)
                                     inf_sde = multiplicativeNoise(x_init,beta_min=beta_min, beta_max=beta_max, \
                                                                 t_epsilon=t_eps, T=T, num_steps_forward=num_steps_forward, \
-                                                                device=device, estim_cst_norm_dens_r_T = False)
+                                                                device=device, estim_cst_norm_dens_r_T = False, \
+                                                                norm_sampler = norm_sampler,
+                                                                norm_map = norm_map, \
+                                                                plot_validate = plot_validate)
                                     del x_init
                                 else:
                                     inf_sde = VariancePreservingSDE(beta_min=beta_min_SGM, beta_max=beta_max_SGM, \
