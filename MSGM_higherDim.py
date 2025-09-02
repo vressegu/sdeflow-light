@@ -51,6 +51,7 @@ beta_max=20
 t_eps = 1/1000  
 norm_sampler = "ecdf"
 norm_map = None
+num_samples_init_max = int(1e4)
 # default values from git repo
 beta_min_SGM = 0.1
 beta_max_SGM = 20
@@ -249,6 +250,7 @@ def evaluate(gen_sde, x_test):
 def m_name_simu_root(sampler_name, gen_sde_name_SDE, iterations_ref, batch_size, num_steps_forward, beta_min, beta_max, ssm_intT, fair_comparison):
     name_simu_root = sampler_name + "/" \
         + gen_sde_name_SDE + "_" + str(iterations_ref) + "iteRefLearning_" \
+        + str(num_samples_init) + "InitSples_" \
         + str(batch_size) + "batchSize_" \
         + str(num_steps_forward) + "stepsForw_" \
         + str(beta_min) + "beta_min" \
@@ -302,7 +304,7 @@ if __name__ == '__main__':
                     np.random.seed(0)
                     torch.manual_seed(0) 
 
-                    num_samples_init = min(int(1e6),iterationss[0]*batch_sizes[0])
+                    num_samples_init = min(num_samples_init_max,iterationss[0]*batch_sizes[0])
 
                     ## 1. Initialize dataset
                     match datatype:
@@ -557,7 +559,8 @@ if __name__ == '__main__':
                                 iterations = max([1,iterations])
                             else:  
                                 iterations = iterations_ref
-                            num_samples_init = min(int(1e6),iterations*batch_size)
+                            num_samples_init = min(num_samples_init_max,iterations*batch_size)
+                            print('num_samples_init = ' + str(num_samples_init))
                         
                             # init models
                             drift_q = MLP(input_dim=sampler.dim, index_dim=1, hidden_dim=128).to(device)
