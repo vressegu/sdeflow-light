@@ -184,6 +184,7 @@ justLoad = False
 justLoadmmmd = False
 plt_show = False
 print_RAM = False
+log_scale_pdf = True
 
 if not justLoad:
     justLoadmmmd = False
@@ -838,12 +839,19 @@ if __name__ == '__main__':
                                                     )
 
                                                     # set Y limit for this diagonal axis only
+                                                    if log_scale_pdf and (counts > 0).any():
+                                                        ymin = counts[counts > 0].min()  # use the minimum value from the heatmap
+                                                    else:
+                                                        ymin = 0
                                                     if ymax > 0:
-                                                        ax.set_ylim(0, 1.05 * ymax)
+                                                        ax.set_ylim(ymin, 1.05 * ymax)
 
                                                 elif label == "gen.":
                                                     # draw the gen KDE — it will use the same y-scale set by the "test" pass
                                                     sns.kdeplot(x=x, color=palette["gen."], lw=1.5, **kws)
+
+                                                if log_scale_pdf:
+                                                    ax.set_yscale('log')
 
                                             g.map_diag(diag_plot)
 
