@@ -257,6 +257,8 @@ def m_name_simu_root(sampler_name, gen_sde_name_SDE, iterations_ref, batch_size,
         + str(beta_max) + "beta_max" 
     if (not (lr == 0.001)):
         name_simu_root += str(lr) + "lr"
+    if (not (vtype == 'rademacher')):
+        name_simu_root += "vtype=" + vtype
     if ssm_intT:
         name_simu_root += "_intLoss"
     if fair_comparison:
