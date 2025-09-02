@@ -71,6 +71,8 @@ nruns_mmd = 10
 # datatype = 'cauchy'
 datatype = 'POD'
 # datatype = 'era5'
+# datatype = 'era5temp'
+# datatype = 'era5vorttemp'
 
 match datatype:
     case 'swissroll': # Swiss roll
@@ -105,6 +107,24 @@ match datatype:
         Res=[1]
 
 
+        season = "all"
+        # season = "winter"
+        use_deseason = False
+
+    case 'era5temp' : # ERA5 temperature only
+        dims = [10]
+
+        season = "all"
+        # season = "winter"
+        use_deseason = True
+
+    case 'era5vorttemp' : # ERA5 temperature only
+        dims = [4,20]
+        # dims = [2,4,8,16]
+
+        # season = "all"
+        season = "winter"
+        use_deseason = True
     case _:
         raise ValueError("Unknown datatype: {}".format(datatype))
 
@@ -278,11 +298,54 @@ if __name__ == '__main__':
                         case 'ncar':
                             sampler = ncar_weather_station(dim) 
                         case 'era5':
-                            sampler = ERA5(dim, variables = ["10m_u_component_of_wind", "10m_v_component_of_wind", "vorticity"]) 
+                            sampler = ERA5(dim, variables = ["10m_u_component_of_wind", "10m_v_component_of_wind", "vorticity"],\
+                                           season = season, use_deseason = use_deseason, bool_check_plot = True) 
                             normalized_data = False
-                            columns=["$u$, Berlin", "$v$, Berlin", "$\omega$, Berlin",\
+                            columns_plot=["$u$, Berlin", "$v$, Berlin", "$\omega$, Berlin",\
                                      "$u$, Paris", "$v$, Paris", "$\omega$, Paris"]
                             val_hist = 10.0
+
+                            dimplot_era5 = 6
+                            columns_plot=["$u$, Berlin", "$v$, Berlin", "$\omega$, Berlin",\
+                                     "$u$, Paris", "$v$, Paris", "$\omega$, Paris"]
+
+                            # dimplot_era5 = 3
+                            # columns_plot=["$u$, Berlin", "$v$, Berlin", "$\omega$, Berlin"]
+                            plot_xlim = 5.0
+                            
+                        case 'era5temp':
+                            # sampler = ERA5(dim, variables = ["2m_temperature"],cities = ["Paris", "Berlin"],\
+                                        #    season = season) 
+                            sampler = ERA5(dim, variables = ["2m_temperature"],\
+                                           season = season, use_deseason = use_deseason, bool_check_plot = True) 
+                            normalized_data = False
+                            val_hist = 10.0
+                            # # dimplot_era5 = 2
+                            # # columns_plot=["$T$, Berlin",\
+                            # #          "$T$, Paris"]
+                            # dimplot_era5 = 8
+                            # columns_plot = [ "$T$, Berlin", "$T$, Madrid", "$T$, Rome", \
+                            #            "$T$, Vienna", "$T$, Amsterdam", "$T$, Stockholm", "$T$, Athens", "$T$, Warsaw"]
+                            dimplot_era5 = 10
+                            columns_plot = ["$T$, Paris", "$T$, London", "$T$, Berlin", \
+                                       "$T$, Vienna", "$T$, Amsterdam", "$T$, Stockholm", "$T$, Athens", "$T$, Warsaw", "$T$, Madrid", "$T$, Rome"]
+
+                            plot_xlim = 5.0
+                            
+                        case 'era5vorttemp':
+                            # sampler = ERA5(dim, variables = ["2m_temperature", "vorticity"],cities = ["Paris", "Berlin"],\
+                                        #    season = season) 
+                            sampler = ERA5(dim, variables = ["2m_temperature", "vorticity"],\
+                                           season = season, use_deseason = use_deseason, bool_check_plot = True) 
+                            normalized_data = False
+                            val_hist = 10.0
+                            # dimplot_era5 = 4
+                            dimplot_era5 = 16
+                            dimplot = dimplot_era5
+                            columns_plot=["$T$, Berlin", "$\omega$, Berlin",\
+                                     "$T$, Paris", "$\omega$, Paris"]
+
+                            plot_xlim = 5.0
                         case _:
                             raise ValueError("Unknown datatype: {}".format(datatype))
 
@@ -314,10 +377,28 @@ if __name__ == '__main__':
                             xtest_plot = xtest_plot[boolean_mask,:]
 
                         if (datatype == 'era5') and xtest.shape[1]>= 9:
-                            dimplot = 6
-                            pddatatest = pd.DataFrame(torch.cat( ((xtest_plot)[:,6:9], \
-                                                                    (xtest_plot)[:,0:3]),dim=1).to('cpu').data.numpy(), \
-                                                    columns=columns \
+                            dimplot = dimplot_era5
+                            if dimplot == 6:
+                                xtest_plot = torch.cat( ((xtest_plot)[:,6:9], (xtest_plot)[:,0:3]),dim=1)
+                            elif dimplot == 3:
+                                xtest_plot = xtest_plot[:,6:9]
+                            else:
+                                raise ValueError("Unknown dimplot for era5: {}".format(dimplot))
+                            pddatatest = pd.DataFrame(xtest_plot.to('cpu').data.numpy(), \
+                                                    columns=columns_plot \
+                                                    )
+                        elif (datatype == 'era5vorttemp') and xtest.shape[1]>= 6:
+                            dimplot = dimplot_era5
+                            if dimplot == 4:
+                                xtest_plot = torch.cat( ((xtest_plot)[:,4:6], (xtest_plot)[:,0:2]),dim=1)
+                            elif dimplot == 2:
+                                xtest_plot = xtest_plot[:,4:6]
+                            else:
+                                xtest_plot=xtest_plot[:,0:dimplot]
+                                columns_plot=range(1,1+dimplot)
+                                # raise ValueError("Unknown dimplot for era5: {}".format(dimplot))
+                            pddatatest = pd.DataFrame(xtest_plot.to('cpu').data.numpy(), \
+                                                    columns=columns_plot \
                                                     )
                         else:
                             pddatatest = pd.DataFrame((xtest_plot).data.numpy()[:,0:dimplot], columns=range(1,1+dimplot))
@@ -350,9 +431,27 @@ if __name__ == '__main__':
                             print( str( (1 - boolean_mask.sum()/ len(boolean_mask)).item() * 100) + " % of samples outside plot limits")
                             xtrain_plot = xtrain_plot[boolean_mask,:]
                         if (datatype == 'era5') and xtest.shape[1]>= 9:
-                            pddatatrain = pd.DataFrame(torch.cat( (xtrain_plot[:,6:9], \
-                                                                    xtrain_plot[:,0:3]),dim=1).data.numpy(), \
-                                                    columns=columns \
+                            if dimplot == 6:
+                                xtrain_plot = torch.cat( ((xtrain_plot)[:,6:9], (xtrain_plot)[:,0:3]),dim=1)
+                            elif dimplot == 3:
+                                xtrain_plot = xtrain_plot[:,6:9]
+                            else:
+                                raise ValueError("Unknown dimplot for era5: {}".format(dimplot))
+                            pddatatrain = pd.DataFrame(xtrain_plot.to('cpu').data.numpy(), \
+                                                    columns=columns_plot \
+                                                    )
+                            
+                        elif (datatype == 'era5vorttemp') and xtest.shape[1]>= 6:
+                            print('dimplot = ' + str(dimplot))
+                            if dimplot == 4:
+                                xtrain_plot = torch.cat( ((xtrain_plot)[:,4:6], (xtrain_plot)[:,0:2]),dim=1)
+                            elif dimplot == 2:
+                                xtrain_plot = xtrain_plot[:,4:6]
+                            else:
+                                xtrain_plot=xtrain_plot[:,0:dimplot]
+                                columns_plot=range(1,1+dimplot)
+                            pddatatrain = pd.DataFrame(xtrain_plot.to('cpu').data.numpy(), \
+                                                    columns=columns_plot \
                                                     )
                         else:
                             pddatatrain = pd.DataFrame(xtrain_plot.data.numpy()[:,0:dimplot], columns=range(1,1+dimplot))
@@ -634,8 +733,25 @@ if __name__ == '__main__':
                                                 xgen_plot = xgen_plot[boolean_mask,:]
                                             
                                             if (datatype == 'era5') and xtest.shape[1]>= 9:
-                                                pddatagen = pd.DataFrame(torch.cat( (xgen_plot[:,6:9],xgen_plot[:,0:3]),dim=1).to('cpu'), \
-                                                                        columns=columns \
+                                                if dimplot == 6:
+                                                    xgen_plot = torch.cat( ((xgen_plot)[:,6:9], (xgen_plot)[:,0:3]),dim=1)
+                                                elif dimplot == 3:
+                                                    xgen_plot = xgen_plot[:,6:9]
+                                                else:
+                                                    raise ValueError("Unknown dimplot for era5: {}".format(dimplot))
+                                                pddatagen = pd.DataFrame(xgen_plot.to('cpu').data.numpy(), \
+                                                                        columns=columns_plot \
+                                                                        )                                                
+                                            elif (datatype == 'era5vorttemp') and xtest.shape[1]>= 6:
+                                                if dimplot == 4:
+                                                    xgen_plot = torch.cat( ((xgen_plot)[:,4:6], (xgen_plot)[:,0:2]),dim=1)
+                                                elif dimplot == 2:
+                                                    xgen_plot = xgen_plot[:,4:6]
+                                                else:
+                                                    xgen_plot=xgen_plot[:,0:dimplot]
+                                                    columns_plot=range(1,1+dimplot)
+                                                pddatagen = pd.DataFrame(xgen_plot.to('cpu').data.numpy(), \
+                                                                        columns=columns_plot \
                                                                         )
                                             else:
                                                 pddatagen = pd.DataFrame(xgen_plot[:,0:dimplot].to('cpu'), columns=range(1,1+dimplot))
@@ -906,7 +1022,8 @@ if __name__ == '__main__':
                 plt.ylabel('MMD')
                 plt.xlabel('dimension')
                 if datatype == 'era5':
-                    plt.xticks(ticks=num_stepss_backward, labels=labels )
+                    xx = dims
+                    plt.xticks(ticks=xx )
                 else:
                     xx = dims
                     labels = [f'$2^{{{int(np.log2(idx))}}}$' for idx in xx]

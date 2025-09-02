@@ -14,8 +14,17 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 class ERA5:
     def __init__(self, dim = 40, \
-                 variables = ["10m_u_component_of_wind", "10m_v_component_of_wind", "2m_temperature", "vorticity"],\
-                 cities = ["Paris", "London", "Berlin", "Madrid", "Rome", "Vienna", "Amsterdam", "Stockholm", "Athens", "Warsaw"]):
+                variables = ["10m_u_component_of_wind", "10m_v_component_of_wind", "2m_temperature", "vorticity"],
+                # cities = ["Paris", "London", "Berlin", "Madrid", "Rome", "Vienna", "Amsterdam", "Stockholm", "Athens", "Warsaw"], # old order
+                cities= ["Paris",  "Warsaw", "Berlin", "Vienna", "Amsterdam", "Stockholm", "Athens", "London","Madrid", "Rome"], # new order
+                season: str = "all",            # "all" or "winter" (DJF)
+                start_date: str = "2010-01-01T00",
+                end_date: str   = "2020-12-31T18",
+                use_deseason: bool = False,     # remove annual (DOY) + diurnal cycles BEFORE winter filtering
+                bool_check_plot: bool = False,  # plots for one city/variable at three stages
+                plot_city: str = "Berlin",
+                plot_variable: str = "2m_temperature",
+                ):
         self.dim = dim
         self.name='ERA5'
         if len(variables)*len(cities)<self.dim:
@@ -25,93 +34,204 @@ class ERA5:
         if len(cities)<10:
             self.name = self.name + str(len(cities)) + 'cities'
         self.name = self.name + str(self.dim)
+        if use_deseason:
+            self.name = self.name + "_deseason"
+        if season == "winter":
+            self.name = self.name + "_DJF"
 
         pathData = '../MultiplicativeDiffusion/'
-        folder = pathData + 'ERA5-cities'
+        folder = os.path.join(pathData, 'ERA5-cities')
 
-        # # Define variables and cities
-        # variables = ["10m_u_component_of_wind", "10m_v_component_of_wind", "2m_temperature", "vorticity"]
-        # # variables = ["10m_u_component_of_wind", "10m_v_component_of_wind"]
-        # # variables = ["10m_u_component_of_wind", "vorticity"]
-        # cities = ["Paris", "London", "Berlin", "Madrid", "Rome", "Vienna", "Amsterdam", "Stockholm", "Athens", "Warsaw"]
-        # # cities = ["Paris", "London", "Berlin", "Madrid"]
-        # # cities = ["Paris", "London"]
-
-        # Load all data into a dictionary
+        # ------------- Load all city/variable series -------------
         city_data = {}
-
         for city in cities:
             city_data[city] = {}
             print(city)
             for var in variables:
-                filename = folder + '/' + f"{city}_{var}_2010_2020.npy"
+                filename = os.path.join(folder, f"{city}_{var}_2010_2020.npy")
                 print(filename)
                 if os.path.exists(filename):
-                    city_data[city][var] = np.load(filename)
+                    arr = np.load(filename)
+                    # if vorticity has a second axis (levels), take the first level
+                    if var == "vorticity" and arr.ndim == 2 and arr.shape[1] > 1:
+                        # arr = arr[:, 1]
+                        arr = arr[:, 0]
+                    # scale (your choices)
                     if var == "vorticity":
-                        city_data[city][var]=city_data[city][var][:,0]
-                        city_data[city][var]=city_data[city][var]/0.000015
-                    if var == "10m_u_component_of_wind":
-                        city_data[city][var]=city_data[city][var]/3
-                    if var == "10m_v_component_of_wind":
-                        city_data[city][var]=city_data[city][var]/3
-                    if var == "2m_temperature":
-                        city_data[city][var]=city_data[city][var]/7
-
-                    # city_data[city][var]=city_data[city][var]*3
+                        arr = arr / 0.00003
+                    elif var == "10m_u_component_of_wind":
+                        arr = arr / 3.0
+                    elif var == "10m_v_component_of_wind":
+                        arr = arr / 3.0
+                    elif var == "2m_temperature":
+                        arr = arr / 7.0
+                    city_data[city][var] = arr.astype(np.float64, copy=False)
                 else:
                     print(f"⚠️ Warning: File {filename} not found!")
 
-        # Convert to a structured NumPy array
-        num_timesteps = next(iter(city_data["Paris"].values())).shape[0]  # Get the number of time steps
+        # Determine timeline length from first loaded series
+        num_timesteps = next(iter(city_data["Paris"].values())).shape[0]
 
-        # 🚀 **Step 1: Find valid time steps (where vorticity is not NaN)**
+        # Build 6-hourly time vector from start_date
+        t0 = np.datetime64(start_date)
+        times = np.arange(t0, t0 + np.timedelta64(num_timesteps * 6, 'h'), np.timedelta64(6, 'h'))
+
+        # --------- Step A: mask invalid times (NaNs in vorticity across cities) ---------
         valid_mask = np.ones(num_timesteps, dtype=bool)
-        for city in cities:
-            vorticity_values = city_data[city]["vorticity"]
-            valid_mask &= ~np.isnan(vorticity_values)  # Check across all levels
-        print(f"✅ Keeping {valid_mask.sum()} out of {num_timesteps} time steps.")
-        # 🚀 **Step 2: Filter out invalid time steps for all variables**
+        if ("vorticity" in variables):
+            for city in cities:
+                vorticity_values = city_data[city]["vorticity"]
+                valid_mask &= ~np.isnan(vorticity_values)
+        print(f"NaN/vorticity mask keeps {valid_mask.sum()} / {num_timesteps} steps")
+
+        # Apply NaN mask to series (for all vars) and to times
         for city in cities:
             for var in variables:
-                city_data[city][var] = city_data[city][var][valid_mask]  # Apply mask
+                city_data[city][var] = city_data[city][var][valid_mask]
+        times = times[valid_mask]
+        num_timesteps = valid_mask.sum()
 
-        # 🚀 **Step 3: Store in a single NumPy array**
-        num_timesteps_filtered = valid_mask.sum()
-        data_array = np.zeros((len(cities), len(variables), num_timesteps_filtered))
-
+        # --------- Pack into array [city, var, time] then reshape to (T, V*C) ----------
+        T = num_timesteps
+        V = len(variables)
+        C = len(cities)
+        data_array = np.zeros((C, V, T), dtype=np.float64)
         for i, city in enumerate(cities):
             for j, var in enumerate(variables):
                 data_array[i, j, :] = city_data[city][var]
 
-        # print("✅ Data stored in NumPy array with shape:", data_array.shape)
-        data_array = np.transpose(data_array,(2,1,0))
-        # print("✅ Data stored in NumPy array with shape:", data_array.shape)
-        data_array = np.reshape(data_array, (data_array.shape[0],data_array.shape[1]*data_array.shape[2]), order='F') # Fortran-like index ordering
-        # print("✅ Data stored in NumPy array with shape:", data_array.shape)
+        # Build (T, V*C) consistent with Fortran-order stacking (var-major inside city-major)
+        X_TVC = np.transpose(data_array, (2, 1, 0))   # (T, V, C)
+        X = np.reshape(X_TVC, (T, V * C), order='F')  # (T, V*C)
 
-        npdata = data_array
-        npdata = npdata - npdata.mean(axis=0)
+        # --------- Step B: remove annual + diurnal cycles over the full year (if requested) ---------
+        if use_deseason:
+            X = self._deseasonalize_seasonal_diurnal(X, times)
 
-        # keep only dim dimension
-        npdata = npdata[:,0:self.dim]
+        # SAVE the full (pre-winter) timeline for plotting & debug
+        times_full = times.copy()  
 
-        n_test = npdata.shape[0] // 3
+        # --------- Step C: only after deseasonalization, optionally select winter (DJF) ----------
+        if season == "winter":
+            months = (times.astype('datetime64[M]').astype(int) % 12) + 1  # 1..12
+            winter_mask = (months == 12) | (months == 1) | (months == 2)
+            X = X[winter_mask, :]
+            times = times[winter_mask]
+            T = X.shape[0]
+            print(f"Winter filter keeps {T} steps")
 
-        self.npdata = npdata[0:-n_test:1,:]
-        self.npdatatest = npdata[-n_test:-1:1,:]
+        # --------- Optional che# --------- Optional check plots for one city/variable at 3 stages ----------
+        if bool_check_plot:
+            var_index = {v: j for j, v in enumerate(variables)}
+            city_index = {c: k for k, c in enumerate(cities)}
+            k = city_index.get(plot_city, 0)
+            j = var_index.get(plot_variable, 0)
 
-        self.max_nsamples = self.npdata.shape[0]
+            # raw (after NaN mask, before deseason & before winter)
+            series_raw = data_array[k, j, :]  # length matches times_full
+
+            if use_deseason:
+                # compute intermediate series on the full pre-winter timeline
+                s_raw = series_raw.reshape(-1, 1)
+                s_ann_removed, s_full_removed = self._deseasonalize_debug_series(s_raw, times_full)
+                series_ann = s_ann_removed[:, 0]
+                series_full = s_full_removed[:, 0]
+            else:
+                series_ann = series_raw.copy()
+                series_full = series_raw.copy()
+
+            # If winter selected, **subset for display** using a mask built on times_full
+            if season == "winter":
+                months_all = (times_full.astype('datetime64[M]').astype(int) % 12) + 1
+                djf_mask = (months_all == 12) | (months_all == 1) | (months_all == 2)
+
+                series_raw_plot  = series_raw[djf_mask]
+                series_ann_plot  = series_ann[djf_mask]
+                series_full_plot = series_full[djf_mask]
+                times_plot       = times_full[djf_mask]
+            else:
+                series_raw_plot  = series_raw
+                series_ann_plot  = series_ann
+                series_full_plot = series_full
+                times_plot       = times_full
+
+            fig, axes = plt.subplots(3, 1, figsize=(10, 7), sharex=True)
+            axes[0].plot(times_plot, series_raw_plot);  axes[0].set_title(f"{plot_city} – {plot_variable} (raw)")
+            axes[1].plot(times_plot, series_ann_plot);  axes[1].set_title("After removing annual seasonal cycle (DOY mean)")
+            axes[2].plot(times_plot, series_full_plot); axes[2].set_title("After removing diurnal cycle (hourly mean)")
+            for ax in axes: ax.grid(True, alpha=0.3)
+            fig.autofmt_xdate(); plt.tight_layout()
+
+            # Save before show (safer), then show
+            folder_results = "results"
+            directory = os.path.join(folder_results, self.name)
+            os.makedirs(directory, exist_ok=True)
+            fig.savefig(os.path.join(directory, "deseasonality.png"), dpi=150)
+            plt.show()
+
+
+
+        # --------- Center columns, keep dim, split train/test ----------
+        X = X - X.mean(axis=0)
+        X = X[:, :self.dim]
+        n_test = X.shape[0] // 3
+        self.npdata     = X[:-n_test, :]
+        self.npdatatest = X[-n_test:-1, :]
+
+        self.max_nsamples     = self.npdata.shape[0]
         self.max_nsamplestest = self.npdatatest.shape[0]
 
-    def sample(self, n):               
-        idx = np.random.randint(0,self.npdata.shape[0], size = n) #% self.max_nsamples
-        return torch.from_numpy(self.npdata[idx,:]).to(torch.float32)
+    def sample(self, n):
+        idx = np.random.randint(0, self.npdata.shape[0], size=n)
+        return torch.from_numpy(self.npdata[idx, :]).to(torch.float32)
 
-    def sampletest(self, n):               
-        idx = np.random.randint(0,self.npdatatest.shape[0], size = n) #% self.max_nsamples
-        return torch.from_numpy(self.npdatatest[idx,:]).to(torch.float32)
+    def sampletest(self, n):
+        idx = np.random.randint(0, self.npdatatest.shape[0], size=n)
+        return torch.from_numpy(self.npdatatest[idx, :]).to(torch.float32)
 
+    @staticmethod
+    def _deseasonalize_seasonal_diurnal(X, times):
+        """
+        Remove annual (day-of-year mean) and diurnal (hour-of-day mean) cycles.
+        X: (T, F), times: (T,) datetime64 array.
+        Returns: X after removing both cycles.
+        """
+        ts = pd.to_datetime(times)
+        df = pd.DataFrame(index=ts, data=X)
+
+        # Annual cycle (by Day-Of-Year)
+        doy = ts.dayofyear
+        trend_doy = df.groupby(doy).mean()                    # (<=366, F)
+        X_ann = df.values - trend_doy.reindex(doy).values     # (T, F)
+
+        # Diurnal cycle (by hour of day)
+        df_ann = pd.DataFrame(index=ts, data=X_ann)
+        hours = ts.hour
+        trend_hour = df_ann.groupby(hours).mean()             # (<=24, F)
+        X_full = X_ann - trend_hour.reindex(hours).values     # (T, F)
+        return X_full
+
+    @staticmethod
+    def _deseasonalize_debug_series(s, times):
+        """
+        Return intermediate series for plotting: after removing
+        (1) annual DOY mean, and (2) diurnal mean.
+        s: (T,1), times: (T,)
+        """
+        ts = pd.to_datetime(times)
+        df = pd.DataFrame(index=ts, data=s)
+
+        # Annual
+        doy = ts.dayofyear
+        trend_doy = df.groupby(doy).mean()
+        s_ann = df.values - trend_doy.reindex(doy).values
+
+        # Diurnal
+        df_ann = pd.DataFrame(index=ts, data=s_ann)
+        hours = ts.hour
+        trend_hour = df_ann.groupby(hours).mean()
+        s_full = s_ann - trend_hour.reindex(hours).values
+        return s_ann, s_full
 
 class ncar_weather_station:
     def __init__(self, dim = 90):
