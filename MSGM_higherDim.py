@@ -27,7 +27,7 @@ import seaborn as sns
 from sde_scheme import euler_maruyama_sampler,heun_sampler,rk4_stratonovich_sampler
 from own_plotting import plot_selected_inds
 from SDEs import forward_SDE,SDE,VariancePreservingSDE,PluginReverseSDE,multiplicativeNoise
-from data import ERA5,ncar_weather_station,weather_station,eof_pressure,Lorenz96,PODmodes,SwissRoll,Cauchy
+from data import ERA5,ncar_weather_station,weather_station,eof_pressure,Lorenz96,PODmodes,PODmodesDiff,SwissRoll,Cauchy,Gaussian,GaussianCauchy
 from quantitative_comparison import compute_mmd
 import gc
 
@@ -70,19 +70,46 @@ nruns_mmd = 10
 
 # Dataset
 # datatype = 'swissroll'
+# datatype = 'gaussian'
 # datatype = 'cauchy'
-datatype = 'POD'
+# datatype = 'gaussianCauchy'
 # datatype = 'era5'
 # datatype = 'era5temp'
 # datatype = 'era5vorttemp'
+normalized_data = True
+Res=[1]
 
 match datatype:
     case 'swissroll': # Swiss roll
         dims = [2]
-        Res=[1]
-    case 'cauchy': # multi-dimesnional Cauchy
+    case 'gaussian': # multi-dimesnional gaussian
         dims = [2,4,8,16,32]
-        Res=[1]
+    case 'gaussianCauchy': # multi-dimesnional gaussian
+        # dims = [2,16]
+        dims = [2]
+
+        # norm_sampler = "kde"
+        norm_sampler = "ecdf"
+        norm_map = "log"
+        vtype = 'rademacher'
+        # vtype = 'uniform'
+        beta_max=2
+        
+    case 'cauchy': # multi-dimesnional Cauchy
+        # dims = [2,4,8,16,32]
+        dims = [2]
+        
+        # correlation = False # default
+        # beta_max=0.4
+
+        correlation = True 
+        beta_max=2
+
+        norm_map = "log"
+        vtype = 'rademacher'
+        # vtype = 'uniform'
+        # num_steps_forward = 256
+
     case 'POD': # POD
         dims = [2,4,8,16]
         Res=[300,3900]
@@ -150,6 +177,7 @@ dpi=200
 dimplot_max = 8
 val_hist = plot_xlim
 crop_data_plot = False
+plot_crop = plot_xlim
 
 # Load results 
 justLoad = False
@@ -280,11 +308,31 @@ if __name__ == '__main__':
                         case 'swissroll':
                             sampler = SwissRoll()
                             normalized_data = False
+                        case 'gaussian':
+                            # correlation = False
+                            # normalized_data = False
+                            correlation = True # default
+                            sampler = Gaussian(dim, normalized=normalized_data, correlation = correlation)
+                        case 'gaussianCauchy':
+                            correlation = True # default
+                            sampler = GaussianCauchy(dim, normalized=normalized_data, correlation = correlation)
+                            crop_data_plot = True
+                            # plot_xlim = 0.3
+                            # plot_xlim = 0.1 # for d=2 / warning : should depend of d : overwise we remove all far points
+                            plot_xlim = 5 # for d=2 / warning : should depend of d : overwise we remove all far points / or separate crop and plot_xlim
+                            plot_crop = 3*plot_xlim
+                            if MSGM:
+                                val_hist = 0.4
+                            else:
+                                val_hist = 0.2
                         case 'cauchy':
-                            sampler = Cauchy(dim, correlation = False)
+                            sampler = Cauchy(dim, normalized=normalized_data, correlation = correlation)
                             normalized_data = False
                             crop_data_plot = True
-                            plot_xlim = 0.1
+                            # plot_xlim = 0.3
+                            # plot_xlim = 0.1 # for d=2 / warning : should depend of d : overwise we remove all far points
+                            plot_xlim = 1 # for d=2 / warning : should depend of d : overwise we remove all far points / or separate crop and plot_xlim
+                            plot_crop = 3*plot_xlim
                             if MSGM:
                                 val_hist = 0.3
                             else:
@@ -374,7 +422,7 @@ if __name__ == '__main__':
 
                         xtest_plot = std_norm * xtest
                         if crop_data_plot:
-                            boolean_mask = (xtest_plot.abs() < (plot_xlim * std_norm * std_test_plot)).all(axis=1)
+                            boolean_mask = (xtest_plot.abs() < (plot_crop * std_norm * std_test_plot)).all(axis=1)
                             print( str( (1 - boolean_mask.sum()/ len(boolean_mask)).item() * 100) + " % of samples outside plot limits")
                             xtest_plot = xtest_plot[boolean_mask,:]
 
@@ -429,7 +477,7 @@ if __name__ == '__main__':
 
                         xtrain_plot = std_norm * sampler.sample(num_samples_init).to('cpu')
                         if crop_data_plot:
-                            boolean_mask = (xtrain_plot.abs() < (plot_xlim * std_norm * std_test_plot)).all(axis=1)
+                            boolean_mask = (xtrain_plot.abs() < (plot_crop * std_norm * std_test_plot)).all(axis=1)
                             print( str( (1 - boolean_mask.sum()/ len(boolean_mask)).item() * 100) + " % of samples outside plot limits")
                             xtrain_plot = xtrain_plot[boolean_mask,:]
                         if (datatype == 'era5') and xtest.shape[1]>= 9:
@@ -733,7 +781,7 @@ if __name__ == '__main__':
                                         if (scatter_plots) and (i_run == 0):
                                             xgen_plot = std_norm * xgen
                                             if crop_data_plot:
-                                                boolean_mask = (xgen_plot.abs() < (plot_xlim * std_norm * std_test_plot)).all(axis=1)
+                                                boolean_mask = (xgen_plot.abs() < (plot_crop * std_norm * std_test_plot)).all(axis=1)
                                                 print( str( (1 - boolean_mask.sum()/ len(boolean_mask)).item() * 100) + " % of samples outside plot limits")
                                                 xgen_plot = xgen_plot[boolean_mask,:]
                                             
