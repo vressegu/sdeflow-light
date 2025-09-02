@@ -812,8 +812,10 @@ if __name__ == '__main__':
 
                                             pddata = pd.concat([pddatatest.assign(samples="test"), pddatagen.assign(samples="gen.")])
 
-                                            plot_kws = {'alpha': 0.1, "s": ssize, "edgecolor": "none", "rasterized": True}
                                             palette = {"test": sns.color_palette()[0], "gen.": sns.color_palette()[1]}
+                                            plot_kws = {'alpha': 0.1, "s": ssize, "edgecolor": "none", "rasterized": True}
+
+                                            # === Replace pairplot with PairGrid ===
                                             g = sns.PairGrid(pddata, hue="samples",
                                                             corner=True, height=height_seaborn, aspect=1,
                                                             palette=palette, diag_sharey=False)
@@ -867,8 +869,6 @@ if __name__ == '__main__':
                                                 for j, ax in enumerate(row):
                                                     if ax is None:
                                                         continue
-                                                    if ax is None:
-                                                        continue
                                                     plot_xlim_col = plot_xlim * std_norm[j]* std_test_plot[j]
                                                     if j < i:  # lower triangle
                                                         ax.set_xlim((-plot_xlim_col, plot_xlim_col))
@@ -894,59 +894,22 @@ if __name__ == '__main__':
                                                     ax.yaxis.set_major_locator(mticker.MaxNLocator(nbins=4))  # max 4 y-ticks
                                                     # remove the "0.0" label but keep the tick itself (gridlines if any)
                                                     def fmt_tick(val, pos):
-                                                        # if not log_scale_pdf and abs(val) < 1e-8:   # close to zero
                                                         if abs(val) < 1e-8:   # close to zero
                                                             return ""         # empty label
                                                         return f"{val:g}"     # compact formatting
                                                     ax.xaxis.set_major_formatter(mticker.FuncFormatter(fmt_tick))
                                                     ax.yaxis.set_major_formatter(mticker.FuncFormatter(fmt_tick))
 
-                                                    if j < i:  # lower triangle
-                                                        ax.set_xlim((-plot_xlim_col, plot_xlim_col))
-                                                        ax.set_ylim((-plot_ylim_row,  plot_ylim_row))
-
-                                            # --- Pass 2: diagonals only ---
-                                            for i in range(len(g.diag_vars)):
-                                                ax = g.axes[i, i]
-                                                if ax is None:
-                                                    continue
-                                                var = g.diag_vars[i]
-                                                plot_xlim_col = plot_xlim * std_norm[i] * std_test_plot[i]
-                                                x_min, x_max = -plot_xlim_col, plot_xlim_col
-                                                ax.set_xlim((x_min, x_max))
-                                                ax.set_ylabel("density")
-
-                                            for i, row in enumerate(g.axes):
-                                                for j, ax in enumerate(row):
-                                                    if ax is None:
-                                                        continue
-                                                    # reduce the number of ticks
-                                                    ax.xaxis.set_major_locator(mticker.MaxNLocator(nbins=4))  # max 4 x-ticks
-                                                    ax.yaxis.set_major_locator(mticker.MaxNLocator(nbins=4))  # max 4 y-ticks
-                                                    # remove the "0.0" label but keep the tick itself (gridlines if any)
-                                                    def fmt_tick(val, pos):
-                                                        # if not log_scale_pdf and abs(val) < 1e-8:   # close to zero
-                                                        if abs(val) < 1e-8:   # close to zero
-                                                            return ""         # empty label
-                                                        return f"{val:g}"     # compact formatting
-                                                    ax.xaxis.set_major_formatter(mticker.FuncFormatter(fmt_tick))
-                                                    ax.yaxis.set_major_formatter(mticker.FuncFormatter(fmt_tick))
 
                                             plt.tight_layout()
                                             if plt_show:
                                                 plt.show(block=False)
                                                 plt.pause(1)
-                                            plt.tight_layout()
-                                            # plt.show()
-                                            time.sleep(0.5)
-                                            if plt_show:
-                                                plt.show(block=False)
                                             name_fig = name_simu + "_multDim.png" 
                                             plt.savefig(name_fig, dpi=dpi)
                                             if plt_show:
                                                 plt.pause(1)
                                             plt.close()
-                                            del pddatagen, pddata, g
                                             del pddatagen, pddata, g
 
                                         if (denoising_plots) and (i_run == 0):
