@@ -53,6 +53,12 @@ beta_min_SGM = 0.1 # default
 beta_max_SGM = 20 # default
 beta_maxs = [beta_max]
 
+spherical = False
+if not spherical:
+    premodule = None
+else:
+    premodule = "NormalizeLogRadius" # default
+    # premodule = "PolarCoordinatesWithLogRadius" # default
 num_samples_init_max = int(1e5)
 vtype = 'rademacher'
 lr = 0.001 # default
@@ -265,6 +271,53 @@ class Swish(nn.Module):
 
     def forward(self, x):
         return torch.sigmoid(x)*x
+    
+
+class NormalizeLogRadius(nn.Module):
+    """Non-learnable preprocessing layer:
+       x ↦ (x/||x||, log||x||).
+    """
+    def __init__(self, eps = 1e-6): 
+        super().__init__()
+        self.eps = eps
+
+    def forward(self, x):
+        # x: (batch, d)
+        norm = torch.norm(x, dim=-1, keepdim=True)
+        norm = norm + self.eps
+        x_normalized = x / norm
+        log_norm = torch.log(norm)
+        return torch.cat([x_normalized, log_norm], dim=-1)
+    
+class PolarCoordinatesWithLogRadius(nn.Module):
+    """Convert x ∈ R^d to polar/spherical coordinates.
+       - d=2 → (r, θ)
+       - d=3 → (r, θ, φ)
+       Returns a tensor of size (..., d)
+    """
+    def __init__(self, eps=1e-12):
+        super().__init__()
+        self.eps = eps
+
+    def forward(self, x):
+        # x: (..., d)
+        d = x.shape[-1]
+        norm = torch.norm(x, dim=-1, keepdim=True).clamp_min(self.eps)
+        lognorm = torch.log(norm)  # log r
+
+        if d == 2:
+            theta = torch.atan2(x[...,1], x[...,0]).unsqueeze(-1)  # angle
+            out = torch.cat([lognorm, theta], dim=-1)  # (r, θ)
+
+        elif d == 3:
+            theta = torch.atan2(x[...,1], x[...,0]).unsqueeze(-1)  # azimuth
+            phi = torch.acos((x[...,2] / norm).clamp(-1+1e-7, 1-1e-7)).unsqueeze(-1)  # polar
+            out = torch.cat([lognorm, theta, phi], dim=-1)  # (r, θ, φ)
+
+        else:
+            raise NotImplementedError("PolarCoordinates currently supports d=2 or d=3.")
+
+        return out
 
 class MLP(nn.Module):
     def __init__(self,
@@ -272,6 +325,7 @@ class MLP(nn.Module):
                 index_dim=1,
                 hidden_dim=128,
                 act=Swish(),
+                premodule = None,
                 ):
         super().__init__()
         self.input_dim = input_dim
@@ -279,15 +333,29 @@ class MLP(nn.Module):
         self.hidden_dim = hidden_dim
         self.act = act
 
+        self.output_dim = self.input_dim # represent the a vector field so input dim = output dim
+
+        assert premodule is None or premodule in ["PolarCoordinatesWithLogRadius", "NormalizeLogRadius"]
+        self.premodule = premodule
+        if premodule == "NormalizeLogRadius": 
+            self.pre = NormalizeLogRadius()                                    # non - learnable
+            self.learnable_network_input_dim = self.input_dim +  1
+        elif premodule == "PolarCoordinatesWithLogRadius": 
+            self.pre = PolarCoordinatesWithLogRadius() 
+            self.learnable_network_input_dim = self.input_dim
+        else: # premodule is None
+            self.pre = None
+            self.learnable_network_input_dim = self.input_dim
+
         self.main = nn.Sequential(
-            nn.Linear(input_dim+index_dim, hidden_dim),
+            nn.Linear(self.learnable_network_input_dim+index_dim, hidden_dim),  # input layer
             act,
             nn.Linear(hidden_dim, hidden_dim),
             act,
             nn.Linear(hidden_dim, hidden_dim),
             act,
-            nn.Linear(hidden_dim, input_dim),
-            )
+            nn.Linear(hidden_dim, self.output_dim),                             # output layer
+        )
 
     def forward(self, input, t):
         # init
@@ -296,8 +364,12 @@ class MLP(nn.Module):
         t = t.view(-1, self.index_dim).float()
 
         # forward
-        h = torch.cat([input, t], dim=1) # concat
-        output = self.main(h) # forward
+        if self.pre is not None:
+            h = self.pre(input)                   # (batch, learnable_network_input_dim)
+            h = torch.cat([h, t], dim=1)         # concat index
+        else:
+            h = torch.cat([input, t], dim=1)     # concat
+        output = self.main(h)                    # forward
         return output.view(*sz)
 
 ### 2.3. Define evaluate function (compute ELBO)
@@ -318,6 +390,8 @@ def m_name_simu_root(sampler_name, gen_sde_name_SDE, iterations_ref, batch_size,
         + str(num_steps_forward) + "stepsForw_" \
         + str(beta_min) + "beta_min" \
         + str(beta_max) + "beta_max" 
+    if spherical:
+        name_simu_root += "_" + premodule
     if (not (lr == 0.001)):
         name_simu_root += str(lr) + "lr"
     if (not (vtype == 'rademacher')):
@@ -367,6 +441,7 @@ if __name__ == '__main__':
                     else:
                         normalized_data = False
                         ssm_intT = ssm_intT_ref
+                        spherical = True
 
                     np.random.seed(0)
                     torch.manual_seed(0) 
@@ -647,7 +722,7 @@ if __name__ == '__main__':
                             print('num_samples_init = ' + str(num_samples_init))
                         
                             # init models
-                            drift_q = MLP(input_dim=sampler.dim, index_dim=1, hidden_dim=128).to(device)
+                            drift_q = MLP(input_dim=sampler.dim, index_dim=1, hidden_dim=128, premodule = premodule).to(device)
                             T = torch.nn.Parameter(torch.FloatTensor([T0]), requires_grad=False)
 
 
