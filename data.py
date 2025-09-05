@@ -543,7 +543,7 @@ class Cauchy:
     """
     multi-dimensional Cauchy distribution sampler.
     """
-    def __init__(self, dim = 2, correlation = False):
+    def __init__(self, dim = 2, correlation = False, normalized = False):
         self.dim = dim
         self.name='cauchy' + str(self.dim)
         if correlation:
@@ -551,10 +551,18 @@ class Cauchy:
             self.name = self.name + "cor"
         else:
             self.A = torch.eye(dim)
-        self.cauchy = torch.distributions.Cauchy(0.0, 1.0)
+        cov = self.A @ self.A.T
+        self.std = torch.sqrt(torch.diag(cov))
+        if normalized:
+            self.name = self.name + '_norm'
+            self.A = torch.diag(1/self.std) @ self.A 
+            cov = self.A @ self.A.T
+
+        scale = (1.0/50)
+        self.cauchy = torch.distributions.Cauchy(0.0, scale)
 
     def sample(self, n):
-        return  (1.0/50) * self.cauchy.sample((n, self.dim)) @ self.A.T
+        return  self.cauchy.sample((n, self.dim)) @ self.A.T
     
     def sampletest(self, n):
         return self.sample(n)
@@ -601,12 +609,14 @@ class GaussianCauchy:
         self.name='gaussianCauchy' + str(self.dim)
         if correlation:
             self.name = self.name + "cor"
+        if normalized:
+            self.name = self.name + '_norm'
 
     def get_std(self):
         return self.gaussian.std
 
     def sample(self, n):
-        return self.gaussian.sample(n) * self.cauchy.sample((1, 1))
+        return (1.0/50) * self.gaussian.sample(n) * self.cauchy.sample((1, 1))
     
     def sampletest(self, n):
         return self.sample(n)

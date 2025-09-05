@@ -177,10 +177,6 @@ match datatype:
         correlation = True 
         beta_max=2
 
-        norm_map = "log"
-        vtype = 'rademacher'
-        # vtype = 'uniform'
-        # num_steps_forward = 256
 
     case 'POD': # POD
         dims = [2,4,8,16]
@@ -499,6 +495,10 @@ if __name__ == '__main__':
                                 val_hist = 3.0
                             log_scale_pdf = True
                             height_seaborn = height_seaborn_ref * 2
+
+                            num_samples = 100000 # to have enough points in the tails for the plots
+                            evalmmmd = False
+                            nruns_mmd = 1
 
                             if not correlation:
                                 plot_xlim = 20 # for d=2 / warning : should depend of d : overwise we remove all far points / or separate crop and plot_xlim
