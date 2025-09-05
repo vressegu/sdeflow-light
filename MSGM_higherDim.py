@@ -232,7 +232,8 @@ noising_plots = True
 denoising_plots = True
 save_results = True
 plot_xlim = 3.0
-height_seaborn = 1.2
+height_seaborn_ref = 1.2
+height_seaborn = height_seaborn_ref
 ssize = height_seaborn
 dpi=200
 dimplot_max = 8
@@ -246,7 +247,8 @@ justLoadmmmd = False
 plt_show = False
 plot_validate = False
 print_RAM = False
-log_scale_pdf = True
+log_scale_pdf = False
+plot_ref_pdf = False
 
 if not justLoad:
     justLoadmmmd = False
@@ -381,6 +383,10 @@ if __name__ == '__main__':
                             # normalized_data = False
                             correlation = True # default
                             sampler = Gaussian(dim, normalized=normalized_data, correlation = correlation)
+                            if not correlation:
+                                plot_ref_pdf = True
+                                pdf_theor = torch.distributions.Normal(0.0, 1.0)
+
                         case 'gaussianCauchy':
                             correlation = True # default
                             sampler = GaussianCauchy(dim, normalized=normalized_data, correlation = correlation)
@@ -393,6 +399,7 @@ if __name__ == '__main__':
                                 val_hist = 0.4
                             else:
                                 val_hist = 0.2
+                            log_scale_pdf = True
                         case 'cauchy':
                             sampler = Cauchy(dim, normalized=normalized_data, correlation = correlation)
                             normalized_data = False
@@ -405,6 +412,18 @@ if __name__ == '__main__':
                                 val_hist = 0.3
                             else:
                                 val_hist = 3.0
+                            log_scale_pdf = True
+                            height_seaborn = height_seaborn_ref * 2
+
+                            if not correlation:
+                                plot_xlim = 20 # for d=2 / warning : should depend of d : overwise we remove all far points / or separate crop and plot_xlim
+                                plot_crop = 3*plot_xlim
+                                plot_ref_pdf = True
+                                scale = (1.0/50)
+                                pdf_theor = torch.distributions.Cauchy(0.0, scale)
+                            else:
+                                plot_xlim = 50 # for d=2 / warning : should depend of d : overwise we remove all far points / or separate crop and plot_xlim
+
                         case 'POD':
                             sampler = PODmodes(Re,dim, normalized=normalized_data)
                         case 'lorenz':
@@ -911,6 +930,7 @@ if __name__ == '__main__':
                                                     # set Y limit for this diagonal axis only
                                                     if log_scale_pdf and (counts > 0).any():
                                                         ymin = counts[counts > 0].min()  # use the minimum value from the heatmap
+                                                        ymin /=2
                                                     else:
                                                         ymin = 0
                                                     if ymax > 0:
@@ -919,6 +939,14 @@ if __name__ == '__main__':
                                                 elif label == "gen.":
                                                     # draw the gen KDE — it will use the same y-scale set by the "test" pass
                                                     sns.kdeplot(x=x, color=palette["gen."], lw=1.5, **kws)
+
+                                                if plot_ref_pdf:
+                                                    plot_xlim_col = plot_xlim * std_norm[0] * std_test_plot[0]
+                                                    x_min, x_max = -plot_xlim_col, plot_xlim_col
+                                                    xx = torch.linspace(x_min, x_max, 2000)
+                                                    pdf_theo = pdf_theor.log_prob(xx).exp()
+                                                    pdf_theo /= (pdf_theo.sum() * (xx[1]-xx[0]))  # normalize like a density
+                                                    plt.plot(xx,pdf_theo, color=palette["test"], linestyle=':', lw=1.5)
 
                                                 if log_scale_pdf:
                                                     ax.set_yscale('log')
@@ -951,7 +979,6 @@ if __name__ == '__main__':
                                                 plot_xlim_col = plot_xlim * std_norm[i] * std_test_plot[i]
                                                 x_min, x_max = -plot_xlim_col, plot_xlim_col
                                                 ax.set_xlim((x_min, x_max))
-                                                ax.set_ylabel("density")
 
                                             for i, row in enumerate(g.axes):
                                                 for j, ax in enumerate(row):
