@@ -250,6 +250,7 @@ plot_crop = plot_xlim
 # Load results 
 justLoad = False
 justLoadmmmd = False
+evalmmmd = True
 plt_show = False
 plot_validate = False
 print_RAM = False
@@ -927,7 +928,7 @@ if __name__ == '__main__':
 
 
                                         # MMD
-                                        if not justLoadmmmd:
+                                        if evalmmmd and not justLoadmmmd:
                                             with torch.no_grad():
                                                 x_mmd1 = sampler.sample(xtest.shape[0]).to(device)
                                                 x_mmd2 = sampler.sample(xtest.shape[0]).to(device)
@@ -1102,88 +1103,56 @@ if __name__ == '__main__':
 
                     ## Convergence plots (with MMD)
 
-                    # if justLoadmmmd and (not MSGM):
-                    if justLoadmmmd:
-                        if not MSGM:
-                            print("filename = " + folder_results + "/" + name_simu_root + "_globalMMDfile_SGM_" + str(nruns_mmd) + "runs.pt")
-                            mmd_SGM = torch.load(folder_results + "/" + name_simu_root + "_globalMMDfile_SGM_" + str(nruns_mmd) + "runs.pt")
+                    if evalmmmd:
+                        # if justLoadmmmd and (not MSGM):
+                        if justLoadmmmd:
+                            if not MSGM:
+                                print("filename = " + folder_results + "/" + name_simu_root + "_globalMMDfile_SGM_" + str(nruns_mmd) + "runs.pt")
+                                mmd_SGM = torch.load(folder_results + "/" + name_simu_root + "_globalMMDfile_SGM_" + str(nruns_mmd) + "runs.pt")
+                            else:
+                                print("filename = " + folder_results + "/" + name_simu_root + "_globalMMDfile_MSGM_" + str(nruns_mmd) + "runs.pt")
+                                mmd_MSGM = torch.load(folder_results + "/" + name_simu_root + "_globalMMDfile_MSGM_" + str(nruns_mmd) + "runs.pt") 
+                                print("filename = " + folder_results + "/" + name_simu_root + "_globalMMDfile_ref_" + str(nruns_mmd) + "runs.pt")
+                                mmd_ref = torch.load(folder_results + "/" + name_simu_root + "_globalMMDfile_ref_" + str(nruns_mmd) + "runs.pt") 
                         else:
-                            print("filename = " + folder_results + "/" + name_simu_root + "_globalMMDfile_MSGM_" + str(nruns_mmd) + "runs.pt")
-                            mmd_MSGM = torch.load(folder_results + "/" + name_simu_root + "_globalMMDfile_MSGM_" + str(nruns_mmd) + "runs.pt") 
-                            print("filename = " + folder_results + "/" + name_simu_root + "_globalMMDfile_ref_" + str(nruns_mmd) + "runs.pt")
-                            mmd_ref = torch.load(folder_results + "/" + name_simu_root + "_globalMMDfile_ref_" + str(nruns_mmd) + "runs.pt") 
-                    else:
-                        if not MSGM:
-                            torch.save(mmd_SGM, folder_results + "/" + name_simu_root + "_globalMMDfile_SGM_" + str(nruns_mmd) + "runs.pt")
-                        else:
-                            torch.save(mmd_MSGM, folder_results + "/" + name_simu_root + "_globalMMDfile_MSGM_" + str(nruns_mmd) + "runs.pt")
-                            torch.save(mmd_ref, folder_results + "/" + name_simu_root + "_globalMMDfile_ref_" + str(nruns_mmd) + "runs.pt")
+                            if not MSGM:
+                                torch.save(mmd_SGM, folder_results + "/" + name_simu_root + "_globalMMDfile_SGM_" + str(nruns_mmd) + "runs.pt")
+                            else:
+                                torch.save(mmd_MSGM, folder_results + "/" + name_simu_root + "_globalMMDfile_MSGM_" + str(nruns_mmd) + "runs.pt")
+                                torch.save(mmd_ref, folder_results + "/" + name_simu_root + "_globalMMDfile_ref_" + str(nruns_mmd) + "runs.pt")
 
-
-                fig = plt.figure(figsize=(5,3))
-                
-                # Take square root and evaluate mean and quantiles
-                mmmd_SGM = mmd_SGM.sqrt().mean(dim=4)
-                q10mmd_SGM = mmd_SGM.sqrt().quantile(0.1,dim=4)
-                q90mmd_SGM = mmd_SGM.sqrt().quantile(0.9,dim=4)
-                mmmd_MSGM = mmd_MSGM.sqrt().mean(dim=4)
-                q10mmd_MSGM = mmd_MSGM.sqrt().quantile(0.1,dim=4)
-                q90mmd_MSGM = mmd_MSGM.sqrt().quantile(0.9,dim=4)
-                mmmd_ref = mmd_ref.sqrt().mean(dim=4)
-                q10mmd_ref = mmd_ref.sqrt().quantile(0.1,dim=4)
-                q90mmd_ref = mmd_ref.sqrt().quantile(0.9,dim=4)
-
-                alpha_plot = 0.2
-                range_num_stepss_backward = range(len(num_stepss_backward))
-                plt.loglog(num_stepss_backward,mmmd_SGM[i_dims,i_Res,range_num_stepss_backward,0].flatten(),label='SGM')
-                plt.fill_between(num_stepss_backward, q10mmd_SGM[i_dims,i_Res,range_num_stepss_backward,0].flatten(), \
-                                                        q90mmd_SGM[i_dims,i_Res,range_num_stepss_backward,0].flatten(),
-                    alpha=alpha_plot)
-                plt.loglog(num_stepss_backward,mmmd_MSGM[i_dims,i_Res,range_num_stepss_backward,0].flatten(),label='MSGM')
-                plt.fill_between(num_stepss_backward, q10mmd_MSGM[i_dims,i_Res,range_num_stepss_backward,0].flatten(), \
-                                                        q90mmd_MSGM[i_dims,i_Res,range_num_stepss_backward,0].flatten(),
-                    alpha=alpha_plot)
-                plt.loglog(num_stepss_backward,mmmd_ref[i_dims,i_Res,range_num_stepss_backward,0].flatten(),label='train data')
-                plt.fill_between(num_stepss_backward, q10mmd_ref[i_dims,i_Res,range_num_stepss_backward,0].flatten(), 
-                                                        q90mmd_ref[i_dims,i_Res,range_num_stepss_backward,0].flatten(),
-                    alpha=alpha_plot)
-                plt.legend()
-                plt.ylabel('MMD')
-                plt.xlabel('nb timesteps in backward SDE')
-                xx = num_stepss_backward
-                labels = [f'$2^{{{int(np.log2(idx))}}}$' for idx in xx]
-                ax = plt.gca()
-                ax.set_xticks(xx)
-                ax.xaxis.set_major_locator(FixedLocator(xx))
-                ax.xaxis.set_major_formatter(FixedFormatter(labels))
-                plt.tight_layout()
-                if plt_show:
-                    plt.show(block=False)
-                name_fig = folder_results + "/" + name_simu_root + "_MMD_wBckWardSteps_" + str(nruns_mmd) + "runs.png" 
-                plt.savefig(name_fig)
-                if plt_show:
-                    plt.pause(1)
-                plt.close(fig)
-                plt.close()
-                del fig
-
-
-                if mmd_SGM.shape[3]>1:
-                    range_iterations = range(len(iterationss))
+                if evalmmmd:
                     fig = plt.figure(figsize=(5,3))
-                    plt.loglog(iterationss,mmmd_SGM[i_dims,i_Res,0,range_iterations].flatten(),label='SGM')
-                    plt.fill_between(iterationss, q10mmd_SGM[i_dims,i_Res,0,range_iterations].flatten(), q90mmd_SGM[i_dims,i_Res,0,range_iterations].flatten(),
+                    
+                    # Take square root and evaluate mean and quantiles
+                    mmmd_SGM = mmd_SGM.sqrt().mean(dim=4)
+                    q10mmd_SGM = mmd_SGM.sqrt().quantile(0.1,dim=4)
+                    q90mmd_SGM = mmd_SGM.sqrt().quantile(0.9,dim=4)
+                    mmmd_MSGM = mmd_MSGM.sqrt().mean(dim=4)
+                    q10mmd_MSGM = mmd_MSGM.sqrt().quantile(0.1,dim=4)
+                    q90mmd_MSGM = mmd_MSGM.sqrt().quantile(0.9,dim=4)
+                    mmmd_ref = mmd_ref.sqrt().mean(dim=4)
+                    q10mmd_ref = mmd_ref.sqrt().quantile(0.1,dim=4)
+                    q90mmd_ref = mmd_ref.sqrt().quantile(0.9,dim=4)
+
+                    alpha_plot = 0.2
+                    range_num_stepss_backward = range(len(num_stepss_backward))
+                    plt.loglog(num_stepss_backward,mmmd_SGM[i_dims,i_Res,range_num_stepss_backward,0].flatten(),label='SGM')
+                    plt.fill_between(num_stepss_backward, q10mmd_SGM[i_dims,i_Res,range_num_stepss_backward,0].flatten(), \
+                                                            q90mmd_SGM[i_dims,i_Res,range_num_stepss_backward,0].flatten(),
                         alpha=alpha_plot)
-                    plt.loglog(iterationss,mmmd_MSGM[i_dims,i_Res,0,range_iterations].flatten(),label='MSGM')
-                    plt.fill_between(iterationss, q10mmd_MSGM[i_dims,i_Res,0,range_iterations].flatten(), q90mmd_MSGM[i_dims,i_Res,0,range_iterations].flatten(),
+                    plt.loglog(num_stepss_backward,mmmd_MSGM[i_dims,i_Res,range_num_stepss_backward,0].flatten(),label='MSGM')
+                    plt.fill_between(num_stepss_backward, q10mmd_MSGM[i_dims,i_Res,range_num_stepss_backward,0].flatten(), \
+                                                            q90mmd_MSGM[i_dims,i_Res,range_num_stepss_backward,0].flatten(),
                         alpha=alpha_plot)
-                    plt.loglog(iterationss,mmmd_ref[i_dims,i_Res,0,range_iterations].flatten(),label='train data')
-                    plt.fill_between(iterationss, q10mmd_ref[i_dims,i_Res,0,range_iterations].flatten(), q90mmd_ref[i_dims,i_Res,0,range_iterations].flatten(),
+                    plt.loglog(num_stepss_backward,mmmd_ref[i_dims,i_Res,range_num_stepss_backward,0].flatten(),label='train data')
+                    plt.fill_between(num_stepss_backward, q10mmd_ref[i_dims,i_Res,range_num_stepss_backward,0].flatten(), 
+                                                            q90mmd_ref[i_dims,i_Res,range_num_stepss_backward,0].flatten(),
                         alpha=alpha_plot)
                     plt.legend()
                     plt.ylabel('MMD')
-                    plt.xlabel('effective number of iterations')
-                    xx = iterationss
+                    plt.xlabel('nb timesteps in backward SDE')
+                    xx = num_stepss_backward
                     labels = [f'$2^{{{int(np.log2(idx))}}}$' for idx in xx]
                     ax = plt.gca()
                     ax.set_xticks(xx)
@@ -1192,7 +1161,7 @@ if __name__ == '__main__':
                     plt.tight_layout()
                     if plt_show:
                         plt.show(block=False)
-                    name_fig = folder_results + "/" + name_simu_root + "_MMD_wIte_" + str(nruns_mmd) + "runs.png" 
+                    name_fig = folder_results + "/" + name_simu_root + "_MMD_wBckWardSteps_" + str(nruns_mmd) + "runs.png" 
                     plt.savefig(name_fig)
                     if plt_show:
                         plt.pause(1)
@@ -1200,38 +1169,72 @@ if __name__ == '__main__':
                     plt.close()
                     del fig
 
-            if mmd_SGM.shape[0]>1:
-                range_dims = range(len(dims))
-                fig = plt.figure(figsize=(5,3))
-                plt.loglog(dims,mmmd_SGM[range_dims,i_Res,0,0].flatten(),label='SGM')
-                plt.fill_between(dims, q10mmd_SGM[range_dims,i_Res,0,0].flatten(), q90mmd_SGM[range_dims,i_Res,0,0].flatten(),
-                    alpha=alpha_plot)
-                plt.loglog(dims,mmmd_MSGM[range_dims,i_Res,0,0].flatten(),label='MSGM')
-                plt.fill_between(dims, q10mmd_MSGM[range_dims,i_Res,0,0].flatten(), q90mmd_MSGM[range_dims,i_Res,0,0].flatten(),
-                    alpha=alpha_plot)
-                plt.loglog(dims,mmmd_ref[range_dims,i_Res,0,0].flatten(),label='train data')
-                plt.fill_between(dims, q10mmd_ref[range_dims,i_Res,0,0].flatten(), q90mmd_ref[range_dims,i_Res,0,0].flatten(),
-                    alpha=alpha_plot)
-                plt.legend()
-                plt.ylabel('MMD')
-                plt.xlabel('dimension')
-                if datatype == 'era5':
-                    xx = dims
-                    plt.xticks(ticks=xx )
-                else:
-                    xx = dims
-                    labels = [f'$2^{{{int(np.log2(idx))}}}$' for idx in xx]
-                    ax = plt.gca()
-                    ax.set_xticks(xx)
-                    ax.xaxis.set_major_locator(FixedLocator(xx))
-                    ax.xaxis.set_major_formatter(FixedFormatter(labels))
-                plt.tight_layout()
-                if plt_show:
-                    plt.show(block=False)
-                name_fig = folder_results + "/" + name_simu_root + "_MMD_wDim_" + str(nruns_mmd) + "runs.png" 
-                plt.savefig(name_fig)
-                if plt_show:
-                    plt.pause(1)
-                plt.close(fig)
-                plt.close()
-                del fig
+
+                    if mmd_SGM.shape[3]>1:
+                        range_iterations = range(len(iterationss))
+                        fig = plt.figure(figsize=(5,3))
+                        plt.loglog(iterationss,mmmd_SGM[i_dims,i_Res,0,range_iterations].flatten(),label='SGM')
+                        plt.fill_between(iterationss, q10mmd_SGM[i_dims,i_Res,0,range_iterations].flatten(), q90mmd_SGM[i_dims,i_Res,0,range_iterations].flatten(),
+                            alpha=alpha_plot)
+                        plt.loglog(iterationss,mmmd_MSGM[i_dims,i_Res,0,range_iterations].flatten(),label='MSGM')
+                        plt.fill_between(iterationss, q10mmd_MSGM[i_dims,i_Res,0,range_iterations].flatten(), q90mmd_MSGM[i_dims,i_Res,0,range_iterations].flatten(),
+                            alpha=alpha_plot)
+                        plt.loglog(iterationss,mmmd_ref[i_dims,i_Res,0,range_iterations].flatten(),label='train data')
+                        plt.fill_between(iterationss, q10mmd_ref[i_dims,i_Res,0,range_iterations].flatten(), q90mmd_ref[i_dims,i_Res,0,range_iterations].flatten(),
+                            alpha=alpha_plot)
+                        plt.legend()
+                        plt.ylabel('MMD')
+                        plt.xlabel('effective number of iterations')
+                        xx = iterationss
+                        labels = [f'$2^{{{int(np.log2(idx))}}}$' for idx in xx]
+                        ax = plt.gca()
+                        ax.set_xticks(xx)
+                        ax.xaxis.set_major_locator(FixedLocator(xx))
+                        ax.xaxis.set_major_formatter(FixedFormatter(labels))
+                        plt.tight_layout()
+                        if plt_show:
+                            plt.show(block=False)
+                        name_fig = folder_results + "/" + name_simu_root + "_MMD_wIte_" + str(nruns_mmd) + "runs.png" 
+                        plt.savefig(name_fig)
+                        if plt_show:
+                            plt.pause(1)
+                        plt.close(fig)
+                        plt.close()
+                        del fig
+
+            if evalmmmd:
+                if mmd_SGM.shape[0]>1:
+                    range_dims = range(len(dims))
+                    fig = plt.figure(figsize=(5,3))
+                    plt.loglog(dims,mmmd_SGM[range_dims,i_Res,0,0].flatten(),label='SGM')
+                    plt.fill_between(dims, q10mmd_SGM[range_dims,i_Res,0,0].flatten(), q90mmd_SGM[range_dims,i_Res,0,0].flatten(),
+                        alpha=alpha_plot)
+                    plt.loglog(dims,mmmd_MSGM[range_dims,i_Res,0,0].flatten(),label='MSGM')
+                    plt.fill_between(dims, q10mmd_MSGM[range_dims,i_Res,0,0].flatten(), q90mmd_MSGM[range_dims,i_Res,0,0].flatten(),
+                        alpha=alpha_plot)
+                    plt.loglog(dims,mmmd_ref[range_dims,i_Res,0,0].flatten(),label='train data')
+                    plt.fill_between(dims, q10mmd_ref[range_dims,i_Res,0,0].flatten(), q90mmd_ref[range_dims,i_Res,0,0].flatten(),
+                        alpha=alpha_plot)
+                    plt.legend()
+                    plt.ylabel('MMD')
+                    plt.xlabel('dimension')
+                    if datatype == 'era5':
+                        xx = dims
+                        plt.xticks(ticks=xx )
+                    else:
+                        xx = dims
+                        labels = [f'$2^{{{int(np.log2(idx))}}}$' for idx in xx]
+                        ax = plt.gca()
+                        ax.set_xticks(xx)
+                        ax.xaxis.set_major_locator(FixedLocator(xx))
+                        ax.xaxis.set_major_formatter(FixedFormatter(labels))   
+                    plt.tight_layout()
+                    if plt_show:
+                        plt.show(block=False)
+                    name_fig = folder_results + "/" + name_simu_root + "_MMD_wDim_" + str(nruns_mmd) + "runs.png" 
+                    plt.savefig(name_fig)
+                    if plt_show:
+                        plt.pause(1)
+                    plt.close(fig)
+                    plt.close()
+                    del fig
