@@ -157,7 +157,7 @@ class VariancePreservingSDE(SDE):
     # This class need to be changed since the forward SDE cannot be solved analitically
     def __init__(self, beta_min=0.1, beta_max=20.0, T=1.0, t_epsilon=0.001, num_steps_forward = 100, device='cpu'):
         super().__init__(beta_min=beta_min, beta_max=beta_max, T=T, t_epsilon=t_epsilon, num_steps_forward = num_steps_forward, device=device)
-        self.name_SDE = "VariancePreservingSDE"
+        self.name_SDE = "SGM"
 
     @property
     def logvar_mean_T(self):
@@ -233,7 +233,7 @@ class multiplicativeNoise(SDE):
         self.dim = y0.shape[1]
         self.G = self.new_G(self.dim)
         self.L_G = 0.5*torch.einsum('ijk, jmk -> im', self.G, self.G)   # ito correction tensor
-        self.name_SDE = "multiplicativeNoise"
+        self.name_SDE = "MSGM"
         if not (norm_sampler=="ecdf"):
             self.name_SDE += norm_sampler + kernel
         if norm_map == "log":
