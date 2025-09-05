@@ -591,40 +591,11 @@ if __name__ == '__main__':
 
                         plt.close('all')
                         dimplot = np.min([dimplot_max,xtest.shape[1]])
+                        columns_plot=range(1,1+dimplot)
 
-                        xtest_plot = std_norm * xtest
-                        if crop_data_plot:
-                            boolean_mask = (xtest_plot.abs() < (plot_crop * std_norm * std_test_plot)).all(axis=1)
-                            print( str( (1 - boolean_mask.sum()/ len(boolean_mask)).item() * 100) + " % of samples outside plot limits")
-                            xtest_plot = xtest_plot[boolean_mask,:]
 
-                        if (datatype == 'era5') and xtest.shape[1]>= 9:
-                            dimplot = dimplot_era5
-                            if dimplot == 6:
-                                xtest_plot = torch.cat( ((xtest_plot)[:,6:9], (xtest_plot)[:,0:3]),dim=1)
-                            elif dimplot == 3:
-                                xtest_plot = xtest_plot[:,6:9]
-                            else:
-                                raise ValueError("Unknown dimplot for era5: {}".format(dimplot))
-                            pddatatest = pd.DataFrame(xtest_plot.to('cpu').data.numpy(), \
-                                                    columns=columns_plot \
-                                                    )
-                        elif (datatype == 'era5vorttemp') and xtest.shape[1]>= 6:
-                            dimplot = dimplot_era5
-                            if dimplot == 4:
-                                xtest_plot = torch.cat( ((xtest_plot)[:,4:6], (xtest_plot)[:,0:2]),dim=1)
-                            elif dimplot == 2:
-                                xtest_plot = xtest_plot[:,4:6]
-                            else:
-                                xtest_plot=xtest_plot[:,0:dimplot]
-                                columns_plot=range(1,1+dimplot)
-                                # raise ValueError("Unknown dimplot for era5: {}".format(dimplot))
-                            pddatatest = pd.DataFrame(xtest_plot.to('cpu').data.numpy(), \
-                                                    columns=columns_plot \
-                                                    )
-                        else:
-                            pddatatest = pd.DataFrame((xtest_plot).data.numpy()[:,0:dimplot], columns=range(1,1+dimplot))
-
+                        pddatatest = def_pd(xtest, std_norm, std_test_plot, datatype, dimplot=dimplot, \
+                                crop_data_plot=crop_data_plot, plot_crop=plot_crop, columns_plot=columns_plot)
                         plot_kws={"s": ssize}
                         scatter = sns.pairplot(pddatatest, aspect=1, height=height_seaborn, corner=True,plot_kws=plot_kws)
                         for i, row in enumerate(scatter.axes):
@@ -637,7 +608,6 @@ if __name__ == '__main__':
                                     if j < i:  # since corner=True, we only have lower triangle
                                         ax.set_xlim((-plot_xlim_col,plot_xlim_col))
                                         ax.set_ylim((-plot_ylim_row,plot_ylim_row))
-
                         plt.tight_layout()
                         if plt_show:
                             plt.show(block=False)   
@@ -647,37 +617,8 @@ if __name__ == '__main__':
                         plt.pause(0.1)
                         plt.close('all')
 
-                        xtrain_plot = std_norm * sampler.sample(num_samples).to('cpu')
-                        if crop_data_plot:
-                            boolean_mask = (xtrain_plot.abs() < (plot_crop * std_norm * std_test_plot)).all(axis=1)
-                            print( str( (1 - boolean_mask.sum()/ len(boolean_mask)).item() * 100) + " % of samples outside plot limits")
-                            xtrain_plot = xtrain_plot[boolean_mask,:]
-                        if (datatype == 'era5') and xtest.shape[1]>= 9:
-                            if dimplot == 6:
-                                xtrain_plot = torch.cat( ((xtrain_plot)[:,6:9], (xtrain_plot)[:,0:3]),dim=1)
-                            elif dimplot == 3:
-                                xtrain_plot = xtrain_plot[:,6:9]
-                            else:
-                                raise ValueError("Unknown dimplot for era5: {}".format(dimplot))
-                            pddatatrain = pd.DataFrame(xtrain_plot.to('cpu').data.numpy(), \
-                                                    columns=columns_plot \
-                                                    )
-                            
-                        elif (datatype == 'era5vorttemp') and xtest.shape[1]>= 6:
-                            print('dimplot = ' + str(dimplot))
-                            if dimplot == 4:
-                                xtrain_plot = torch.cat( ((xtrain_plot)[:,4:6], (xtrain_plot)[:,0:2]),dim=1)
-                            elif dimplot == 2:
-                                xtrain_plot = xtrain_plot[:,4:6]
-                            else:
-                                xtrain_plot=xtrain_plot[:,0:dimplot]
-                                columns_plot=range(1,1+dimplot)
-                            pddatatrain = pd.DataFrame(xtrain_plot.to('cpu').data.numpy(), \
-                                                    columns=columns_plot \
-                                                    )
-                        else:
-                            pddatatrain = pd.DataFrame(xtrain_plot.data.numpy()[:,0:dimplot], columns=range(1,1+dimplot))
-
+                        pddatatrain = def_pd(sampler.sample(num_samples).to('cpu'), std_norm, std_test_plot, datatype, dimplot=dimplot, \
+                                crop_data_plot=crop_data_plot, plot_crop=plot_crop, columns_plot=columns_plot)
                         plot_kws={"s": ssize}
                         scatter = sns.pairplot(pddatatrain, aspect=1, height=height_seaborn, corner=True,plot_kws=plot_kws)
                         for i, row in enumerate(scatter.axes):
@@ -690,7 +631,6 @@ if __name__ == '__main__':
                                     if j < i:  # since corner=True, we only have lower triangle
                                         ax.set_xlim((-plot_xlim_col,plot_xlim_col))
                                         ax.set_ylim((-plot_ylim_row,plot_ylim_row))
-
                         plt.tight_layout()
                         if plt_show:
                             plt.show(block=False)   
@@ -952,145 +892,10 @@ if __name__ == '__main__':
                                             del dist
 
                                         if (scatter_plots) and (i_run == 0):
-                                            xgen_plot = std_norm * xgen
-                                            if crop_data_plot:
-                                                boolean_mask = (xgen_plot.abs() < (plot_crop * std_norm * std_test_plot)).all(axis=1)
-                                                print( str( (1 - boolean_mask.sum()/ len(boolean_mask)).item() * 100) + " % of samples outside plot limits")
-                                                xgen_plot = xgen_plot[boolean_mask,:]
-                                            
-                                            if (datatype == 'era5') and xtest.shape[1]>= 9:
-                                                if dimplot == 6:
-                                                    xgen_plot = torch.cat( ((xgen_plot)[:,6:9], (xgen_plot)[:,0:3]),dim=1)
-                                                elif dimplot == 3:
-                                                    xgen_plot = xgen_plot[:,6:9]
-                                                else:
-                                                    raise ValueError("Unknown dimplot for era5: {}".format(dimplot))
-                                                pddatagen = pd.DataFrame(xgen_plot.to('cpu').data.numpy(), \
-                                                                        columns=columns_plot \
-                                                                        )                                                
-                                            elif (datatype == 'era5vorttemp') and xtest.shape[1]>= 6:
-                                                if dimplot == 4:
-                                                    xgen_plot = torch.cat( ((xgen_plot)[:,4:6], (xgen_plot)[:,0:2]),dim=1)
-                                                elif dimplot == 2:
-                                                    xgen_plot = xgen_plot[:,4:6]
-                                                else:
-                                                    xgen_plot=xgen_plot[:,0:dimplot]
-                                                    columns_plot=range(1,1+dimplot)
-                                                pddatagen = pd.DataFrame(xgen_plot.to('cpu').data.numpy(), \
-                                                                        columns=columns_plot \
-                                                                        )
-                                            else:
-                                                pddatagen = pd.DataFrame(xgen_plot[:,0:dimplot].to('cpu'), columns=range(1,1+dimplot))
-
-                                            pddata = pd.concat([pddatatest.assign(samples="test"), pddatagen.assign(samples="gen.")])
-
-                                            palette = {"test": sns.color_palette()[0], "gen.": sns.color_palette()[1]}
-                                            plot_kws = {'alpha': 0.1, "s": ssize, "edgecolor": "none", "rasterized": True}
-
-                                            # === Replace pairplot with PairGrid ===
-                                            g = sns.PairGrid(pddata, hue="samples",
-                                                            corner=True, height=height_seaborn, aspect=1,
-                                                            palette=palette, diag_sharey=False)
-
-                                            # lower triangle: scatter like before
-                                            g.map_lower(sns.scatterplot, **plot_kws)
-
-                                            def diag_plot(x, color=None, label=None, **kws):
-                                                ax = plt.gca()
-
-                                                if label == "test":
-                                                    # compute peak density from TEST values only (NumPy, not torch)
-                                                    x_np = np.asarray(x, dtype=np.float64)
-                                                    x_np = x_np[np.isfinite(x_np)]
-                                                    counts, _ = np.histogram(x_np, bins=80, density=True)
-                                                    ymax = float(counts.max()) if counts.size else 0.0
-
-                                                    # draw the test histogram
-                                                    sns.histplot(
-                                                        x=x, bins=80, stat="density",
-                                                        element="step", fill=True, alpha=0.25,
-                                                        color=palette["test"], **kws
-                                                    )
-
-                                                    # set Y limit for this diagonal axis only
-                                                    if log_scale_pdf and (counts > 0).any():
-                                                        ymin = counts[counts > 0].min()  # use the minimum value from the heatmap
-                                                        ymin /=2
-                                                    else:
-                                                        ymin = 0
-                                                    if ymax > 0:
-                                                        ax.set_ylim(ymin, 1.05 * ymax)
-
-                                                elif label == "gen.":
-                                                    # draw the gen KDE — it will use the same y-scale set by the "test" pass
-                                                    sns.kdeplot(x=x, color=palette["gen."], lw=1.5, **kws)
-
-                                                if plot_ref_pdf:
-                                                    plot_xlim_col = plot_xlim * std_norm[0] * std_test_plot[0]
-                                                    x_min, x_max = -plot_xlim_col, plot_xlim_col
-                                                    xx = torch.linspace(x_min, x_max, 2000)
-                                                    pdf_theo = pdf_theor.log_prob(xx).exp()
-                                                    pdf_theo /= (pdf_theo.sum() * (xx[1]-xx[0]))  # normalize like a density
-                                                    plt.plot(xx,pdf_theo, color=palette["test"], linestyle=':', lw=1.5)
-
-                                                if log_scale_pdf:
-                                                    ax.set_yscale('log')
-
-                                            g.map_diag(diag_plot)
-
-                                            # legend like before
-                                            handles = [plt.Line2D([], [], marker='o', linestyle='',
-                                                                color=palette[k], markersize=8, alpha=0.6) for k in ["test", "gen."]]
-                                            labels = ["test", "gen."]
-                                            g.figure.legend(handles=handles, labels=labels, loc='upper right', markerscale=ssize)
-
-                                            # --- Pass 1: lower triangle only ---
-                                            for i, row in enumerate(g.axes):
-                                                plot_ylim_row = plot_xlim * std_norm[i]* std_test_plot[i]
-                                                for j, ax in enumerate(row):
-                                                    if ax is None:
-                                                        continue
-                                                    plot_xlim_col = plot_xlim * std_norm[j]* std_test_plot[j]
-                                                    if j < i:  # lower triangle
-                                                        ax.set_xlim((-plot_xlim_col, plot_xlim_col))
-                                                        ax.set_ylim((-plot_ylim_row,  plot_ylim_row))
-
-                                            # --- Pass 2: diagonals only ---
-                                            for i in range(len(g.diag_vars)):
-                                                ax = g.axes[i, i]
-                                                if ax is None:
-                                                    continue
-                                                var = g.diag_vars[i]
-                                                plot_xlim_col = plot_xlim * std_norm[i] * std_test_plot[i]
-                                                x_min, x_max = -plot_xlim_col, plot_xlim_col
-                                                ax.set_xlim((x_min, x_max))
-
-                                            for i, row in enumerate(g.axes):
-                                                for j, ax in enumerate(row):
-                                                    if ax is None:
-                                                        continue
-                                                    # reduce the number of ticks
-                                                    ax.xaxis.set_major_locator(mticker.MaxNLocator(nbins=4))  # max 4 x-ticks
-                                                    ax.yaxis.set_major_locator(mticker.MaxNLocator(nbins=4))  # max 4 y-ticks
-                                                    # remove the "0.0" label but keep the tick itself (gridlines if any)
-                                                    def fmt_tick(val, pos):
-                                                        if abs(val) < 1e-8:   # close to zero
-                                                            return ""         # empty label
-                                                        return f"{val:g}"     # compact formatting
-                                                    ax.xaxis.set_major_formatter(mticker.FuncFormatter(fmt_tick))
-                                                    ax.yaxis.set_major_formatter(mticker.FuncFormatter(fmt_tick))
-
-
-                                            plt.tight_layout()
-                                            if plt_show:
-                                                plt.show(block=False)
-                                                plt.pause(1)
-                                            name_fig = name_simu + "_multDim.png" 
-                                            plt.savefig(name_fig, dpi=dpi)
-                                            if plt_show:
-                                                plt.pause(1)
-                                            plt.close()
-                                            del pddatagen, pddata, g
+                                            pairplots(xgen, xtest, std_norm, std_test_plot, datatype, name_simu, dimplot=dimplot, \
+                                                        crop_data_plot=crop_data_plot, plot_crop=plot_crop, plot_xlim=plot_xlim, plot_ref_pdf=plot_ref_pdf, \
+                                                        pdf_theor=pdf_theor, log_scale_pdf=log_scale_pdf, columns_plot=columns_plot, \
+                                                        plt_show=plt_show, dpi=dpi, height_seaborn=height_seaborn, ssize=ssize)
 
                                         if (denoising_plots) and (i_run == 0):
                                             plot_selected_inds(xs, inds, True, False, lmbd, 

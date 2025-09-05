@@ -13,7 +13,9 @@ import time
 import numpy as np
 import torch
 import torch.nn as nn
-import matplotlib.pyplot as plt
+import seaborn as sns
+import matplotlib.ticker as mticker 
+import pandas as pd
 
 ### 4.1. Define plotting tools
 @torch.no_grad()
@@ -113,4 +115,171 @@ def plot_selected_inds(xs, inds, use_xticks=True, use_yticks=True, lmbd = 0.,inc
     ax.tick_params(axis='y', colors=axis_color)
     plt.xticks(xticks, xticklabels, color='black', fontsize=fontsize)
     plt.yticks(yticks, yticklabels, color='black', fontsize=fontsize)
-    plt.show(block=False)
+    if plt_show:
+        plt.show(block=False)
+
+
+@torch.no_grad()
+def def_pd(xgen, std_norm, std_test_plot, datatype, dimplot=2, \
+              crop_data_plot=False, plot_crop=3, columns_plot=None):
+    
+    xgen_plot = std_norm * xgen
+    if crop_data_plot:
+        boolean_mask = (xgen_plot.abs() < (plot_crop * std_norm * std_test_plot)).all(axis=1)
+        print( str( (1 - boolean_mask.sum()/ len(boolean_mask)).item() * 100) + " % of samples outside plot limits")
+        xgen_plot = xgen_plot[boolean_mask,:]
+
+    if (datatype == 'era5') and xgen.shape[1]>= 9:
+
+        if dimplot == 6:
+            xgen_plot = torch.cat( ((xgen_plot)[:,6:9], (xgen_plot)[:,0:3]),dim=1)
+        elif dimplot == 3:
+            xgen_plot = xgen_plot[:,6:9]
+        else:
+            raise ValueError("Unknown dimplot for era5: {}".format(dimplot))
+        pddatagen = pd.DataFrame(xgen_plot.to('cpu').data.numpy(), \
+                                columns=columns_plot \
+                                )
+
+    elif (datatype == 'era5vorttemp') and xgen.shape[1]>= 6:
+        # dimplot = dimplot_era5
+        if dimplot == 4:
+            xgen_plot = torch.cat( ((xgen_plot)[:,4:6], (xgen_plot)[:,0:2]),dim=1)
+        elif dimplot == 2:
+            xgen_plot = xgen_plot[:,4:6]
+        else:
+            xgen_plot=xgen_plot[:,0:dimplot]
+            columns_plot=columns_plot
+        pddatagen = pd.DataFrame(xgen_plot.to('cpu').data.numpy(), \
+                                columns=columns_plot \
+                                )
+    else:
+        pddatagen = pd.DataFrame(xgen_plot[:,0:dimplot].to('cpu'), columns=columns_plot)
+
+    return pddatagen
+
+
+@torch.no_grad()
+def pairplots(xgen, xtest, std_norm, std_test_plot, datatype, name_simu, dimplot=2, \
+              crop_data_plot=False, plot_crop=3, plot_xlim=3, plot_ref_pdf=False, \
+              pdf_theor=None, log_scale_pdf=False, columns_plot=None, \
+              plt_show=False, dpi=200, height_seaborn=2.5, ssize=10):
+
+    pddatatest = def_pd(xtest, std_norm, std_test_plot, datatype, dimplot=dimplot, \
+              crop_data_plot=crop_data_plot, plot_crop=plot_crop, columns_plot=columns_plot)
+    pddatagen = def_pd(xgen, std_norm, std_test_plot, datatype, dimplot=dimplot, \
+              crop_data_plot=crop_data_plot, plot_crop=plot_crop, columns_plot=columns_plot)
+
+    pddata = pd.concat([pddatatest.assign(samples="test"),
+                        pddatagen.assign(samples="gen.")])
+
+    palette = {"test": sns.color_palette()[0], "gen.": sns.color_palette()[1]}
+    plot_kws = {'alpha': 0.1, "s": ssize, "edgecolor": "none", "rasterized": True}
+
+    # === Replace pairplot with PairGrid ===
+    g = sns.PairGrid(pddata, hue="samples",
+                    corner=True, height=height_seaborn, aspect=1,
+                    palette=palette, diag_sharey=False)
+
+    # lower triangle: scatter like before
+    g.map_lower(sns.scatterplot, **plot_kws)
+
+    def diag_plot(x, color=None, label=None, **kws):
+        ax = plt.gca()
+
+        if label == "test":
+            # compute peak density from TEST values only (NumPy, not torch)
+            x_np = np.asarray(x, dtype=np.float64)
+            x_np = x_np[np.isfinite(x_np)]
+            counts, _ = np.histogram(x_np, bins=80, density=True)
+            ymax = float(counts.max()) if counts.size else 0.0
+
+            # draw the test histogram
+            sns.histplot(
+                x=x, bins=80, stat="density",
+                element="step", fill=True, alpha=0.25,
+                color=palette["test"], **kws
+            )
+
+            # set Y limit for this diagonal axis only
+            if log_scale_pdf and (counts > 0).any():
+                ymin = counts[counts > 0].min()  # use the minimum value from the heatmap
+                ymin /=2
+            else:
+                ymin = 0
+                
+            if ymax > 0:
+                ax.set_ylim(ymin, 1.05 * ymax)
+
+        elif label == "gen.":
+            sns.kdeplot(x=x, color=palette["gen."], lw=1.5, **kws)
+        
+        if plot_ref_pdf:
+            plot_xlim_col = plot_xlim * std_norm[0] * std_test_plot[0]
+            # plot_xlim_col = plot_xlim * std_norm[i] * std_test_plot[i]
+            x_min, x_max = -plot_xlim_col, plot_xlim_col
+            xx = torch.linspace(x_min, x_max, 2000)
+            pdf_theo = pdf_theor.log_prob(xx).exp()
+            pdf_theo /= (pdf_theo.sum() * (xx[1]-xx[0]))  # normalize like a density
+            plt.plot(xx,pdf_theo, color=palette["test"], linestyle=':', lw=1.5)
+
+        if log_scale_pdf:
+            ax.set_yscale('log')
+
+    g.map_diag(diag_plot)
+
+    # legend like before
+    handles = [plt.Line2D([], [], marker='o', linestyle='',
+                        color=palette[k], markersize=8, alpha=0.6) for k in ["test", "gen."]]
+    labels = ["test", "gen."]
+    g.figure.legend(handles=handles, labels=labels, loc='upper right', markerscale=ssize)
+
+    # --- Pass 1: lower triangle only ---
+    for i, row in enumerate(g.axes):
+        plot_ylim_row = plot_xlim * std_norm[i] * std_test_plot[i]
+        for j, ax in enumerate(row):
+            if ax is None:
+                continue
+            plot_xlim_col = plot_xlim * std_norm[j] * std_test_plot[j]
+
+            if j < i:  # lower triangle
+                ax.set_xlim((-plot_xlim_col, plot_xlim_col))
+                ax.set_ylim((-plot_ylim_row,  plot_ylim_row))
+
+    # --- Pass 2: diagonals only ---
+    for i in range(len(g.diag_vars)):
+        ax = g.axes[i, i]
+        if ax is None:
+            continue
+        var = g.diag_vars[i]
+        plot_xlim_col = plot_xlim * std_norm[i] * std_test_plot[i]
+
+        x_min, x_max = -plot_xlim_col, plot_xlim_col
+        ax.set_xlim((x_min, x_max))
+
+    for i, row in enumerate(g.axes):
+        for j, ax in enumerate(row):
+            if ax is None:
+                continue
+
+            # reduce the number of ticks
+            ax.xaxis.set_major_locator(mticker.MaxNLocator(nbins=4))  # max 4 x-ticks
+            ax.yaxis.set_major_locator(mticker.MaxNLocator(nbins=4))  # max 4 y-ticks
+
+            # remove the "0.0" label but keep the tick itself (gridlines if any)
+            def fmt_tick(val, pos):
+                if abs(val) < 1e-8:   # close to zero
+                    return ""         # empty label
+                return f"{val:g}"     # compact formatting
+
+            ax.xaxis.set_major_formatter(mticker.FuncFormatter(fmt_tick))
+            ax.yaxis.set_major_formatter(mticker.FuncFormatter(fmt_tick))
+
+    plt.tight_layout()
+    if plt_show:
+        plt.show(block=False); plt.pause(1)
+    name_fig = name_simu + "_multDim.png"
+    plt.savefig(name_fig, dpi=dpi)
+    if plt_show:
+        plt.pause(1)
+    plt.close()
