@@ -233,6 +233,62 @@ class ERA5:
         s_full = s_ann - trend_hour.reindex(hours).values
         return s_ann, s_full
 
+class PIV:
+    def __init__(self, dim = 2, normalized = False):
+        self.dim = dim
+        self.name='PIV'
+        self.name = self.name + str(self.dim)
+        if normalized:
+            self.name = self.name + '_norm'
+    
+        folder = Path("/Users/vresseiguier/Coding/MultiplicativeDiffusion/newPIV")
+        prefix = "Serie_"
+
+        npdata = np.empty((32, 0))   # if not already
+
+        print("Loading PIV data from folder:", folder)
+        for file in sorted(folder.glob(prefix + "*_vortdiv.npy")):
+            # print("Processing", file.name)
+            dataPt = np.load(folder / f"{file.stem}.npy")  
+            npdata = np.concatenate((npdata, dataPt.reshape(-1, 1)), axis=1)
+            # print("data shape:", dataPt.shape)
+            # print(dataPt)
+            if any(np.isnan(dataPt.flatten())):
+                print("Processing", file.name)
+                print("data shape:", npdata.shape)
+                print(dataPt)
+        npdata = npdata.transpose() /2.5
+
+        # center and mormalize data
+        npdata = npdata-npdata.mean(axis=0)
+        # keep only dim dimension
+        npdata = npdata[:,0:self.dim]
+
+        n_test = npdata.shape[0] // 3
+
+        self.npdata = npdata[0:-n_test:1,:]
+        self.npdatatest = npdata[-n_test:-1:1,:]
+
+        self.max_nsamples = self.npdata.shape[0]
+        self.max_nsamplestest = self.npdatatest.shape[0]
+
+        self.std = npdata.std(axis=0)
+        if normalized:
+            self.npdata = self.npdata/self.std
+            self.npdatatest = self.npdatatest/self.std
+
+    def sample(self, n):               
+        idx = np.random.randint(0,self.npdata.shape[0], size = n) #% self.max_nsamples
+        return torch.from_numpy(self.npdata[idx,:]).to(torch.float32)
+
+    def sampletest(self, n):               
+        idx = np.random.randint(0,self.npdatatest.shape[0], size = n) #% self.max_nsamples
+        return torch.from_numpy(self.npdatatest[idx,:]).to(torch.float32)
+    
+    def get_std(self):
+        return torch.from_numpy(self.std).to(torch.float32)
+
+
 class ncar_weather_station:
     def __init__(self, dim = 90):
         self.dim = dim

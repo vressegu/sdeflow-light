@@ -27,7 +27,9 @@ import seaborn as sns
 from sde_scheme import euler_maruyama_sampler,heun_sampler,rk4_stratonovich_sampler
 from own_plotting import plot_selected_inds
 from SDEs import forward_SDE,SDE,VariancePreservingSDE,PluginReverseSDE,multiplicativeNoise
-from data import ERA5,ncar_weather_station,weather_station,eof_pressure,Lorenz96,PODmodes,PODmodesDiff,SwissRoll,Cauchy,Gaussian,GaussianCauchy
+from data import ERA5,ncar_weather_station,weather_station,eof_pressure,Lorenz96,\
+                 PODmodes,PODmodesDiff,SwissRoll,Cauchy,Gaussian,GaussianCauchy,\
+                 PIV
 from quantitative_comparison import compute_mmd
 import gc
 
@@ -136,6 +138,7 @@ batch_sizes = [256]
 
 # Dataset
 # datatype = 'swissroll'
+# datatype = 'PIV'
 # datatype = 'gaussian'
 # datatype = 'cauchy'
 # datatype = 'gaussianCauchy'
@@ -149,6 +152,8 @@ Res=[1]
 match datatype:
     case 'swissroll': # Swiss roll
         dims = [2]
+    case 'PIV': # vorticity and divergence from 2D PIV
+        dims = [2,4,8,16,32]
     case 'gaussian': # multi-dimesnional gaussian
         dims = [2,4,8,16,32]
     case 'gaussianCauchy': # multi-dimesnional gaussian
@@ -454,6 +459,10 @@ if __name__ == '__main__':
                         case 'swissroll':
                             sampler = SwissRoll()
                             normalized_data = False
+                        case 'PIV':
+                            sampler = PIV(dim, normalized=normalized_data)
+                            log_scale_pdf = True
+                            plot_xlim = 6
                         case 'gaussian':
                             # correlation = False
                             # normalized_data = False
