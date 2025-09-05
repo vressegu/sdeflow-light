@@ -47,13 +47,13 @@ beta_min=0.1 # new default
 beta_max=20
 t_eps = 1/1000  
 norm_sampler = "ecdf"
-norm_map = None
-num_samples_init_max = int(1e4)
+norm_map = "log"
 # default values from git repo
 beta_min_SGM = 0.1 # default
 beta_max_SGM = 20 # default
 beta_maxs = [beta_max]
 
+num_samples_init_max = int(1e5)
 vtype = 'rademacher'
 lr = 0.001 # default
 print_every = 1000
