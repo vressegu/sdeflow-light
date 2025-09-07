@@ -440,6 +440,8 @@ if __name__ == '__main__':
                     if not MSGM:
                         normalized_data = True
                         ssm_intT = False
+                        premodule = None
+                        spherical = False
                     else:
                         normalized_data = False
                         ssm_intT = ssm_intT_ref
