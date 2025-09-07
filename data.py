@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 from sklearn.datasets import make_swiss_roll
 from netCDF4 import Dataset
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from pathlib import Path
 
 
 class ERA5:
