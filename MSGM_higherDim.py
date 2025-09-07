@@ -28,7 +28,7 @@ from sde_scheme import euler_maruyama_sampler,heun_sampler,rk4_stratonovich_samp
 from own_plotting import plot_selected_inds, def_pd, pairplots
 from SDEs import forward_SDE,SDE,VariancePreservingSDE,PluginReverseSDE,multiplicativeNoise
 from data import ERA5,ncar_weather_station,weather_station,eof_pressure,Lorenz96,\
-                 PODmodes,PODmodesDiff,SwissRoll,Cauchy,Gaussian,GaussianCauchy,\
+                 PODmodes,SwissRoll,Cauchy,Gaussian,GaussianCauchy,\
                  PIV
 from quantitative_comparison import compute_mmd
 import gc
@@ -87,16 +87,16 @@ num_samples = 10000
 # ssm_intT_ref = False
 
 
-# # Fair comparison more CV
-# iterationss = [ 2**20]
-# num_steps_forward = 64
-# # num_steps_forward = 1024
-# # num_steps_forward = 128
-# num_stepss_backward = [128]
-# nruns_mmd = 1
-# fair_comparison = True # comparaison SGM vs MSGM with same RAM usage and same learning time
-# # ssm_intT_ref = True
-# ssm_intT_ref = False
+# Fair comparison more CV
+iterationss = [ 2**20]
+num_steps_forward = 64
+# num_steps_forward = 1024
+# num_steps_forward = 128
+num_stepss_backward = [128]
+nruns_mmd = 1
+fair_comparison = True # comparaison SGM vs MSGM with same RAM usage and same learning time
+# ssm_intT_ref = True
+ssm_intT_ref = False
 
 
 # # No Fair comparison
@@ -123,21 +123,21 @@ num_samples = 10000
 # ssm_intT_ref = False
 
 
-# expressivity for cauchy (long to run)
-iterationss = [ 2**20]
-num_steps_forward = 512
-num_stepss_backward = [512]
-nruns_mmd = 1
-fair_comparison = False # comparaison SGM vs MSGM with same RAM usage and same learning time
-ssm_intT_ref = False
-beta_min=0.1
-beta_max=1
-MSGMs = [1]
+# # expressivity for cauchy (long to run)
+# iterationss = [ 2**20]
+# num_steps_forward = 512
+# num_stepss_backward = [512]
+# nruns_mmd = 1
+# fair_comparison = False # comparaison SGM vs MSGM with same RAM usage and same learning time
+# ssm_intT_ref = False
+# beta_min=0.1
+# beta_max=1
+# # MSGMs = [1]
 
 batch_sizes = [256]
 
 # Dataset
-# datatype = 'swissroll'
+datatype = 'swissroll'
 # datatype = 'PIV'
 # datatype = 'gaussian'
 # datatype = 'cauchy'
@@ -257,6 +257,7 @@ plot_validate = False
 print_RAM = False
 log_scale_pdf = False
 plot_ref_pdf = False
+pdf_theor = None
 
 if not justLoad:
     justLoadmmmd = False
@@ -392,7 +393,7 @@ def m_name_simu_root(sampler_name, gen_sde_name_SDE, iterations_ref, batch_size,
         + str(num_steps_forward) + "stepsForw_" \
         + str(beta_min) + "beta_min" \
         + str(beta_max) + "beta_max" 
-    if spherical:
+    if spherical and (premodule is not None):
         name_simu_root += "_" + premodule
     if (not (lr == 0.001)):
         name_simu_root += str(lr) + "lr"
