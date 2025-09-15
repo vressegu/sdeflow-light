@@ -16,6 +16,7 @@ import torch.nn as nn
 import sys
 import os
 import pandas as pd
+import random
 import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.ticker import FixedLocator, FixedFormatter
@@ -34,7 +35,8 @@ from quantitative_comparison import compute_mmd
 import gc
 
 np.random.seed(0)
-torch.manual_seed(0) 
+torch.manual_seed(0)
+random.seed(0)
 
 DISPLAY_MAX_ROWS = 20  # number of max rows to print for a DataFrame
 pd.set_option('display.max_rows', DISPLAY_MAX_ROWS)
@@ -147,7 +149,7 @@ datatype = 'swissroll'
 # datatype = 'era5temp'
 # datatype = 'era5vorttemp'
 normalized_data = True
-Res=[1]
+mixedTimes = False 
 
 match datatype:
     case 'swissroll': # Swiss roll
@@ -184,6 +186,8 @@ match datatype:
 
         dims = [16]
         Res=[300,3900]
+
+        mixedTimes = True 
 
     # case 'lorenz':
  
@@ -222,6 +226,8 @@ match datatype:
         # season = "all"
         season = "winter"
         use_deseason = True
+
+        mixedTimes = True 
     case _:
         raise ValueError("Unknown datatype: {}".format(datatype))
 
@@ -448,6 +454,7 @@ if __name__ == '__main__':
 
                     np.random.seed(0)
                     torch.manual_seed(0) 
+                    random.seed(0)
 
                     num_samples_init = min(num_samples_init_max,iterationss[0]*batch_sizes[0])
 
@@ -514,6 +521,7 @@ if __name__ == '__main__':
                                 val_hist = plot_xlim
 
                         case 'POD':
+                            sampler = PODmodes(Re,dim, normalized=normalized_data, mixedTimes = mixedTimes)
                             if normalized_data:
                                 val_hist = 2*plot_xlim
                         case 'lorenz':
@@ -563,7 +571,7 @@ if __name__ == '__main__':
                             # sampler = ERA5(dim, variables = ["2m_temperature", "vorticity"],cities = ["Paris", "Berlin"],\
                                         #    season = season) 
                             sampler = ERA5(dim, variables = ["2m_temperature", "vorticity"],\
-                                           season = season, use_deseason = use_deseason, bool_check_plot = True) 
+                                           season = season, use_deseason = use_deseason, bool_check_plot = True, mixedTimes = mixedTimes) 
                             normalized_data = False
                             val_hist = 10.0
                             # dimplot_era5 = 4

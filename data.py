@@ -11,7 +11,7 @@ from sklearn.datasets import make_swiss_roll
 from netCDF4 import Dataset
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from pathlib import Path
-
+import random
 
 class ERA5:
     def __init__(self, dim = 40, \
@@ -25,6 +25,7 @@ class ERA5:
                 bool_check_plot: bool = False,  # plots for one city/variable at three stages
                 plot_city: str = "Berlin",
                 plot_variable: str = "2m_temperature",
+                mixedTimes = False,
                 ):
         self.dim = dim
         self.name='ERA5'
@@ -39,6 +40,8 @@ class ERA5:
             self.name = self.name + "_deseason"
         if season == "winter":
             self.name = self.name + "_DJF"
+        if mixedTimes:
+            self.name += 'mix'
 
         pathData = '../MultiplicativeDiffusion/'
         folder = os.path.join(pathData, 'ERA5-cities')
@@ -176,8 +179,15 @@ class ERA5:
         X = X - X.mean(axis=0)
         X = X[:, :self.dim]
         n_test = X.shape[0] // 3
-        self.npdata     = X[:-n_test, :]
-        self.npdatatest = X[-n_test:-1, :]
+
+        if mixedTimes:
+            idx = random.sample(range(X.shape[0]),n_test)
+            noidx = [i for i in range(X.shape[0]) if i not in idx]
+            self.npdatatest = X[idx,:]
+            self.npdata = X[noidx,:]
+        else:
+            self.npdata     = X[:-n_test, :]
+            self.npdatatest = X[-n_test:-1, :]
 
         self.max_nsamples     = self.npdata.shape[0]
         self.max_nsamplestest = self.npdatatest.shape[0]
@@ -477,7 +487,7 @@ class Lorenz96:
         return torch.from_numpy(self.npdatatest[idx,:]).to(torch.float32)
 
 class PODmodes:
-    def __init__(self, Re = 300, dim = 8, normalized = False):
+    def __init__(self, Re = 300, dim = 8, normalized = False, mixedTimes = False):
         self.dim = dim
         # self.dim = 16
         self.name='POD'
@@ -491,6 +501,14 @@ class PODmodes:
         pathData = pathData + 'tempPODModes/LES_Re' + Re + '/temporalModes_16modes'
         npdata = np.load(pathData + '/U.npy')
         npdatatest = np.load(pathData + '_test/U.npy')
+        if mixedTimes:
+            npdataall = np.concatenate((npdata, npdatatest), axis=0)
+            n_test = npdataall.shape[0]//3
+            idx = random.sample(range(npdataall.shape[0]),n_test)
+            noidx = [i for i in range(npdataall.shape[0]) if i not in idx]
+            npdatatest = npdataall[idx,:]
+            npdata = npdataall[noidx,:]
+            
         npdata = npdata/10
         npdatatest = npdatatest/10
 
