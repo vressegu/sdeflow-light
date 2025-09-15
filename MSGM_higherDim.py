@@ -184,6 +184,8 @@ match datatype:
         Res=[300,3900]
 
         mixedTimes = True 
+        
+        concatenateRe = False
 
     # case 'lorenz':
  
@@ -516,7 +518,7 @@ if __name__ == '__main__':
                                 val_hist = plot_xlim
 
                         case 'POD':
-                            sampler = PODmodes(Re,dim, normalized=normalized_data, mixedTimes = mixedTimes)
+                            sampler = PODmodes(Re,dim, normalized=normalized_data, mixedTimes = mixedTimes, concatenateRe = concatenateRe)
                             if normalized_data:
                                 val_hist = 2*plot_xlim
                         case 'lorenz':

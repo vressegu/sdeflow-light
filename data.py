@@ -491,21 +491,37 @@ class Lorenz96:
         idx = np.random.randint(0,self.npdatatest.shape[0], size = n) #% self.max_nsamples
         return torch.from_numpy(self.npdatatest[idx,:]).to(torch.float32)
 
+def load_POD_data(Re):
+    pathData = '../MultiplicativeDiffusion/'
+    pathData = pathData + 'tempPODModes/LES_Re' + str(Re) + '/temporalModes_16modes'
+    npdata = np.load(pathData + '/U.npy')
+    npdatatest = np.load(pathData + '_test/U.npy')
+    return npdata, npdatatest
+
 class PODmodes:
-    def __init__(self, Re = 300, dim = 8, normalized = False, mixedTimes = False):
+    def __init__(self, Re = 300, dim = 8, normalized = False, mixedTimes = False, concatenateRe = False):
         self.dim = dim
         # self.dim = 16
         self.name='POD'
         # Re='300'
-        Re = str(Re)
+        if concatenateRe:
+            Re = '300-3900'
+        else:
+            Re = str(Re)
         self.name = self.name + Re + str(self.dim)
         if normalized:
             self.name = self.name + '_norm'
 
-        pathData = '../MultiplicativeDiffusion/'
-        pathData = pathData + 'tempPODModes/LES_Re' + Re + '/temporalModes_16modes'
-        npdata = np.load(pathData + '/U.npy')
-        npdatatest = np.load(pathData + '_test/U.npy')
+        if concatenateRe:
+            Re1 = 300
+            Re2 = 3900
+            npdata1, npdatatest1 = load_POD_data(Re1)
+            npdata2, npdatatest2 = load_POD_data(Re2)
+            npdata = np.concatenate(( npdata1, (Re2/Re1) * npdata2), axis=0)
+            npdatatest = np.concatenate(( npdata1, (Re2/Re1) * npdata2), axis=0)
+        else:
+            npdata, npdatatest = load_POD_data(int(Re))
+
         if mixedTimes:
             npdataall = np.concatenate((npdata, npdatatest), axis=0)
             n_test = npdataall.shape[0]//3
