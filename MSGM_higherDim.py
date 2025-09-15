@@ -71,6 +71,7 @@ num_samples = 10000
 # # num_steps_forward = 100
 # # num_steps_forward = 128
 # num_steps_forward = 64
+# ntrain_maxs = [ 2**16, 2**10, 2**6 ]
 # # iterationss = [ 2**24, 2**20, 2**16, 2**12, 2**8, 2**4 ] # swissroll
 # iterationss = [ 2**20, 2**16, 2**12, 2**8, 2**4 ]
 # # iterationss = [ 2**4 ]
@@ -84,6 +85,7 @@ num_samples = 10000
 
 
 # Fair comparison more CV
+ntrain_maxs = [ np.inf ]
 iterationss = [ 2**20]
 num_steps_forward = 64
 # num_steps_forward = 1024
@@ -96,6 +98,7 @@ ssm_intT_ref = False
 
 
 # # No Fair comparison
+# ntrain_maxs = [ np.inf ]
 # iterationss = [ 2**14]
 # num_steps_forward = 64
 # # num_steps_forward = 128
@@ -108,6 +111,7 @@ ssm_intT_ref = False
 
 
 # # Optimal (expressivity) (long to run)
+# ntrain_maxs = [ np.inf ]
 # # iterationss = [ 2**20]
 # iterationss = [2**19, 2**20]
 # # num_steps_forward = 128
@@ -120,6 +124,7 @@ ssm_intT_ref = False
 
 
 # # expressivity for cauchy (long to run)
+# ntrain_maxs = [ np.inf ]
 # iterationss = [ 2**20]
 # num_steps_forward = 512
 # num_stepss_backward = [512]
@@ -152,6 +157,8 @@ match datatype:
         dims = [2]
     case 'PIV': # vorticity and divergence from 2D PIV
         dims = [2,4,8,16,32]
+
+        few_data = True
 
         localized = True
     case 'gaussian': # multi-dimesnional gaussian
@@ -434,7 +441,7 @@ else:
 
 if __name__ == '__main__':
 
-    for beta_max in beta_maxs:
+    for ntrain_max in ntrain_maxs:
         mmd_SGM = torch.zeros((len(dims),len(Res),len(num_stepss_backward),len(iterationss),nruns_mmd))
         mmd_MSGM = torch.zeros((len(dims),len(Res),len(num_stepss_backward),len(iterationss),nruns_mmd))
         mmd_ref = torch.zeros((len(dims),len(Res),len(num_stepss_backward),len(iterationss),nruns_mmd))
@@ -476,7 +483,7 @@ if __name__ == '__main__':
                             sampler = SwissRoll()
                             normalized_data = False
                         case 'PIV':
-                            sampler = PIV(dim, normalized=normalized_data, localized = localized)
+                            sampler = PIV(dim, normalized=normalized_data, localized = localized, few_data=few_data, ntrain_max=ntrain_max)
                             log_scale_pdf = True
                             plot_xlim = 6
                             val_hist = plot_xlim

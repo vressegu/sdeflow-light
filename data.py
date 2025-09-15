@@ -245,12 +245,15 @@ class ERA5:
         return s_ann, s_full
 
 class PIV:
-    def __init__(self, dim = 2, normalized = False, localized = False):
+    def __init__(self, dim = 2, normalized = False, localized = False, few_data = False, ntrain_max = np.inf):
         self.dim = dim
         self.name='PIV'
         self.name = self.name + str(self.dim)
         if localized:
             self.name += 'loc'
+        if few_data:
+            # self.name = self.name + 'fewData'
+            self.name += str(ntrain_max) + 'pts'
         if normalized:
             self.name = self.name + '_norm'
     
@@ -280,6 +283,11 @@ class PIV:
         # keep only dim dimension
         npdata = npdata[:,0:self.dim]
 
+        if few_data:
+            # n_train = 1000
+            n_train= min([2*npdata.shape[0]// 3, ntrain_max])
+            n_test = npdata.shape[0] - n_train 
+        else:
         n_test = npdata.shape[0] // 3
 
         self.npdata = npdata[0:-n_test:1,:]
