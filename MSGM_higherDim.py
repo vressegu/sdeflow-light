@@ -239,7 +239,7 @@ noising_plots = True
 denoising_plots = True
 save_results = True
 plot_xlim = 3.0
-height_seaborn_ref = 1.2
+height_seaborn_ref = 1
 height_seaborn = height_seaborn_ref
 ssize = height_seaborn
 dpi=200
@@ -255,7 +255,7 @@ evalmmmd = True
 plt_show = False
 plot_validate = False
 print_RAM = False
-log_scale_pdf = False
+log_scale_pdf = True
 plot_ref_pdf = False
 pdf_theor = None
 
@@ -435,8 +435,6 @@ if __name__ == '__main__':
                 for MSGM in MSGMs:
                     i_MGMM +=1
 
-                    plot_ylim_row = plot_xlim
-                    plot_xlim_col = plot_xlim
 
                     if not MSGM:
                         normalized_data = True
@@ -462,6 +460,7 @@ if __name__ == '__main__':
                             sampler = PIV(dim, normalized=normalized_data)
                             log_scale_pdf = True
                             plot_xlim = 6
+                            val_hist = plot_xlim
                         case 'gaussian':
                             # correlation = False
                             # normalized_data = False
@@ -470,6 +469,8 @@ if __name__ == '__main__':
                             if not correlation:
                                 plot_ref_pdf = True
                                 pdf_theor = torch.distributions.Normal(0.0, 1.0)
+                            plot_xlim = 4
+                            val_hist = 2*plot_xlim
 
                         case 'gaussianCauchy':
                             correlation = True # default
@@ -486,34 +487,35 @@ if __name__ == '__main__':
                             log_scale_pdf = True
                         case 'cauchy':
                             sampler = Cauchy(dim, normalized=normalized_data, correlation = correlation)
-                            normalized_data = False
                             crop_data_plot = True
-                            # plot_xlim = 0.3
-                            # plot_xlim = 0.1 # for d=2 / warning : should depend of d : overwise we remove all far points
-                            plot_xlim = 1 # for d=2 / warning : should depend of d : overwise we remove all far points / or separate crop and plot_xlim
-                            plot_crop = 3*plot_xlim
-                            if MSGM:
-                                val_hist = 0.3
-                            else:
-                                val_hist = 3.0
                             log_scale_pdf = True
-                            height_seaborn = height_seaborn_ref * 2
+                            if dim == 2:
+                                height_seaborn = height_seaborn_ref * 2
 
                             num_samples = 100000 # to have enough points in the tails for the plots
                             evalmmmd = False
                             nruns_mmd = 1
 
                             if not correlation:
-                                plot_xlim = 20 # for d=2 / warning : should depend of d : overwise we remove all far points / or separate crop and plot_xlim
-                                plot_crop = 3*plot_xlim
+                                plot_xlim = 10 
                                 plot_ref_pdf = True
                                 scale = (1.0/50)
                                 pdf_theor = torch.distributions.Cauchy(0.0, scale)
                             else:
-                                plot_xlim = 50 # for d=2 / warning : should depend of d : overwise we remove all far points / or separate crop and plot_xlim
+                                if dim == 2:
+                                    plot_xlim = 5 # for d=2 / warning : should depend of d : overwise we remove all far points / or separate crop and plot_xlim
+                                else:
+                                    plot_xlim = 10
+                            plot_crop = 3*plot_xlim
+
+                            if MSGM and dim == 2:
+                                val_hist = 0.3
+                            else:
+                                val_hist = plot_xlim
 
                         case 'POD':
-                            sampler = PODmodes(Re,dim, normalized=normalized_data)
+                            if normalized_data:
+                                val_hist = 2*plot_xlim
                         case 'lorenz':
                             sampler = Lorenz96(Re,dim, normalized=normalized_data)
                         case 'eof_pressure':
@@ -571,6 +573,7 @@ if __name__ == '__main__':
                                      "$T$, Paris", "$\omega$, Paris"]
 
                             plot_xlim = 5.0
+                            log_scale_pdf = True
                         case _:
                             raise ValueError("Unknown datatype: {}".format(datatype))
 
@@ -588,7 +591,7 @@ if __name__ == '__main__':
                         else:
                             std_norm = torch.ones((xtest.shape[1]))
                         if (datatype == 'cauchy') :
-                            std_test_plot = torch.ones_like(std_test)
+                            std_test_plot = torch.ones_like(std_test) / std_norm
                         else:
                             std_test_plot = std_test
 
@@ -759,7 +762,7 @@ if __name__ == '__main__':
                                         use_xticks= True, use_yticks=False, lmbd = 0., \
                                         include_t0=True, backward=False,
                                         plt_show=plt_show,
-                                        val=val_hist) # plot
+                                        val=val_hist* std_test_plot[0]) # plot
                                     time.sleep(0.5)
                                     if plt_show:
                                         plt.show(block=False)
@@ -904,7 +907,7 @@ if __name__ == '__main__':
                                             plot_selected_inds(xs, inds, True, False, lmbd, 
                                                                 include_t0=include_t0_reverse, 
                                                                 plt_show=plt_show, 
-                                                                val=val_hist) # plot
+                                                                val=val_hist * std_test_plot[0]) # plot
                                             time.sleep(0.5)
                                             if plt_show:
                                                 plt.show(block=False)

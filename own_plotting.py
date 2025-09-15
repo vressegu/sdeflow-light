@@ -205,7 +205,8 @@ def pairplots(xgen, xtest, std_norm, std_test_plot, datatype, name_simu, dimplot
             # set Y limit for this diagonal axis only
             if log_scale_pdf and (counts > 0).any():
                 ymin = counts[counts > 0].min()  # use the minimum value from the heatmap
-                ymin /=2
+                # ymin /=2
+                # ymin *=8 # for swiss roll
             else:
                 ymin = 0
                 
@@ -263,9 +264,10 @@ def pairplots(xgen, xtest, std_norm, std_test_plot, datatype, name_simu, dimplot
             if ax is None:
                 continue
 
+            nbins = 2
             # reduce the number of ticks
-            ax.xaxis.set_major_locator(mticker.MaxNLocator(nbins=4))  # max 4 x-ticks
-            ax.yaxis.set_major_locator(mticker.MaxNLocator(nbins=4))  # max 4 y-ticks
+            ax.xaxis.set_major_locator(mticker.MaxNLocator(nbins=nbins))  # max 4 x-ticks
+            ax.yaxis.set_major_locator(mticker.MaxNLocator(nbins=nbins))  # max 4 y-ticks
 
             # remove the "0.0" label but keep the tick itself (gridlines if any)
             def fmt_tick(val, pos):

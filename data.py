@@ -568,6 +568,9 @@ class Cauchy:
     def sampletest(self, n):
         return self.sample(n)
     
+    def get_std(self):
+        return self.std
+    
 
 class Gaussian:
     """
