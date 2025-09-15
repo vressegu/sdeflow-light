@@ -57,12 +57,6 @@ beta_min_SGM = 0.1 # default
 beta_max_SGM = 20 # default
 beta_maxs = [beta_max]
 
-spherical = False
-if not spherical:
-    premodule = None
-else:
-    premodule = "NormalizeLogRadius" # default
-    # premodule = "PolarCoordinatesWithLogRadius" # default
 num_samples_init_max = int(1e5)
 vtype = 'rademacher'
 lr = 0.001 # default
@@ -396,10 +390,7 @@ def m_name_simu_root(sampler_name, gen_sde_name_SDE, iterations_ref, batch_size,
         + gen_sde_name_SDE + "_" + str(iterations_ref) + "iteRefLearning_" \
         + str(num_samples_init) + "InitSples_" \
         + str(batch_size) + "batchSize_" \
-        + str(num_steps_forward) + "stepsForw_" \
-        + str(beta_min) + "beta_min" \
-        + str(beta_max) + "beta_max" 
-    if spherical and (premodule is not None):
+    if (premodule is not None):
         name_simu_root += "_" + premodule
     if (not (lr == 0.001)):
         name_simu_root += str(lr) + "lr"
@@ -445,12 +436,14 @@ if __name__ == '__main__':
                     if not MSGM:
                         normalized_data = True
                         ssm_intT = False
-                        premodule = None
-                        spherical = False
+                        premodule = None # default
+                        # print('WARNING : SGM with sphericalNN !!!!!!')
+                        # premodule = "NormalizeLogRadius" 
                     else:
                         normalized_data = False
                         ssm_intT = ssm_intT_ref
-                        spherical = True
+                        premodule = "NormalizeLogRadius" # default
+                        # premodule = "PolarCoordinatesWithLogRadius" 
 
                     np.random.seed(0)
                     torch.manual_seed(0) 
