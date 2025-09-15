@@ -893,22 +893,6 @@ if __name__ == '__main__':
                                         xgen = xgen[~nan_mask,:]
                                         del nan_mask
 
-
-                                        # MMD
-                                        if evalmmmd and not justLoadmmmd:
-                                            with torch.no_grad():
-                                                x_mmd1 = sampler.sample(xtest.shape[0]).to(device)
-                                                x_mmd2 = sampler.sample(xtest.shape[0]).to(device)
-                                                dist_train_to_test = compute_mmd(std_norm * x_mmd1,std_norm * xtest)
-                                                dist_test_to_test = compute_mmd(std_norm * x_mmd1,std_norm * xtest)
-                                                dist = compute_mmd(std_norm * xgen,std_norm * xtest)
-                                            mmd_ref[i_dims, i_Res, i_num_stepss_backward,i_iterations,i_run] = dist_train_to_test
-                                            if MSGM:
-                                                mmd_MSGM[i_dims, i_Res, i_num_stepss_backward,i_iterations,i_run] = dist
-                                            else:
-                                                mmd_SGM[i_dims, i_Res, i_num_stepss_backward,i_iterations,i_run] = dist
-                                            del dist
-
                                         if (scatter_plots) and (i_run == 0):
                                             pairplots(xgen, xtest, std_norm, std_test_plot, datatype, name_simu, dimplot=dimplot, \
                                                         crop_data_plot=crop_data_plot, plot_crop=plot_crop, plot_xlim=plot_xlim, plot_ref_pdf=plot_ref_pdf, \
@@ -929,6 +913,26 @@ if __name__ == '__main__':
                                                 plt.pause(1)
                                             plt.close()
                                             plt.close('all')
+                                        
+                                        # MMD
+                                        if evalmmmd and not justLoadmmmd:
+                                            max_num_samples_for_mmd
+                                            num_samples_for_mmd = min([xtest.shape[0],max_num_samples_for_mmd])
+                                            xtest = xtest[0:num_samples_for_mmd-1,:]
+                                            xgen = xgen[0:num_samples_for_mmd-1,:]
+                                            with torch.no_grad():
+                                                x_mmd1 = sampler.sample(xtest.shape[0]).to(device)
+                                                # x_mmd2 = sampler.sample(xtest.shape[0]).to(device)
+                                                dist_train_to_test = compute_mmd(std_norm * x_mmd1,std_norm * xtest)
+                                                # dist_test_to_test = compute_mmd(std_norm * x_mmd1,std_norm * xtest)
+                                                dist = compute_mmd(std_norm * xgen,std_norm * xtest)
+                                            mmd_ref[i_dims, i_Res, i_num_stepss_backward,i_iterations,i_run] = dist_train_to_test
+                                            if MSGM:
+                                                mmd_MSGM[i_dims, i_Res, i_num_stepss_backward,i_iterations,i_run] = dist
+                                            else:
+                                                mmd_SGM[i_dims, i_Res, i_num_stepss_backward,i_iterations,i_run] = dist
+                                            del dist
+
 
                                         del xs, xgen
                                         gc.collect()
