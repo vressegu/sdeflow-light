@@ -144,6 +144,8 @@ datatype = 'swissroll'
 # datatype = 'era5vorttemp'
 normalized_data = True
 mixedTimes = False 
+print("datatype", datatype)
+delayed = False
 
 match datatype:
     case 'swissroll': # Swiss roll
@@ -718,6 +720,11 @@ if __name__ == '__main__':
                             name_simu_root = m_name_simu_root(sampler.name, gen_sde.base_sde.name_SDE, \
                                                                 iterations_ref, batch_size, num_steps_forward, \
                                                                 beta_min, beta_max, ssm_intT, fair_comparison)
+                            
+                            if delayed:
+                                print('delayed ...')
+                                time.sleep(1e4)
+                                # time.sleep(1e5)
 
                             
                             # Forward SDE
