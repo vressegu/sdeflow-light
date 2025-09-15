@@ -55,39 +55,48 @@ norm_map = "log"
 # default values from git repo
 beta_min_SGM = 0.1 # default
 beta_max_SGM = 20 # default
-beta_maxs = [beta_max]
 
 num_samples_init_max = int(1e5)
 vtype = 'rademacher'
 lr = 0.001 # default
-print_every = 1000
+print_every = 10000
 
 # Inference
 include_t0_reverse = True # for plots
 num_samples = 10000
-
+max_num_samples_for_mmd = num_samples
+evalmmmd = False
+first_run = True
 
 # # Fair convergence comparison
-# # num_steps_forward = 100
-# # num_steps_forward = 128
-# num_steps_forward = 64
+# # num_steps_forward = 128 # cauchy
+# # num_steps_forward = 64 # old default
+# num_steps_forward = 16 # new default ?
 # ntrain_maxs = [ 2**16, 2**10, 2**6 ]
-# # iterationss = [ 2**24, 2**20, 2**16, 2**12, 2**8, 2**4 ] # swissroll
-# iterationss = [ 2**20, 2**16, 2**12, 2**8, 2**4 ]
-# # iterationss = [ 2**4 ]
+# # iterationss = [ 2**24, 2**20, 2**16, 2**12, 2**8 ] # cauchy
+# iterationss = [ 2**20, 2**16, 2**12, 2**8]
 # # num_stepss_backward = [1000,100,50,10,4,2]
 # # num_stepss_backward = [1024,256,64,16,4,1]
-# num_stepss_backward = [512,128,32,8,2]
-# nruns_mmd = 10
+# # full CV
+# num_stepss_backward = [128,32,8,2]
+# nruns_mmd = 10 # full CV comparisons
+# # # cheap CV
+# # num_stepss_backward = [128,32,8,2]
+# # nruns_mmd = 1 # cheap CV comparisons
 # fair_comparison = True # comparaison SGM vs MSGM with same RAM usage and same learning time
-# # ssm_intT_ref = True
 # ssm_intT_ref = False
+# first_run = True
+# if first_run:
+#     evalmmmd = False # 1st pass
+# else:
+#     evalmmmd = True # 2nd pass (long)
 
 
 # Fair comparison more CV
 ntrain_maxs = [ np.inf ]
 iterationss = [ 2**20]
-num_steps_forward = 64
+# num_steps_forward = 64 # old default
+num_steps_forward = 16 # new default ?
 # num_steps_forward = 1024
 # num_steps_forward = 128
 num_stepss_backward = [128]
@@ -95,6 +104,7 @@ nruns_mmd = 1
 fair_comparison = True # comparaison SGM vs MSGM with same RAM usage and same learning time
 # ssm_intT_ref = True
 ssm_intT_ref = False
+evalmmmd = False
 
 
 # # No Fair comparison
@@ -126,8 +136,8 @@ ssm_intT_ref = False
 # # expressivity for cauchy (long to run)
 # ntrain_maxs = [ np.inf ]
 # iterationss = [ 2**20]
-# num_steps_forward = 512
-# num_stepss_backward = [512]
+# num_steps_forward = 128
+# num_stepss_backward = [128]
 # nruns_mmd = 1
 # fair_comparison = False # comparaison SGM vs MSGM with same RAM usage and same learning time
 # ssm_intT_ref = False
@@ -149,6 +159,8 @@ datatype = 'swissroll'
 # datatype = 'era5vorttemp'
 normalized_data = True
 mixedTimes = False 
+Res=[None]
+dbg = False
 print("datatype", datatype)
 delayed = False
 
@@ -157,6 +169,13 @@ match datatype:
         dims = [2]
     case 'PIV': # vorticity and divergence from 2D PIV
         dims = [2,4,8,16,32]
+        ratio = 4
+        beta_max /= ratio # 20/ratio
+        beta_min /= ratio
+        t_eps /= ratio 
+        beta_max_SGM=beta_max
+        beta_min_SGM=beta_min
+
 
         few_data = True
 
@@ -175,15 +194,28 @@ match datatype:
         beta_max=2
         
     case 'cauchy': # multi-dimesnional Cauchy
-        # dims = [2,4,8,16,32]
-        dims = [2]
+        # dims = [2,4,8,16]
         
+        # dims = [2]
         # correlation = False # default
         # beta_max=0.4
+        # correlation = True 
+        # beta_max=2
+
+        # dims = [8]
+        dims = [4]
 
         correlation = True 
-        beta_max=2
+        beta_max=1
+        beta_min=0.01
 
+        # # beta_max_SGM=2
+        # beta_max_SGM=beta_max
+        # beta_min_SGM=beta_min
+        
+        t_eps /= 10 # 
+
+        num_steps_forward = 128 # cauchy
 
     case 'POD': # POD
         dims = [2,4,8,16]
@@ -227,12 +259,16 @@ match datatype:
         use_deseason = True
 
     case 'era5vorttemp' : # ERA5 temperature only
-        dims = [4,20]
+        # dims = [4,20]
         # dims = [2,4,8,16]
 
         # season = "all"
         season = "winter"
         use_deseason = True
+
+        dims = [16]
+        beta_max=5
+        beta_max_SGM=beta_max
 
         mixedTimes = True 
     case _:
@@ -245,6 +281,7 @@ match datatype:
 # num_steps_forward = 10
 # num_samples = 10
 # batch_sizes = [2]
+# dbg = True
 
 # Plots
 scatter_plots = True
@@ -264,7 +301,9 @@ plot_crop = plot_xlim
 # Load results 
 justLoad = False
 justLoadmmmd = False
-evalmmmd = True
+if not first_run:
+    justLoad = True
+    justLoadmmmd = False
 plt_show = False
 plot_validate = False
 print_RAM = False
@@ -518,9 +557,10 @@ if __name__ == '__main__':
                             if dim == 2:
                                 height_seaborn = height_seaborn_ref * 2
 
-                            num_samples = 100000 # to have enough points in the tails for the plots
-                            evalmmmd = False
-                            nruns_mmd = 1
+                            if not dbg:
+                                num_samples = 100000 # to have enough points in the tails for the plots
+                                evalmmmd = False
+                                nruns_mmd = 1
 
                             if not correlation:
                                 plot_xlim = 10 
