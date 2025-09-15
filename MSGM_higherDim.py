@@ -396,6 +396,19 @@ def m_name_simu_root(sampler_name, gen_sde_name_SDE, iterations_ref, batch_size,
         + gen_sde_name_SDE + "_" + str(iterations_ref) + "iteRefLearning_" \
         + str(num_samples_init) + "InitSples_" \
         + str(batch_size) + "batchSize_" \
+        + str(num_steps_forward) + "stepsForw_"
+    print("beta_min_SGM = " + str(beta_min_SGM))
+    print("beta_min = " + str(beta_min))
+    print("beta_max_SGM = " + str(beta_max_SGM))
+    print("beta_max = " + str(beta_max))
+    if MSGM:
+        name_simu_root += \
+            str(beta_min) + "beta_min" \
+            + str(beta_max) + "beta_max" 
+    else:
+        name_simu_root += \
+            str(beta_min_SGM) + "beta_min" \
+            + str(beta_max_SGM) + "beta_max"
     if (premodule is not None):
         name_simu_root += "_" + premodule
     if (not (lr == 0.001)):
