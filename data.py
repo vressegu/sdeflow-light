@@ -245,14 +245,19 @@ class ERA5:
         return s_ann, s_full
 
 class PIV:
-    def __init__(self, dim = 2, normalized = False):
+    def __init__(self, dim = 2, normalized = False, localized = False):
         self.dim = dim
         self.name='PIV'
         self.name = self.name + str(self.dim)
+        if localized:
+            self.name += 'loc'
         if normalized:
             self.name = self.name + '_norm'
     
-        folder = Path("/Users/vresseiguier/Coding/MultiplicativeDiffusion/newPIV")
+        folder_str = "/Users/vresseiguier/Coding/MultiplicativeDiffusion/newPIV"
+        if localized:
+            folder_str += '2'
+        folder = Path(folder_str)
         prefix = "Serie_"
 
         npdata = np.empty((32, 0))   # if not already

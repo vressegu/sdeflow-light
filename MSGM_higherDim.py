@@ -150,6 +150,8 @@ match datatype:
         dims = [2]
     case 'PIV': # vorticity and divergence from 2D PIV
         dims = [2,4,8,16,32]
+
+        localized = True
     case 'gaussian': # multi-dimesnional gaussian
         dims = [2,4,8,16,32]
     case 'gaussianCauchy': # multi-dimesnional gaussian
@@ -457,7 +459,7 @@ if __name__ == '__main__':
                             sampler = SwissRoll()
                             normalized_data = False
                         case 'PIV':
-                            sampler = PIV(dim, normalized=normalized_data)
+                            sampler = PIV(dim, normalized=normalized_data, localized = localized)
                             log_scale_pdf = True
                             plot_xlim = 6
                             val_hist = plot_xlim
