@@ -288,7 +288,7 @@ class PIV:
             n_train= min([2*npdata.shape[0]// 3, ntrain_max])
             n_test = npdata.shape[0] - n_train 
         else:
-        n_test = npdata.shape[0] // 3
+            n_test = npdata.shape[0] // 3
 
         self.npdata = npdata[0:-n_test:1,:]
         self.npdatatest = npdata[-n_test:-1:1,:]
@@ -507,7 +507,7 @@ def load_POD_data(Re):
     return npdata, npdatatest
 
 class PODmodes:
-    def __init__(self, Re = 300, dim = 8, normalized = False, mixedTimes = False, concatenateRe = False):
+    def __init__(self, Re = 300, dim = 8, normalized = False, mixedTimes = False, concatenateRe = False, few_data = False, ntrain_max = np.inf):
         self.dim = dim
         # self.dim = 16
         self.name='POD'
@@ -517,6 +517,11 @@ class PODmodes:
         else:
             Re = str(Re)
         self.name = self.name + Re + str(self.dim)
+        if few_data:
+            mixedTimes = True
+            self.name += str(ntrain_max) + 'pts'
+        if mixedTimes:
+            self.name += 'mix'
         if normalized:
             self.name = self.name + '_norm'
 
@@ -532,7 +537,16 @@ class PODmodes:
 
         if mixedTimes:
             npdataall = np.concatenate((npdata, npdatatest), axis=0)
-            n_test = npdataall.shape[0]//3
+        else:
+            npdataall = npdata
+
+        if few_data:
+            n_train= min([2*npdataall.shape[0]// 3, ntrain_max])
+            n_test = npdataall.shape[0] - n_train 
+        else:
+            n_test = npdataall.shape[0] // 3
+
+        if mixedTimes:
             idx = random.sample(range(npdataall.shape[0]),n_test)
             noidx = [i for i in range(npdataall.shape[0]) if i not in idx]
             npdatatest = npdataall[idx,:]

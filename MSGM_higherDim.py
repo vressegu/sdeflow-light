@@ -26,7 +26,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 import seaborn as sns
 
 from sde_scheme import euler_maruyama_sampler,heun_sampler,rk4_stratonovich_sampler
-from own_plotting import plot_selected_inds, def_pd, pairplots
+from own_plotting import plot_selected_inds, def_pd, pairplots, pairplots_single
 from SDEs import forward_SDE,SDE,VariancePreservingSDE,PluginReverseSDE,multiplicativeNoise
 from data import ERA5,ncar_weather_station,weather_station,eof_pressure,Lorenz96,\
                  PODmodes,SwissRoll,Cauchy,Gaussian,GaussianCauchy,\
@@ -580,7 +580,7 @@ if __name__ == '__main__':
                                 val_hist = plot_xlim
 
                         case 'POD':
-                            sampler = PODmodes(Re,dim, normalized=normalized_data, mixedTimes = mixedTimes, concatenateRe = concatenateRe)
+                            sampler = PODmodes(Re,dim, normalized=normalized_data, mixedTimes = mixedTimes, concatenateRe = concatenateRe, few_data=few_data, ntrain_max=ntrain_max)
                             if normalized_data:
                                 val_hist = 2*plot_xlim
                         case 'lorenz':
@@ -666,52 +666,14 @@ if __name__ == '__main__':
                         dimplot = np.min([dimplot_max,xtest.shape[1]])
                         columns_plot=range(1,1+dimplot)
 
-
-                        pddatatest = def_pd(xtest, std_norm, std_test_plot, datatype, dimplot=dimplot, \
-                                crop_data_plot=crop_data_plot, plot_crop=plot_crop, columns_plot=columns_plot)
-                        plot_kws={"s": ssize}
-                        scatter = sns.pairplot(pddatatest, aspect=1, height=height_seaborn, corner=True,plot_kws=plot_kws)
-                        for i, row in enumerate(scatter.axes):
-                            plot_ylim_row = plot_xlim * std_norm[i]* std_test_plot[i]
-                            for j, ax in enumerate(row):
-                                plot_xlim_col = plot_xlim * std_norm[j]* std_test_plot[j]
-                                if ax is not None:
-                                    if i == j:  # Diagonal
-                                        ax.set_xlim((-plot_xlim_col,plot_xlim_col))
-                                    if j < i:  # since corner=True, we only have lower triangle
-                                        ax.set_xlim((-plot_xlim_col,plot_xlim_col))
-                                        ax.set_ylim((-plot_ylim_row,plot_ylim_row))
-                        plt.tight_layout()
-                        if plt_show:
-                            plt.show(block=False)   
-                            plt.pause(0.1)
-                        plt.savefig("results/" + sampler.name + ".png", dpi=dpi)
-                        plt.close()
-                        plt.pause(0.1)
-                        plt.close('all')
-
-                        pddatatrain = def_pd(sampler.sample(num_samples).to('cpu'), std_norm, std_test_plot, datatype, dimplot=dimplot, \
-                                crop_data_plot=crop_data_plot, plot_crop=plot_crop, columns_plot=columns_plot)
-                        plot_kws={"s": ssize}
-                        scatter = sns.pairplot(pddatatrain, aspect=1, height=height_seaborn, corner=True,plot_kws=plot_kws)
-                        for i, row in enumerate(scatter.axes):
-                            plot_ylim_row = plot_xlim * std_norm[i]* std_test_plot[i]
-                            for j, ax in enumerate(row):
-                                plot_xlim_col = plot_xlim * std_norm[j]* std_test_plot[j]
-                                if ax is not None:
-                                    if i == j:  # Diagonal
-                                        ax.set_xlim((-plot_xlim_col,plot_xlim_col))
-                                    if j < i:  # since corner=True, we only have lower triangle
-                                        ax.set_xlim((-plot_xlim_col,plot_xlim_col))
-                                        ax.set_ylim((-plot_ylim_row,plot_ylim_row))
-                        plt.tight_layout()
-                        if plt_show:
-                            plt.show(block=False)   
-                            plt.pause(0.1)
-                        plt.savefig("results/" + sampler.name + "_train.png", dpi=dpi)
-                        plt.close()
-                        del scatter, pddatatrain
-                        plt.pause(0.1)
+                        pairplots_single(xtest, std_norm, std_test_plot, datatype, sampler.name , dimplot=dimplot, \
+                                    crop_data_plot=crop_data_plot, plot_crop=plot_crop, plot_xlim=plot_xlim, plot_ref_pdf=plot_ref_pdf, \
+                                    pdf_theor=pdf_theor, log_scale_pdf=log_scale_pdf, columns_plot=columns_plot, \
+                                    plt_show=plt_show, dpi=dpi, height_seaborn=height_seaborn, ssize=ssize)
+                        pairplots_single(sampler.sample(num_samples).to('cpu'), std_norm, std_test_plot, datatype, sampler.name + "_train", dimplot=dimplot, \
+                                    crop_data_plot=crop_data_plot, plot_crop=plot_crop, plot_xlim=plot_xlim, plot_ref_pdf=plot_ref_pdf, \
+                                    pdf_theor=pdf_theor, log_scale_pdf=log_scale_pdf, columns_plot=columns_plot, \
+                                    plt_show=plt_show, dpi=dpi, height_seaborn=height_seaborn, ssize=ssize)
                     
 
                     ## 3. Train

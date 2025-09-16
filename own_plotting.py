@@ -286,3 +286,33 @@ def pairplots(xgen, xtest, std_norm, std_test_plot, datatype, name_simu, dimplot
     if plt_show:
         plt.pause(1)
     plt.close()
+
+
+@torch.no_grad()
+def pairplots_single( xtest, std_norm, std_test_plot, datatype, name_simu, dimplot=2, \
+            crop_data_plot=False, plot_crop=3, plot_xlim=3, plot_ref_pdf=False, \
+            pdf_theor=None, log_scale_pdf=False, columns_plot=None, \
+            plt_show=False, dpi=200, height_seaborn=2.5, ssize=10):
+
+    pddatatest = def_pd(xtest, std_norm, std_test_plot, datatype, dimplot=dimplot, \
+            crop_data_plot=crop_data_plot, plot_crop=plot_crop, columns_plot=columns_plot)
+    plot_kws={"s": ssize}
+    scatter = sns.pairplot(pddatatest, aspect=1, height=height_seaborn, corner=True,plot_kws=plot_kws)
+    for i, row in enumerate(scatter.axes):
+        plot_ylim_row = plot_xlim * std_norm[i]* std_test_plot[i]
+        for j, ax in enumerate(row):
+            plot_xlim_col = plot_xlim * std_norm[j]* std_test_plot[j]
+            if ax is not None:
+                if i == j:  # Diagonal
+                    ax.set_xlim((-plot_xlim_col,plot_xlim_col))
+                if j < i:  # since corner=True, we only have lower triangle
+                    ax.set_xlim((-plot_xlim_col,plot_xlim_col))
+                    ax.set_ylim((-plot_ylim_row,plot_ylim_row))
+    plt.tight_layout()
+    if plt_show:
+        plt.show(block=False)   
+        plt.pause(0.1)
+    plt.savefig("results/" + name_simu + ".png", dpi=dpi)
+    plt.close()
+    plt.pause(0.1)
+    plt.close('all')
