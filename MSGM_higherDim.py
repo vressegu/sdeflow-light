@@ -26,7 +26,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 import seaborn as sns
 
 from sde_scheme import euler_maruyama_sampler,heun_sampler,rk4_stratonovich_sampler
-from own_plotting import plot_selected_inds, def_pd, pairplots, pairplots_single
+from own_plotting import plot_selected_inds, def_pd, pairplots, pairplots_single, preprocessing
 from SDEs import forward_SDE,SDE,VariancePreservingSDE,PluginReverseSDE,multiplicativeNoise
 from data import ERA5,ncar_weather_station,weather_station,eof_pressure,Lorenz96,\
                  PODmodes,SwissRoll,Cauchy,Gaussian,GaussianCauchy,\
@@ -756,60 +756,9 @@ if __name__ == '__main__':
                                 xs_forward = rk4_stratonovich_sampler(for_sde, xtest.clone(), num_steps_forward,  \
                                                                     lmbd=0., keep_all_samples=True, \
                                                                     include_t0=True, norm_correction = MSGM) # sample
-                                xgen_forward = xs_forward[-1,:,:].to(device)
+                                preprocessing(xtest, xs_forward, num_steps_forward, name_simu_root, \
+                                                noising_plots, plt_show, folder_results, val_hist, std_test_plot, device)
                                 
-                                # metrics of convergence for the forward SDE
-                                cov_xtest = torch.cov(xtest.T)
-                                cov_xgen_forward = torch.cov(xgen_forward.T)
-                                xgen_forward_var = torch.var(xgen_forward.T,dim=1)
-                                xgen_forward_var_mean = xgen_forward_var.mean()
-                                xtest_var = torch.var(xtest.T,dim=1)
-                                xtest_var_mean = xtest_var.mean()
-
-                                # comparaison to cov ot X_inf
-                                cov_xgen_forward_converged = xtest_var_mean * torch.eye(sampler.dim).to(device)
-                                # since tr(cov)=E||X||^2 is theoretically conserved
-                                d_cov_xtest = torch.norm(cov_xtest - cov_xgen_forward_converged)/torch.norm(cov_xgen_forward_converged)
-                                d_cov_xgen_forward = torch.norm(cov_xgen_forward - cov_xgen_forward_converged)/torch.norm(cov_xgen_forward_converged)
-                                print("dist cov_xtest to  cov_xgen_forward_converged (dist to  weak white noise)= " + str(d_cov_xtest.item()))
-                                print("dist cov_xgen_forward  to  cov_xgen_forward_converged = " + str(d_cov_xgen_forward.item()))
-
-                                # comparaison to cov of weak white noise (with same variance)
-                                cov_wwn = xgen_forward_var_mean * torch.eye(sampler.dim).to(device)
-                                d_cov_xgen_forward = torch.norm(cov_xgen_forward - cov_wwn)/torch.norm(cov_wwn)
-                                print("dist cov_xgen_forward  to  weak white noise (w. same var.)= " + str(d_cov_xgen_forward.item()))
-
-                                # print energy
-                                energy_xtest = torch.sum((xtest**2),dim=1).mean()
-                                energy_xgen_forward = torch.sum((xgen_forward**2),dim=1).mean()
-                                print("energy_xtest = " + str(energy_xtest.item()))
-                                print("energy_xgen_forward = " + str(energy_xgen_forward.item()))
-                                print("energy_xgen_forward / energy_xtest = " + str(energy_xgen_forward.item()/energy_xtest.item()))
-
-                                # indices to visualize
-                                fig_step = int(num_steps_forward/8) #4
-                                if fig_step < 1:
-                                    fig_step = 1
-                                inds_forward = range(0, num_steps_forward+1, fig_step)
-                                if (noising_plots):
-                                    plot_selected_inds(xs_forward, inds_forward, \
-                                        use_xticks= True, use_yticks=False, lmbd = 0., \
-                                        include_t0=True, backward=False,
-                                        plt_show=plt_show,
-                                        val=val_hist* std_test_plot[0]) # plot
-                                    time.sleep(0.5)
-                                    if plt_show:
-                                        plt.show(block=False)
-                                    name_fig = folder_results + "/" + name_simu_root + "_Forward.png" 
-                                    plt.savefig(name_fig)
-                                    if plt_show:
-                                        plt.pause(1)
-                                    plt.close()
-                                    plt.close('all')
-
-                            del xs_forward, xgen_forward, cov_xgen_forward, cov_xgen_forward_converged, xgen_forward_var, xgen_forward_var_mean
-                            del for_sde
-                            gc.collect()
 
                             if (not justLoad):
                                 # init optimizer
