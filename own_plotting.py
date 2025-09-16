@@ -17,6 +17,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import matplotlib.ticker as mticker 
 import pandas as pd
+from quantitative_comparison import compute_mmd
 
 ### 4.1. Define plotting tools
 @torch.no_grad()
@@ -371,3 +372,63 @@ def preprocessing(xtest, xs_forward, num_steps_forward, name_simu_root, \
             plt.pause(1)
         plt.close()
         plt.close('all')
+
+def postprocessing(inds, i_dims, i_Res, i_num_stepss_backward, i_iterations, i_run, MSGM, sampler, \
+                   xs, xtest, std_norm, std_test_plot, datatype, name_simu, dimplot, \
+                   crop_data_plot, plot_crop, plot_xlim, plot_ref_pdf, \
+                   pdf_theor, log_scale_pdf, columns_plot, \
+                   scatter_plots, denoising_plots, include_t0_reverse, plt_show, dpi, height_seaborn, ssize, \
+                   evalmmmd, justLoadmmmd, justLoad, save_results, lmbd, val_hist, device, \
+                   mmd_ref, mmd_MSGM,mmd_SGM,max_num_samples_for_mmd):
+
+    xgen = xs[-1,:,:].to(device)
+
+    if save_results and not justLoad:
+        np.save(name_simu + ".pt", xgen.clone().detach().cpu().numpy())
+
+    # Identify rows with NaN values
+    nan_mask = (torch.isnan(xgen) | (torch.abs(xgen) > 1e3 )).any(dim=1)
+    # Count rows with NaN values
+    nan_count = nan_mask.sum().item()
+    if nan_count > 0:
+        print(f"Number of rows with NaN or large value: {nan_count}")
+    # Remove rows with NaN values
+    xgen = xgen[~nan_mask,:]
+    del nan_mask
+
+    if (scatter_plots) and (i_run == 0):
+        pairplots(xgen, xtest, std_norm, std_test_plot, datatype, name_simu, dimplot=dimplot, \
+                    crop_data_plot=crop_data_plot, plot_crop=plot_crop, plot_xlim=plot_xlim, plot_ref_pdf=plot_ref_pdf, \
+                    pdf_theor=pdf_theor, log_scale_pdf=log_scale_pdf, columns_plot=columns_plot, \
+                    plt_show=plt_show, dpi=dpi, height_seaborn=height_seaborn, ssize=ssize)
+
+    if (denoising_plots) and (i_run == 0):
+        plot_selected_inds(xs, inds, True, False, lmbd, 
+                            include_t0=include_t0_reverse, 
+                            plt_show=plt_show, 
+                            val=val_hist * std_test_plot[0]) # plot
+        time.sleep(0.5)
+        if plt_show:
+            plt.show(block=False)
+        name_fig = name_simu + ".png" 
+        plt.savefig(name_fig)
+        if plt_show:
+            plt.pause(1)
+        plt.close()
+        plt.close('all')
+    
+    # MMD
+    if evalmmmd and not justLoadmmmd:
+        max_num_samples_for_mmd
+        num_samples_for_mmd = min([xtest.shape[0],max_num_samples_for_mmd])
+        xtest = xtest[0:num_samples_for_mmd-1,:]
+        xgen = xgen[0:num_samples_for_mmd-1,:]
+        with torch.no_grad():
+            x_mmd1 = sampler.sample(xtest.shape[0]).to(device)
+            dist_train_to_test = compute_mmd(std_norm * x_mmd1,std_norm * xtest)
+            dist = compute_mmd(std_norm * xgen,std_norm * xtest)
+        mmd_ref[i_dims, i_Res, i_num_stepss_backward,i_iterations,i_run] = dist_train_to_test
+        if MSGM:
+            mmd_MSGM[i_dims, i_Res, i_num_stepss_backward,i_iterations,i_run] = dist
+        else:
+            mmd_SGM[i_dims, i_Res, i_num_stepss_backward,i_iterations,i_run] = dist
