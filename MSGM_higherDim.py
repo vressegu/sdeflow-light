@@ -16,6 +16,7 @@ import torch.nn as nn
 import sys
 import os
 import pandas as pd
+import random
 import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.ticker import FixedLocator, FixedFormatter
@@ -24,15 +25,19 @@ from netCDF4 import Dataset
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 import seaborn as sns
 
+from NN import MLP, NormalizeLogRadius, evaluate
 from sde_scheme import euler_maruyama_sampler,heun_sampler,rk4_stratonovich_sampler
-from own_plotting import plot_selected_inds
+from own_plotting import plot_selected_inds, def_pd, pairplots, pairplots_single, \
+                         preprocessing, postprocessing
 from SDEs import forward_SDE,SDE,VariancePreservingSDE,PluginReverseSDE,multiplicativeNoise
-from data import ERA5,ncar_weather_station,weather_station,eof_pressure,Lorenz96,PODmodes,SwissRoll,Cauchy
-from quantitative_comparison import compute_mmd
+from data import ERA5,ncar_weather_station,weather_station,eof_pressure,Lorenz96,\
+                 PODmodes,SwissRoll,Cauchy,Gaussian,GaussianCauchy,\
+                 PIV
 import gc
 
 np.random.seed(0)
-torch.manual_seed(0) 
+torch.manual_seed(0)
+random.seed(0)
 
 DISPLAY_MAX_ROWS = 20  # number of max rows to print for a DataFrame
 pd.set_option('display.max_rows', DISPLAY_MAX_ROWS)
@@ -43,48 +48,186 @@ pd.set_option('display.max_rows', DISPLAY_MAX_ROWS)
 T0 = 1
 
 MSGMs = [0,1]
-
-
-num_steps_forward = 100
-beta_min=1
+beta_min=0.1 # new default
 beta_max=20
 t_eps = 1/1000  
+norm_sampler = "ecdf"
+norm_map = "log"
 # default values from git repo
-beta_min_SGM = 0.1
-beta_max_SGM = 20
-beta_maxs = [beta_max]
+beta_min_SGM = 0.1 # default
+beta_max_SGM = 20 # default
 
+num_samples_init_max = int(1e5)
 vtype = 'rademacher'
-lr = 0.001
-print_every = 1000
+lr = 0.001 # default
+print_every = 10000
 
 # Inference
-num_stepss_backward = [1000,100,50,10]
 include_t0_reverse = True # for plots
 num_samples = 10000
+max_num_samples_for_mmd = num_samples
+evalmmmd = False
+first_run = True
+
+# # Fair convergence comparison
+# # num_steps_forward = 128 # cauchy
+# # num_steps_forward = 64 # old default
+# num_steps_forward = 16 # new default ?
+# ntrain_maxs = [ 2**16, 2**10, 2**6 ]
+# # iterationss = [ 2**24, 2**20, 2**16, 2**12, 2**8 ] # cauchy
+# iterationss = [ 2**20, 2**16, 2**12, 2**8]
+# # num_stepss_backward = [1000,100,50,10,4,2]
+# # num_stepss_backward = [1024,256,64,16,4,1]
+# # full CV
+# num_stepss_backward = [128,32,8,2]
+# nruns_mmd = 10 # full CV comparisons
+# # # cheap CV
+# # num_stepss_backward = [128,32,8,2]
+# # nruns_mmd = 1 # cheap CV comparisons
+# fair_comparison = True # comparaison SGM vs MSGM with same RAM usage and same learning time
+# ssm_intT_ref = False
+# first_run = True
+# if first_run:
+#     evalmmmd = False # 1st pass
+# else:
+#     evalmmmd = True # 2nd pass (long)
+
+
+# Fair comparison more CV
+ntrain_maxs = [ np.inf ]
+iterationss = [ 2**20]
+# num_steps_forward = 64 # old default
+num_steps_forward = 16 # new default ?
+# num_steps_forward = 1024
+# num_steps_forward = 128
+num_stepss_backward = [128]
+nruns_mmd = 1
+fair_comparison = True # comparaison SGM vs MSGM with same RAM usage and same learning time
+# ssm_intT_ref = True
+ssm_intT_ref = False
+evalmmmd = False
+
+
+# # No Fair comparison
+# ntrain_maxs = [ np.inf ]
+# iterationss = [ 2**14]
+# num_steps_forward = 64
+# # num_steps_forward = 128
+# num_stepss_backward = [128]
 # nruns_mmd = 1
-iterationss = [ 2**20, 2**16, 2**12, 2**8, 2**4 ]
-nruns_mmd = 10
+# # fair_comparison = True # comparaison SGM vs MSGM with same RAM usage and same learning time
+# fair_comparison = False # comparaison SGM vs MSGM with same RAM usage and same learning time
+# # ssm_intT_ref = True
+# ssm_intT_ref = False
+
+
+# # Optimal (expressivity) (long to run)
+# ntrain_maxs = [ np.inf ]
+# # iterationss = [ 2**20]
+# iterationss = [2**19, 2**20]
+# # num_steps_forward = 128
+# # num_stepss_backward = [128]
+# num_steps_forward = 256
+# num_stepss_backward = [64,128,256,512]
+# nruns_mmd = 1
+# fair_comparison = False # comparaison SGM vs MSGM with same RAM usage and same learning time
+# ssm_intT_ref = False
+
+
+# # expressivity for cauchy (long to run)
+# ntrain_maxs = [ np.inf ]
+# iterationss = [ 2**20]
+# num_steps_forward = 128
+# num_stepss_backward = [128]
+# nruns_mmd = 1
+# fair_comparison = False # comparaison SGM vs MSGM with same RAM usage and same learning time
+# ssm_intT_ref = False
+# beta_min=0.1
+# beta_max=1
+# # MSGMs = [1]
+
+batch_sizes = [256]
 
 # Dataset
-# datatype = 'swissroll'
+datatype = 'swissroll'
+# datatype = 'PIV'
+# datatype = 'gaussian'
 # datatype = 'cauchy'
-datatype = 'POD'
+# datatype = 'gaussianCauchy'
+# datatype = 'POD'
 # datatype = 'era5'
+# datatype = 'era5temp'
+# datatype = 'era5vorttemp'
+normalized_data = True
+mixedTimes = False 
+Res=[None]
+dbg = False
+print("datatype", datatype)
+delayed = False
 
 match datatype:
     case 'swissroll': # Swiss roll
         dims = [2]
-        Res=[1]
-    case 'cauchy': # multi-dimesnional Cauchy
+    case 'PIV': # vorticity and divergence from 2D PIV
         dims = [2,4,8,16,32]
-        Res=[1]
+        ratio = 4
+        beta_max /= ratio # 20/ratio
+        beta_min /= ratio
+        t_eps /= ratio 
+        beta_max_SGM=beta_max
+        beta_min_SGM=beta_min
+
+
+        few_data = True
+
+        localized = True
+    case 'gaussian': # multi-dimesnional gaussian
+        dims = [2,4,8,16,32]
+    case 'gaussianCauchy': # multi-dimesnional gaussian
+        # dims = [2,16]
+        dims = [2]
+
+        # norm_sampler = "kde"
+        norm_sampler = "ecdf"
+        norm_map = "log"
+        vtype = 'rademacher'
+        # vtype = 'uniform'
+        beta_max=2
+        
+    case 'cauchy': # multi-dimesnional Cauchy
+        # dims = [2,4,8,16]
+        
+        # dims = [2]
+        # correlation = False # default
+        # beta_max=0.4
+        # correlation = True 
+        # beta_max=2
+
+        # dims = [8]
+        dims = [4]
+
+        correlation = True 
+        beta_max=1
+        beta_min=0.01
+
+        # # beta_max_SGM=2
+        # beta_max_SGM=beta_max
+        # beta_min_SGM=beta_min
+        
+        t_eps /= 10 # 
+
+        num_steps_forward = 128 # cauchy
+
     case 'POD': # POD
         dims = [2,4,8,16]
         Res=[300,3900]
 
         dims = [16]
         Res=[300,3900]
+
+        mixedTimes = True 
+        
+        concatenateRe = False
 
     # case 'lorenz':
  
@@ -105,6 +248,30 @@ match datatype:
         Res=[1]
 
 
+        season = "all"
+        # season = "winter"
+        use_deseason = False
+
+    case 'era5temp' : # ERA5 temperature only
+        dims = [10]
+
+        season = "all"
+        # season = "winter"
+        use_deseason = True
+
+    case 'era5vorttemp' : # ERA5 temperature only
+        # dims = [4,20]
+        # dims = [2,4,8,16]
+
+        # season = "all"
+        season = "winter"
+        use_deseason = True
+
+        dims = [16]
+        beta_max=5
+        beta_max_SGM=beta_max
+
+        mixedTimes = True 
     case _:
         raise ValueError("Unknown datatype: {}".format(datatype))
 
@@ -115,6 +282,7 @@ match datatype:
 # num_steps_forward = 10
 # num_samples = 10
 # batch_sizes = [2]
+# dbg = True
 
 # Plots
 scatter_plots = True
@@ -122,18 +290,27 @@ noising_plots = True
 denoising_plots = True
 save_results = True
 plot_xlim = 3.0
-height_seaborn = 1.2
+height_seaborn_ref = 1
+height_seaborn = height_seaborn_ref
 ssize = height_seaborn
 dpi=200
 dimplot_max = 8
 val_hist = plot_xlim
 crop_data_plot = False
+plot_crop = plot_xlim
 
 # Load results 
 justLoad = False
 justLoadmmmd = False
+if not first_run:
+    justLoad = True
+    justLoadmmmd = False
 plt_show = False
+plot_validate = False
 print_RAM = False
+log_scale_pdf = True
+plot_ref_pdf = False
+pdf_theor = None
 
 if not justLoad:
     justLoadmmmd = False
@@ -141,67 +318,31 @@ if not justLoad:
 if not plt_show:
     matplotlib.use("Agg")
 
-#  Define models
-
-### 2.2. Define MLP
-class Swish(nn.Module):
-    def __init__(self):
-        super().__init__()
-
-    def forward(self, x):
-        return torch.sigmoid(x)*x
-
-class MLP(nn.Module):
-    def __init__(self,
-                input_dim=2,
-                index_dim=1,
-                hidden_dim=128,
-                act=Swish(),
-                ):
-        super().__init__()
-        self.input_dim = input_dim
-        self.index_dim = index_dim
-        self.hidden_dim = hidden_dim
-        self.act = act
-
-        self.main = nn.Sequential(
-            nn.Linear(input_dim+index_dim, hidden_dim),
-            act,
-            nn.Linear(hidden_dim, hidden_dim),
-            act,
-            nn.Linear(hidden_dim, hidden_dim),
-            act,
-            nn.Linear(hidden_dim, input_dim),
-            )
-
-    def forward(self, input, t):
-        # init
-        sz = input.size()
-        input = input.view(-1, self.input_dim)
-        t = t.view(-1, self.index_dim).float()
-
-        # forward
-        h = torch.cat([input, t], dim=1) # concat
-        output = self.main(h) # forward
-        return output.view(*sz)
-
-### 2.3. Define evaluate function (compute ELBO)
-@torch.no_grad()
-def evaluate(gen_sde, x_test):
-    gen_sde.eval()
-    num_samples_ = x_test.size(0)
-    test_elbo = gen_sde.elbo_random_t_slice(x_test)
-    gen_sde.train()
-    return test_elbo.mean(), test_elbo.std() / num_samples_ ** 0.5
-
 
 def m_name_simu_root(sampler_name, gen_sde_name_SDE, iterations_ref, batch_size, num_steps_forward, beta_min, beta_max, ssm_intT, fair_comparison):
     name_simu_root = sampler_name + "/" \
         + gen_sde_name_SDE + "_" + str(iterations_ref) + "iteRefLearning_" \
+        + str(num_samples_init) + "InitSples_" \
         + str(batch_size) + "batchSize_" \
-        + str(num_steps_forward) + "stepsForw_" \
-        + str(beta_min) + "beta_min" \
-        + str(beta_max) + "beta_max" 
+        + str(num_steps_forward) + "stepsForw_"
+    print("beta_min_SGM = " + str(beta_min_SGM))
+    print("beta_min = " + str(beta_min))
+    print("beta_max_SGM = " + str(beta_max_SGM))
+    print("beta_max = " + str(beta_max))
+    if MSGM:
+        name_simu_root += \
+            str(beta_min) + "beta_min" \
+            + str(beta_max) + "beta_max" 
+    else:
+        name_simu_root += \
+            str(beta_min_SGM) + "beta_min" \
+            + str(beta_max_SGM) + "beta_max"
+    if (premodule is not None):
+        name_simu_root += "_" + premodule
+    if (not (lr == 0.001)):
+        name_simu_root += str(lr) + "lr"
+    if (not (vtype == 'rademacher')):
+        name_simu_root += "vtype=" + vtype
     if ssm_intT:
         name_simu_root += "_intLoss"
     if fair_comparison:
@@ -221,7 +362,7 @@ else:
 
 if __name__ == '__main__':
 
-    for beta_max in beta_maxs:
+    for ntrain_max in ntrain_maxs:
         mmd_SGM = torch.zeros((len(dims),len(Res),len(num_stepss_backward),len(iterationss),nruns_mmd))
         mmd_MSGM = torch.zeros((len(dims),len(Res),len(num_stepss_backward),len(iterationss),nruns_mmd))
         mmd_ref = torch.zeros((len(dims),len(Res),len(num_stepss_backward),len(iterationss),nruns_mmd))
@@ -238,37 +379,92 @@ if __name__ == '__main__':
                 for MSGM in MSGMs:
                     i_MGMM +=1
 
-                    plot_ylim_row = plot_xlim
-                    plot_xlim_col = plot_xlim
 
                     if not MSGM:
                         normalized_data = True
                         ssm_intT = False
+                        premodule = None # default
+                        # print('WARNING : SGM with sphericalNN !!!!!!')
+                        # premodule = "NormalizeLogRadius" 
                     else:
                         normalized_data = False
                         ssm_intT = ssm_intT_ref
+                        premodule = "NormalizeLogRadius" # default
+                        # premodule = "PolarCoordinatesWithLogRadius" 
 
                     np.random.seed(0)
                     torch.manual_seed(0) 
+                    random.seed(0)
 
-                    num_samples_init = min(int(1e6),iterationss[0]*batch_sizes[0])
+                    num_samples_init = min(num_samples_init_max,iterationss[0]*batch_sizes[0])
 
                     ## 1. Initialize dataset
                     match datatype:
                         case 'swissroll':
                             sampler = SwissRoll()
                             normalized_data = False
-                        case 'cauchy':
-                            sampler = Cauchy(dim, correlation = False)
-                            normalized_data = False
+                        case 'PIV':
+                            sampler = PIV(dim, normalized=normalized_data, localized = localized, few_data=few_data, ntrain_max=ntrain_max)
+                            log_scale_pdf = True
+                            plot_xlim = 6
+                            val_hist = plot_xlim
+                        case 'gaussian':
+                            # correlation = False
+                            # normalized_data = False
+                            correlation = True # default
+                            sampler = Gaussian(dim, normalized=normalized_data, correlation = correlation)
+                            if not correlation:
+                                plot_ref_pdf = True
+                                pdf_theor = torch.distributions.Normal(0.0, 1.0)
+                            plot_xlim = 4
+                            val_hist = 2*plot_xlim
+
+                        case 'gaussianCauchy':
+                            correlation = True # default
+                            sampler = GaussianCauchy(dim, normalized=normalized_data, correlation = correlation)
                             crop_data_plot = True
-                            plot_xlim = 0.1
+                            # plot_xlim = 0.3
+                            # plot_xlim = 0.1 # for d=2 / warning : should depend of d : overwise we remove all far points
+                            plot_xlim = 5 # for d=2 / warning : should depend of d : overwise we remove all far points / or separate crop and plot_xlim
+                            plot_crop = 3*plot_xlim
                             if MSGM:
+                                val_hist = 0.4
+                            else:
+                                val_hist = 0.2
+                            log_scale_pdf = True
+                        case 'cauchy':
+                            sampler = Cauchy(dim, normalized=normalized_data, correlation = correlation)
+                            crop_data_plot = True
+                            log_scale_pdf = True
+                            if dim == 2:
+                                height_seaborn = height_seaborn_ref * 2
+
+                            if not dbg:
+                                num_samples = 100000 # to have enough points in the tails for the plots
+                                evalmmmd = False
+                                nruns_mmd = 1
+
+                            if not correlation:
+                                plot_xlim = 10 
+                                plot_ref_pdf = True
+                                scale = (1.0/50)
+                                pdf_theor = torch.distributions.Cauchy(0.0, scale)
+                            else:
+                                if dim == 2:
+                                    plot_xlim = 5 # for d=2 / warning : should depend of d : overwise we remove all far points / or separate crop and plot_xlim
+                                else:
+                                    plot_xlim = 10
+                            plot_crop = 3*plot_xlim
+
+                            if MSGM and dim == 2:
                                 val_hist = 0.3
                             else:
-                                val_hist = 3.0
+                                val_hist = plot_xlim
+
                         case 'POD':
-                            sampler = PODmodes(Re,dim, normalized=normalized_data)
+                            sampler = PODmodes(Re,dim, normalized=normalized_data, mixedTimes = mixedTimes, concatenateRe = concatenateRe, few_data=few_data, ntrain_max=ntrain_max)
+                            if normalized_data:
+                                val_hist = 2*plot_xlim
                         case 'lorenz':
                             sampler = Lorenz96(Re,dim, normalized=normalized_data)
                         case 'eof_pressure':
@@ -278,11 +474,55 @@ if __name__ == '__main__':
                         case 'ncar':
                             sampler = ncar_weather_station(dim) 
                         case 'era5':
-                            sampler = ERA5(dim, variables = ["10m_u_component_of_wind", "10m_v_component_of_wind", "vorticity"]) 
+                            sampler = ERA5(dim, variables = ["10m_u_component_of_wind", "10m_v_component_of_wind", "vorticity"],\
+                                           season = season, use_deseason = use_deseason, bool_check_plot = True) 
                             normalized_data = False
-                            columns=["$u$, Berlin", "$v$, Berlin", "$\omega$, Berlin",\
+                            columns_plot=["$u$, Berlin", "$v$, Berlin", "$\omega$, Berlin",\
                                      "$u$, Paris", "$v$, Paris", "$\omega$, Paris"]
                             val_hist = 10.0
+
+                            dimplot_era5 = 6
+                            columns_plot=["$u$, Berlin", "$v$, Berlin", "$\omega$, Berlin",\
+                                     "$u$, Paris", "$v$, Paris", "$\omega$, Paris"]
+
+                            # dimplot_era5 = 3
+                            # columns_plot=["$u$, Berlin", "$v$, Berlin", "$\omega$, Berlin"]
+                            plot_xlim = 5.0
+                            
+                        case 'era5temp':
+                            # sampler = ERA5(dim, variables = ["2m_temperature"],cities = ["Paris", "Berlin"],\
+                                        #    season = season) 
+                            sampler = ERA5(dim, variables = ["2m_temperature"],\
+                                           season = season, use_deseason = use_deseason, bool_check_plot = True) 
+                            normalized_data = False
+                            val_hist = 10.0
+                            # # dimplot_era5 = 2
+                            # # columns_plot=["$T$, Berlin",\
+                            # #          "$T$, Paris"]
+                            # dimplot_era5 = 8
+                            # columns_plot = [ "$T$, Berlin", "$T$, Madrid", "$T$, Rome", \
+                            #            "$T$, Vienna", "$T$, Amsterdam", "$T$, Stockholm", "$T$, Athens", "$T$, Warsaw"]
+                            dimplot_era5 = 10
+                            columns_plot = ["$T$, Paris", "$T$, London", "$T$, Berlin", \
+                                       "$T$, Vienna", "$T$, Amsterdam", "$T$, Stockholm", "$T$, Athens", "$T$, Warsaw", "$T$, Madrid", "$T$, Rome"]
+
+                            plot_xlim = 5.0
+                            
+                        case 'era5vorttemp':
+                            # sampler = ERA5(dim, variables = ["2m_temperature", "vorticity"],cities = ["Paris", "Berlin"],\
+                                        #    season = season) 
+                            sampler = ERA5(dim, variables = ["2m_temperature", "vorticity"],\
+                                           season = season, use_deseason = use_deseason, bool_check_plot = True, mixedTimes = mixedTimes) 
+                            normalized_data = False
+                            val_hist = 10.0
+                            # dimplot_era5 = 4
+                            dimplot_era5 = 16
+                            dimplot = dimplot_era5
+                            columns_plot=["$T$, Berlin", "$\omega$, Berlin",\
+                                     "$T$, Paris", "$\omega$, Paris"]
+
+                            plot_xlim = 5.0
+                            log_scale_pdf = True
                         case _:
                             raise ValueError("Unknown datatype: {}".format(datatype))
 
@@ -300,84 +540,22 @@ if __name__ == '__main__':
                         else:
                             std_norm = torch.ones((xtest.shape[1]))
                         if (datatype == 'cauchy') :
-                            std_test_plot = torch.ones_like(std_test)
+                            std_test_plot = torch.ones_like(std_test) / std_norm
                         else:
                             std_test_plot = std_test
 
                         plt.close('all')
                         dimplot = np.min([dimplot_max,xtest.shape[1]])
+                        columns_plot=range(1,1+dimplot)
 
-                        xtest_plot = std_norm * xtest
-                        if crop_data_plot:
-                            boolean_mask = (xtest_plot.abs() < (plot_xlim * std_norm * std_test_plot)).all(axis=1)
-                            print( str( (1 - boolean_mask.sum()/ len(boolean_mask)).item() * 100) + " % of samples outside plot limits")
-                            xtest_plot = xtest_plot[boolean_mask,:]
-
-                        if (datatype == 'era5') and xtest.shape[1]>= 9:
-                            dimplot = 6
-                            pddatatest = pd.DataFrame(torch.cat( ((xtest_plot)[:,6:9], \
-                                                                    (xtest_plot)[:,0:3]),dim=1).to('cpu').data.numpy(), \
-                                                    columns=columns \
-                                                    )
-                        else:
-                            pddatatest = pd.DataFrame((xtest_plot).data.numpy()[:,0:dimplot], columns=range(1,1+dimplot))
-
-                        plot_kws={"s": ssize}
-                        scatter = sns.pairplot(pddatatest, aspect=1, height=height_seaborn, corner=True,plot_kws=plot_kws)
-                        for i, row in enumerate(scatter.axes):
-                            plot_ylim_row = plot_xlim * std_norm[i]* std_test_plot[i]
-                            for j, ax in enumerate(row):
-                                plot_xlim_col = plot_xlim * std_norm[j]* std_test_plot[j]
-                                if ax is not None:
-                                    if i == j:  # Diagonal
-                                        ax.set_xlim((-plot_xlim_col,plot_xlim_col))
-                                    if j < i:  # since corner=True, we only have lower triangle
-                                        ax.set_xlim((-plot_xlim_col,plot_xlim_col))
-                                        ax.set_ylim((-plot_ylim_row,plot_ylim_row))
-
-                        plt.tight_layout()
-                        if plt_show:
-                            plt.show(block=False)   
-                            plt.pause(0.1)
-                        plt.savefig("results/" + sampler.name + ".png", dpi=dpi)
-                        plt.close()
-                        plt.pause(0.1)
-                        plt.close('all')
-
-                        xtrain_plot = std_norm * sampler.sample(num_samples_init).to('cpu')
-                        if crop_data_plot:
-                            boolean_mask = (xtrain_plot.abs() < (plot_xlim * std_norm * std_test_plot)).all(axis=1)
-                            print( str( (1 - boolean_mask.sum()/ len(boolean_mask)).item() * 100) + " % of samples outside plot limits")
-                            xtrain_plot = xtrain_plot[boolean_mask,:]
-                        if (datatype == 'era5') and xtest.shape[1]>= 9:
-                            pddatatrain = pd.DataFrame(torch.cat( (xtrain_plot[:,6:9], \
-                                                                    xtrain_plot[:,0:3]),dim=1).data.numpy(), \
-                                                    columns=columns \
-                                                    )
-                        else:
-                            pddatatrain = pd.DataFrame(xtrain_plot.data.numpy()[:,0:dimplot], columns=range(1,1+dimplot))
-
-                        plot_kws={"s": ssize}
-                        scatter = sns.pairplot(pddatatrain, aspect=1, height=height_seaborn, corner=True,plot_kws=plot_kws)
-                        for i, row in enumerate(scatter.axes):
-                            plot_ylim_row = plot_xlim * std_norm[i]* std_test_plot[i]
-                            for j, ax in enumerate(row):
-                                plot_xlim_col = plot_xlim * std_norm[j]* std_test_plot[j]
-                                if ax is not None:
-                                    if i == j:  # Diagonal
-                                        ax.set_xlim((-plot_xlim_col,plot_xlim_col))
-                                    if j < i:  # since corner=True, we only have lower triangle
-                                        ax.set_xlim((-plot_xlim_col,plot_xlim_col))
-                                        ax.set_ylim((-plot_ylim_row,plot_ylim_row))
-
-                        plt.tight_layout()
-                        if plt_show:
-                            plt.show(block=False)   
-                            plt.pause(0.1)
-                        plt.savefig("results/" + sampler.name + "_train.png", dpi=dpi)
-                        plt.close()
-                        del scatter, pddatatrain
-                        plt.pause(0.1)
+                        pairplots_single(xtest, std_norm, std_test_plot, datatype, sampler.name , dimplot=dimplot, \
+                                    crop_data_plot=crop_data_plot, plot_crop=plot_crop, plot_xlim=plot_xlim, plot_ref_pdf=plot_ref_pdf, \
+                                    pdf_theor=pdf_theor, log_scale_pdf=log_scale_pdf, columns_plot=columns_plot, \
+                                    plt_show=plt_show, dpi=dpi, height_seaborn=height_seaborn, ssize=ssize)
+                        pairplots_single(sampler.sample(num_samples).to('cpu'), std_norm, std_test_plot, datatype, sampler.name + "_train", dimplot=dimplot, \
+                                    crop_data_plot=crop_data_plot, plot_crop=plot_crop, plot_xlim=plot_xlim, plot_ref_pdf=plot_ref_pdf, \
+                                    pdf_theor=pdf_theor, log_scale_pdf=log_scale_pdf, columns_plot=columns_plot, \
+                                    plt_show=plt_show, dpi=dpi, height_seaborn=height_seaborn, ssize=ssize)
                     
 
                     ## 3. Train
@@ -407,10 +585,11 @@ if __name__ == '__main__':
                                 iterations = max([1,iterations])
                             else:  
                                 iterations = iterations_ref
-                            num_samples_init = min(int(1e6),iterations*batch_size)
+                            num_samples_init = min(num_samples_init_max,iterations*batch_size)
+                            print('num_samples_init = ' + str(num_samples_init))
                         
                             # init models
-                            drift_q = MLP(input_dim=sampler.dim, index_dim=1, hidden_dim=128).to(device)
+                            drift_q = MLP(input_dim=sampler.dim, index_dim=1, hidden_dim=128, premodule = premodule).to(device)
                             T = torch.nn.Parameter(torch.FloatTensor([T0]), requires_grad=False)
 
 
@@ -419,7 +598,10 @@ if __name__ == '__main__':
                                     x_init = sampler.sample(num_samples_init).to(device)
                                     inf_sde = multiplicativeNoise(x_init,beta_min=beta_min, beta_max=beta_max, \
                                                                 t_epsilon=t_eps, T=T, num_steps_forward=num_steps_forward, \
-                                                                device=device, estim_cst_norm_dens_r_T = False)
+                                                                device=device, estim_cst_norm_dens_r_T = False, \
+                                                                norm_sampler = norm_sampler,
+                                                                norm_map = norm_map, \
+                                                                plot_validate = plot_validate)
                                     del x_init
                                 else:
                                     inf_sde = VariancePreservingSDE(beta_min=beta_min_SGM, beta_max=beta_max_SGM, \
@@ -442,6 +624,11 @@ if __name__ == '__main__':
                             name_simu_root = m_name_simu_root(sampler.name, gen_sde.base_sde.name_SDE, \
                                                                 iterations_ref, batch_size, num_steps_forward, \
                                                                 beta_min, beta_max, ssm_intT, fair_comparison)
+                            
+                            if delayed:
+                                print('delayed ...')
+                                time.sleep(1e4)
+                                # time.sleep(1e5)
 
                             
                             # Forward SDE
@@ -451,60 +638,9 @@ if __name__ == '__main__':
                                 xs_forward = rk4_stratonovich_sampler(for_sde, xtest.clone(), num_steps_forward,  \
                                                                     lmbd=0., keep_all_samples=True, \
                                                                     include_t0=True, norm_correction = MSGM) # sample
-                                xgen_forward = xs_forward[-1,:,:].to(device)
+                                preprocessing(xtest, xs_forward, num_steps_forward, name_simu_root, \
+                                                noising_plots, plt_show, folder_results, val_hist, std_test_plot, device)
                                 
-                                # metrics of convergence for the forward SDE
-                                cov_xtest = torch.cov(xtest.T)
-                                cov_xgen_forward = torch.cov(xgen_forward.T)
-                                xgen_forward_var = torch.var(xgen_forward.T,dim=1)
-                                xgen_forward_var_mean = xgen_forward_var.mean()
-                                xtest_var = torch.var(xtest.T,dim=1)
-                                xtest_var_mean = xtest_var.mean()
-
-                                # comparaison to cov ot X_inf
-                                cov_xgen_forward_converged = xtest_var_mean * torch.eye(sampler.dim).to(device)
-                                # since tr(cov)=E||X||^2 is theoretically conserved
-                                d_cov_xtest = torch.norm(cov_xtest - cov_xgen_forward_converged)/torch.norm(cov_xgen_forward_converged)
-                                d_cov_xgen_forward = torch.norm(cov_xgen_forward - cov_xgen_forward_converged)/torch.norm(cov_xgen_forward_converged)
-                                print("dist cov_xtest to  cov_xgen_forward_converged (dist to  weak white noise)= " + str(d_cov_xtest.item()))
-                                print("dist cov_xgen_forward  to  cov_xgen_forward_converged = " + str(d_cov_xgen_forward.item()))
-
-                                # comparaison to cov of weak white noise (with same variance)
-                                cov_wwn = xgen_forward_var_mean * torch.eye(sampler.dim).to(device)
-                                d_cov_xgen_forward = torch.norm(cov_xgen_forward - cov_wwn)/torch.norm(cov_wwn)
-                                print("dist cov_xgen_forward  to  weak white noise (w. same var.)= " + str(d_cov_xgen_forward.item()))
-
-                                # print energy
-                                energy_xtest = torch.sum((xtest**2),dim=1).mean()
-                                energy_xgen_forward = torch.sum((xgen_forward**2),dim=1).mean()
-                                print("energy_xtest = " + str(energy_xtest.item()))
-                                print("energy_xgen_forward = " + str(energy_xgen_forward.item()))
-                                print("energy_xgen_forward / energy_xtest = " + str(energy_xgen_forward.item()/energy_xtest.item()))
-
-                                # indices to visualize
-                                fig_step = int(num_steps_forward/8) #4
-                                if fig_step < 1:
-                                    fig_step = 1
-                                inds_forward = range(0, num_steps_forward+1, fig_step)
-                                if (noising_plots):
-                                    plot_selected_inds(xs_forward, inds_forward, \
-                                        use_xticks= True, use_yticks=False, lmbd = 0., \
-                                        include_t0=True, backward=False,
-                                        plt_show=plt_show,
-                                        val=val_hist) # plot
-                                    time.sleep(0.5)
-                                    if plt_show:
-                                        plt.show(block=False)
-                                    name_fig = folder_results + "/" + name_simu_root + "_Forward.png" 
-                                    plt.savefig(name_fig)
-                                    if plt_show:
-                                        plt.pause(1)
-                                    plt.close()
-                                    plt.close('all')
-
-                            del xs_forward, xgen_forward, cov_xgen_forward, cov_xgen_forward_converged, xgen_forward_var, xgen_forward_var_mean
-                            del for_sde
-                            gc.collect()
 
                             if (not justLoad):
                                 # init optimizer
@@ -595,285 +731,66 @@ if __name__ == '__main__':
                                             del x_0
                                             if (save_results):
                                                 torch.save(xs, name_simu + ".pt")
-                                        xgen = xs[-1,:,:].to(device)
-
-                                        if save_results and not justLoad:
-                                            np.save(name_simu + ".pt", xgen.clone().detach().cpu().numpy())
-
-                                        # Identify rows with NaN values
-                                        nan_mask = (torch.isnan(xgen) | (torch.abs(xgen) > 1e3 )).any(dim=1)
-                                        # Count rows with NaN values
-                                        nan_count = nan_mask.sum().item()
-                                        if nan_count > 0:
-                                            print(f"Number of rows with NaN or large value: {nan_count}")
-                                        # Remove rows with NaN values
-                                        xgen = xgen[~nan_mask,:]
-                                        del nan_mask
-
-
-                                        # MMD
-                                        if not justLoadmmmd:
-                                            with torch.no_grad():
-                                                x_mmd1 = sampler.sample(xtest.shape[0]).to(device)
-                                                x_mmd2 = sampler.sample(xtest.shape[0]).to(device)
-                                                dist_train_to_test = compute_mmd(std_norm * x_mmd1,std_norm * xtest)
-                                                dist_test_to_test = compute_mmd(std_norm * x_mmd1,std_norm * xtest)
-                                                dist = compute_mmd(std_norm * xgen,std_norm * xtest)
-                                            mmd_ref[i_dims, i_Res, i_num_stepss_backward,i_iterations,i_run] = dist_train_to_test
-                                            if MSGM:
-                                                mmd_MSGM[i_dims, i_Res, i_num_stepss_backward,i_iterations,i_run] = dist
-                                            else:
-                                                mmd_SGM[i_dims, i_Res, i_num_stepss_backward,i_iterations,i_run] = dist
-                                            del dist
-
-                                        if (scatter_plots) and (i_run == 0):
-                                            xgen_plot = std_norm * xgen
-                                            if crop_data_plot:
-                                                boolean_mask = (xgen_plot.abs() < (plot_xlim * std_norm * std_test_plot)).all(axis=1)
-                                                print( str( (1 - boolean_mask.sum()/ len(boolean_mask)).item() * 100) + " % of samples outside plot limits")
-                                                xgen_plot = xgen_plot[boolean_mask,:]
-                                            
-                                            if (datatype == 'era5') and xtest.shape[1]>= 9:
-                                                pddatagen = pd.DataFrame(torch.cat( (xgen_plot[:,6:9],xgen_plot[:,0:3]),dim=1).to('cpu'), \
-                                                                        columns=columns \
-                                                                        )
-                                            else:
-                                                pddatagen = pd.DataFrame(xgen_plot[:,0:dimplot].to('cpu'), columns=range(1,1+dimplot))
-
-                                            pddata = pd.concat([pddatatest.assign(samples="test"), pddatagen.assign(samples="gen.")])
-
-                                            plot_kws = {'alpha': 0.1, "s": ssize, "edgecolor": "none", "rasterized": True}
-                                            palette = {"test": sns.color_palette()[0], "gen.": sns.color_palette()[1]}
-                                            g = sns.PairGrid(pddata, hue="samples",
-                                                            corner=True, height=height_seaborn, aspect=1,
-                                                            palette=palette, diag_sharey=False)
-
-                                            # lower triangle: scatter like before
-                                            g.map_lower(sns.scatterplot, **plot_kws)
-
-                                            def diag_plot(x, color=None, label=None, **kws):
-                                                ax = plt.gca()
-
-                                                if label == "test":
-                                                    # compute peak density from TEST values only (NumPy, not torch)
-                                                    x_np = np.asarray(x, dtype=np.float64)
-                                                    x_np = x_np[np.isfinite(x_np)]
-                                                    counts, _ = np.histogram(x_np, bins=80, density=True)
-                                                    ymax = float(counts.max()) if counts.size else 0.0
-
-                                                    # draw the test histogram
-                                                    sns.histplot(
-                                                        x=x, bins=80, stat="density",
-                                                        element="step", fill=True, alpha=0.25,
-                                                        color=palette["test"], **kws
-                                                    )
-
-                                                    # set Y limit for this diagonal axis only
-                                                    if ymax > 0:
-                                                        ax.set_ylim(0, 1.05 * ymax)
-
-                                                elif label == "gen.":
-                                                    # draw the gen KDE — it will use the same y-scale set by the "test" pass
-                                                    sns.kdeplot(x=x, color=palette["gen."], lw=1.5, **kws)
-
-                                            g.map_diag(diag_plot)
-
-                                            # legend like before
-                                            handles = [plt.Line2D([], [], marker='o', linestyle='',
-                                                                color=palette[k], markersize=8, alpha=0.6) for k in ["test", "gen."]]
-                                            labels = ["test", "gen."]
-                                            g.figure.legend(handles=handles, labels=labels, loc='upper right', markerscale=ssize)
-
-                                            # --- Pass 1: lower triangle only ---
-                                            for i, row in enumerate(g.axes):
-                                                plot_ylim_row = plot_xlim * std_norm[i]* std_test_plot[i]
-                                                for j, ax in enumerate(row):
-                                                    if ax is None:
-                                                        continue
-                                                    if ax is None:
-                                                        continue
-                                                    plot_xlim_col = plot_xlim * std_norm[j]* std_test_plot[j]
-                                                    if j < i:  # lower triangle
-                                                        ax.set_xlim((-plot_xlim_col, plot_xlim_col))
-                                                        ax.set_ylim((-plot_ylim_row,  plot_ylim_row))
-
-                                            # --- Pass 2: diagonals only ---
-                                            for i in range(len(g.diag_vars)):
-                                                ax = g.axes[i, i]
-                                                if ax is None:
-                                                    continue
-                                                var = g.diag_vars[i]
-                                                plot_xlim_col = plot_xlim * std_norm[i] * std_test_plot[i]
-                                                x_min, x_max = -plot_xlim_col, plot_xlim_col
-                                                ax.set_xlim((x_min, x_max))
-                                                ax.set_ylabel("density")
-
-                                            for i, row in enumerate(g.axes):
-                                                for j, ax in enumerate(row):
-                                                    if ax is None:
-                                                        continue
-                                                    # reduce the number of ticks
-                                                    ax.xaxis.set_major_locator(mticker.MaxNLocator(nbins=4))  # max 4 x-ticks
-                                                    ax.yaxis.set_major_locator(mticker.MaxNLocator(nbins=4))  # max 4 y-ticks
-                                                    # remove the "0.0" label but keep the tick itself (gridlines if any)
-                                                    def fmt_tick(val, pos):
-                                                        # if not log_scale_pdf and abs(val) < 1e-8:   # close to zero
-                                                        if abs(val) < 1e-8:   # close to zero
-                                                            return ""         # empty label
-                                                        return f"{val:g}"     # compact formatting
-                                                    ax.xaxis.set_major_formatter(mticker.FuncFormatter(fmt_tick))
-                                                    ax.yaxis.set_major_formatter(mticker.FuncFormatter(fmt_tick))
-
-                                                    if j < i:  # lower triangle
-                                                        ax.set_xlim((-plot_xlim_col, plot_xlim_col))
-                                                        ax.set_ylim((-plot_ylim_row,  plot_ylim_row))
-
-                                            # --- Pass 2: diagonals only ---
-                                            for i in range(len(g.diag_vars)):
-                                                ax = g.axes[i, i]
-                                                if ax is None:
-                                                    continue
-                                                var = g.diag_vars[i]
-                                                plot_xlim_col = plot_xlim * std_norm[i] * std_test_plot[i]
-                                                x_min, x_max = -plot_xlim_col, plot_xlim_col
-                                                ax.set_xlim((x_min, x_max))
-                                                ax.set_ylabel("density")
-
-                                            for i, row in enumerate(g.axes):
-                                                for j, ax in enumerate(row):
-                                                    if ax is None:
-                                                        continue
-                                                    # reduce the number of ticks
-                                                    ax.xaxis.set_major_locator(mticker.MaxNLocator(nbins=4))  # max 4 x-ticks
-                                                    ax.yaxis.set_major_locator(mticker.MaxNLocator(nbins=4))  # max 4 y-ticks
-                                                    # remove the "0.0" label but keep the tick itself (gridlines if any)
-                                                    def fmt_tick(val, pos):
-                                                        # if not log_scale_pdf and abs(val) < 1e-8:   # close to zero
-                                                        if abs(val) < 1e-8:   # close to zero
-                                                            return ""         # empty label
-                                                        return f"{val:g}"     # compact formatting
-                                                    ax.xaxis.set_major_formatter(mticker.FuncFormatter(fmt_tick))
-                                                    ax.yaxis.set_major_formatter(mticker.FuncFormatter(fmt_tick))
-
-                                            plt.tight_layout()
-                                            if plt_show:
-                                                plt.show(block=False)
-                                                plt.pause(1)
-                                            plt.tight_layout()
-                                            # plt.show()
-                                            time.sleep(0.5)
-                                            if plt_show:
-                                                plt.show(block=False)
-                                            name_fig = name_simu + "_multDim.png" 
-                                            plt.savefig(name_fig, dpi=dpi)
-                                            if plt_show:
-                                                plt.pause(1)
-                                            plt.close()
-                                            del pddatagen, pddata, g
-                                            del pddatagen, pddata, g
-
-                                        if (denoising_plots) and (i_run == 0):
-                                            plot_selected_inds(xs, inds, True, False, lmbd, 
-                                                                include_t0=include_t0_reverse, 
-                                                                plt_show=plt_show, 
-                                                                val=val_hist) # plot
-                                            time.sleep(0.5)
-                                            if plt_show:
-                                                plt.show(block=False)
-                                            name_fig = name_simu + ".png" 
-                                            plt.savefig(name_fig)
-                                            if plt_show:
-                                                plt.pause(1)
-                                            plt.close()
-                                            plt.close('all')
-
-                                        del xs, xgen
-                                        gc.collect()
+                                        postprocessing(inds, i_dims, i_Res, i_num_stepss_backward, i_iterations, i_run, MSGM, sampler, \
+                                                        xs, xtest, std_norm, std_test_plot, datatype, name_simu, dimplot, \
+                                                        crop_data_plot, plot_crop, plot_xlim, plot_ref_pdf, \
+                                                        pdf_theor, log_scale_pdf, columns_plot, \
+                                                        scatter_plots, denoising_plots, include_t0_reverse, plt_show, dpi, height_seaborn, ssize, \
+                                                        evalmmmd, justLoadmmmd, justLoad, save_results, lmbd, val_hist, device, \
+                                                        mmd_ref, mmd_MSGM,mmd_SGM,max_num_samples_for_mmd)
 
                     ## Convergence plots (with MMD)
 
-                    # if justLoadmmmd and (not MSGM):
-                    if justLoadmmmd:
-                        if not MSGM:
-                            print("filename = " + folder_results + "/" + name_simu_root + "_globalMMDfile_SGM_" + str(nruns_mmd) + "runs.pt")
-                            mmd_SGM = torch.load(folder_results + "/" + name_simu_root + "_globalMMDfile_SGM_" + str(nruns_mmd) + "runs.pt")
+                    if evalmmmd:
+                        # if justLoadmmmd and (not MSGM):
+                        if justLoadmmmd:
+                            if not MSGM:
+                                print("filename = " + folder_results + "/" + name_simu_root + "_globalMMDfile_SGM_" + str(nruns_mmd) + "runs.pt")
+                                mmd_SGM = torch.load(folder_results + "/" + name_simu_root + "_globalMMDfile_SGM_" + str(nruns_mmd) + "runs.pt")
+                            else:
+                                print("filename = " + folder_results + "/" + name_simu_root + "_globalMMDfile_MSGM_" + str(nruns_mmd) + "runs.pt")
+                                mmd_MSGM = torch.load(folder_results + "/" + name_simu_root + "_globalMMDfile_MSGM_" + str(nruns_mmd) + "runs.pt") 
+                                print("filename = " + folder_results + "/" + name_simu_root + "_globalMMDfile_ref_" + str(nruns_mmd) + "runs.pt")
+                                mmd_ref = torch.load(folder_results + "/" + name_simu_root + "_globalMMDfile_ref_" + str(nruns_mmd) + "runs.pt") 
                         else:
-                            print("filename = " + folder_results + "/" + name_simu_root + "_globalMMDfile_MSGM_" + str(nruns_mmd) + "runs.pt")
-                            mmd_MSGM = torch.load(folder_results + "/" + name_simu_root + "_globalMMDfile_MSGM_" + str(nruns_mmd) + "runs.pt") 
-                            print("filename = " + folder_results + "/" + name_simu_root + "_globalMMDfile_ref_" + str(nruns_mmd) + "runs.pt")
-                            mmd_ref = torch.load(folder_results + "/" + name_simu_root + "_globalMMDfile_ref_" + str(nruns_mmd) + "runs.pt") 
-                    else:
-                        if not MSGM:
-                            torch.save(mmd_SGM, folder_results + "/" + name_simu_root + "_globalMMDfile_SGM_" + str(nruns_mmd) + "runs.pt")
-                        else:
-                            torch.save(mmd_MSGM, folder_results + "/" + name_simu_root + "_globalMMDfile_MSGM_" + str(nruns_mmd) + "runs.pt")
-                            torch.save(mmd_ref, folder_results + "/" + name_simu_root + "_globalMMDfile_ref_" + str(nruns_mmd) + "runs.pt")
+                            if not MSGM:
+                                torch.save(mmd_SGM, folder_results + "/" + name_simu_root + "_globalMMDfile_SGM_" + str(nruns_mmd) + "runs.pt")
+                            else:
+                                torch.save(mmd_MSGM, folder_results + "/" + name_simu_root + "_globalMMDfile_MSGM_" + str(nruns_mmd) + "runs.pt")
+                                torch.save(mmd_ref, folder_results + "/" + name_simu_root + "_globalMMDfile_ref_" + str(nruns_mmd) + "runs.pt")
 
-
-                fig = plt.figure(figsize=(5,3))
-                
-                # Take square root and evaluate mean and quantiles
-                mmmd_SGM = mmd_SGM.sqrt().mean(dim=4)
-                q10mmd_SGM = mmd_SGM.sqrt().quantile(0.1,dim=4)
-                q90mmd_SGM = mmd_SGM.sqrt().quantile(0.9,dim=4)
-                mmmd_MSGM = mmd_MSGM.sqrt().mean(dim=4)
-                q10mmd_MSGM = mmd_MSGM.sqrt().quantile(0.1,dim=4)
-                q90mmd_MSGM = mmd_MSGM.sqrt().quantile(0.9,dim=4)
-                mmmd_ref = mmd_ref.sqrt().mean(dim=4)
-                q10mmd_ref = mmd_ref.sqrt().quantile(0.1,dim=4)
-                q90mmd_ref = mmd_ref.sqrt().quantile(0.9,dim=4)
-
-                alpha_plot = 0.2
-                range_num_stepss_backward = range(len(num_stepss_backward))
-                plt.loglog(num_stepss_backward,mmmd_SGM[i_dims,i_Res,range_num_stepss_backward,0].flatten(),label='SGM')
-                plt.fill_between(num_stepss_backward, q10mmd_SGM[i_dims,i_Res,range_num_stepss_backward,0].flatten(), \
-                                                        q90mmd_SGM[i_dims,i_Res,range_num_stepss_backward,0].flatten(),
-                    alpha=alpha_plot)
-                plt.loglog(num_stepss_backward,mmmd_MSGM[i_dims,i_Res,range_num_stepss_backward,0].flatten(),label='MSGM')
-                plt.fill_between(num_stepss_backward, q10mmd_MSGM[i_dims,i_Res,range_num_stepss_backward,0].flatten(), \
-                                                        q90mmd_MSGM[i_dims,i_Res,range_num_stepss_backward,0].flatten(),
-                    alpha=alpha_plot)
-                plt.loglog(num_stepss_backward,mmmd_ref[i_dims,i_Res,range_num_stepss_backward,0].flatten(),label='train data')
-                plt.fill_between(num_stepss_backward, q10mmd_ref[i_dims,i_Res,range_num_stepss_backward,0].flatten(), 
-                                                        q90mmd_ref[i_dims,i_Res,range_num_stepss_backward,0].flatten(),
-                    alpha=alpha_plot)
-                plt.legend()
-                plt.ylabel('MMD')
-                plt.xlabel('nb timesteps in backward SDE')
-                xx = num_stepss_backward
-                labels = [f'$2^{{{int(np.log2(idx))}}}$' for idx in xx]
-                ax = plt.gca()
-                ax.set_xticks(xx)
-                ax.xaxis.set_major_locator(FixedLocator(xx))
-                ax.xaxis.set_major_formatter(FixedFormatter(labels))
-                plt.tight_layout()
-                if plt_show:
-                    plt.show(block=False)
-                name_fig = folder_results + "/" + name_simu_root + "_MMD_wBckWardSteps_" + str(nruns_mmd) + "runs.png" 
-                plt.savefig(name_fig)
-                if plt_show:
-                    plt.pause(1)
-                plt.close(fig)
-                plt.close()
-                del fig
-
-
-                if mmd_SGM.shape[3]>1:
-                    range_iterations = range(len(iterationss))
+                if evalmmmd:
                     fig = plt.figure(figsize=(5,3))
-                    plt.loglog(iterationss,mmmd_SGM[i_dims,i_Res,0,range_iterations].flatten(),label='SGM')
-                    plt.fill_between(iterationss, q10mmd_SGM[i_dims,i_Res,0,range_iterations].flatten(), q90mmd_SGM[i_dims,i_Res,0,range_iterations].flatten(),
+                    
+                    # Take square root and evaluate mean and quantiles
+                    mmmd_SGM = mmd_SGM.sqrt().mean(dim=4)
+                    q10mmd_SGM = mmd_SGM.sqrt().quantile(0.1,dim=4)
+                    q90mmd_SGM = mmd_SGM.sqrt().quantile(0.9,dim=4)
+                    mmmd_MSGM = mmd_MSGM.sqrt().mean(dim=4)
+                    q10mmd_MSGM = mmd_MSGM.sqrt().quantile(0.1,dim=4)
+                    q90mmd_MSGM = mmd_MSGM.sqrt().quantile(0.9,dim=4)
+                    mmmd_ref = mmd_ref.sqrt().mean(dim=4)
+                    q10mmd_ref = mmd_ref.sqrt().quantile(0.1,dim=4)
+                    q90mmd_ref = mmd_ref.sqrt().quantile(0.9,dim=4)
+
+                    alpha_plot = 0.2
+                    range_num_stepss_backward = range(len(num_stepss_backward))
+                    plt.loglog(num_stepss_backward,mmmd_SGM[i_dims,i_Res,range_num_stepss_backward,0].flatten(),label='SGM')
+                    plt.fill_between(num_stepss_backward, q10mmd_SGM[i_dims,i_Res,range_num_stepss_backward,0].flatten(), \
+                                                            q90mmd_SGM[i_dims,i_Res,range_num_stepss_backward,0].flatten(),
                         alpha=alpha_plot)
-                    plt.loglog(iterationss,mmmd_MSGM[i_dims,i_Res,0,range_iterations].flatten(),label='MSGM')
-                    plt.fill_between(iterationss, q10mmd_MSGM[i_dims,i_Res,0,range_iterations].flatten(), q90mmd_MSGM[i_dims,i_Res,0,range_iterations].flatten(),
+                    plt.loglog(num_stepss_backward,mmmd_MSGM[i_dims,i_Res,range_num_stepss_backward,0].flatten(),label='MSGM')
+                    plt.fill_between(num_stepss_backward, q10mmd_MSGM[i_dims,i_Res,range_num_stepss_backward,0].flatten(), \
+                                                            q90mmd_MSGM[i_dims,i_Res,range_num_stepss_backward,0].flatten(),
                         alpha=alpha_plot)
-                    plt.loglog(iterationss,mmmd_ref[i_dims,i_Res,0,range_iterations].flatten(),label='train data')
-                    plt.fill_between(iterationss, q10mmd_ref[i_dims,i_Res,0,range_iterations].flatten(), q90mmd_ref[i_dims,i_Res,0,range_iterations].flatten(),
+                    plt.loglog(num_stepss_backward,mmmd_ref[i_dims,i_Res,range_num_stepss_backward,0].flatten(),label='train data')
+                    plt.fill_between(num_stepss_backward, q10mmd_ref[i_dims,i_Res,range_num_stepss_backward,0].flatten(), 
+                                                            q90mmd_ref[i_dims,i_Res,range_num_stepss_backward,0].flatten(),
                         alpha=alpha_plot)
                     plt.legend()
                     plt.ylabel('MMD')
-                    plt.xlabel('effective number of iterations')
-                    xx = iterationss
+                    plt.xlabel('nb timesteps in backward SDE')
+                    xx = num_stepss_backward
                     labels = [f'$2^{{{int(np.log2(idx))}}}$' for idx in xx]
                     ax = plt.gca()
                     ax.set_xticks(xx)
@@ -882,7 +799,7 @@ if __name__ == '__main__':
                     plt.tight_layout()
                     if plt_show:
                         plt.show(block=False)
-                    name_fig = folder_results + "/" + name_simu_root + "_MMD_wIte_" + str(nruns_mmd) + "runs.png" 
+                    name_fig = folder_results + "/" + name_simu_root + "_MMD_wBckWardSteps_" + str(nruns_mmd) + "runs.png" 
                     plt.savefig(name_fig)
                     if plt_show:
                         plt.pause(1)
@@ -890,37 +807,72 @@ if __name__ == '__main__':
                     plt.close()
                     del fig
 
-            if mmd_SGM.shape[0]>1:
-                range_dims = range(len(dims))
-                fig = plt.figure(figsize=(5,3))
-                plt.loglog(dims,mmmd_SGM[range_dims,i_Res,0,0].flatten(),label='SGM')
-                plt.fill_between(dims, q10mmd_SGM[range_dims,i_Res,0,0].flatten(), q90mmd_SGM[range_dims,i_Res,0,0].flatten(),
-                    alpha=alpha_plot)
-                plt.loglog(dims,mmmd_MSGM[range_dims,i_Res,0,0].flatten(),label='MSGM')
-                plt.fill_between(dims, q10mmd_MSGM[range_dims,i_Res,0,0].flatten(), q90mmd_MSGM[range_dims,i_Res,0,0].flatten(),
-                    alpha=alpha_plot)
-                plt.loglog(dims,mmmd_ref[range_dims,i_Res,0,0].flatten(),label='train data')
-                plt.fill_between(dims, q10mmd_ref[range_dims,i_Res,0,0].flatten(), q90mmd_ref[range_dims,i_Res,0,0].flatten(),
-                    alpha=alpha_plot)
-                plt.legend()
-                plt.ylabel('MMD')
-                plt.xlabel('dimension')
-                if datatype == 'era5':
-                    plt.xticks(ticks=num_stepss_backward, labels=labels )
-                else:
-                    xx = dims
-                    labels = [f'$2^{{{int(np.log2(idx))}}}$' for idx in xx]
-                    ax = plt.gca()
-                    ax.set_xticks(xx)
-                    ax.xaxis.set_major_locator(FixedLocator(xx))
-                    ax.xaxis.set_major_formatter(FixedFormatter(labels))
-                plt.tight_layout()
-                if plt_show:
-                    plt.show(block=False)
-                name_fig = folder_results + "/" + name_simu_root + "_MMD_wDim_" + str(nruns_mmd) + "runs.png" 
-                plt.savefig(name_fig)
-                if plt_show:
-                    plt.pause(1)
-                plt.close(fig)
-                plt.close()
-                del fig
+
+                    if mmd_SGM.shape[3]>1:
+                        range_iterations = range(len(iterationss))
+                        fig = plt.figure(figsize=(5,3))
+                        plt.loglog(iterationss,mmmd_SGM[i_dims,i_Res,0,range_iterations].flatten(),label='SGM')
+                        plt.fill_between(iterationss, q10mmd_SGM[i_dims,i_Res,0,range_iterations].flatten(), q90mmd_SGM[i_dims,i_Res,0,range_iterations].flatten(),
+                            alpha=alpha_plot)
+                        plt.loglog(iterationss,mmmd_MSGM[i_dims,i_Res,0,range_iterations].flatten(),label='MSGM')
+                        plt.fill_between(iterationss, q10mmd_MSGM[i_dims,i_Res,0,range_iterations].flatten(), q90mmd_MSGM[i_dims,i_Res,0,range_iterations].flatten(),
+                            alpha=alpha_plot)
+                        plt.loglog(iterationss,mmmd_ref[i_dims,i_Res,0,range_iterations].flatten(),label='train data')
+                        plt.fill_between(iterationss, q10mmd_ref[i_dims,i_Res,0,range_iterations].flatten(), q90mmd_ref[i_dims,i_Res,0,range_iterations].flatten(),
+                            alpha=alpha_plot)
+                        plt.legend()
+                        plt.ylabel('MMD')
+                        plt.xlabel('effective number of iterations')
+                        xx = iterationss
+                        labels = [f'$2^{{{int(np.log2(idx))}}}$' for idx in xx]
+                        ax = plt.gca()
+                        ax.set_xticks(xx)
+                        ax.xaxis.set_major_locator(FixedLocator(xx))
+                        ax.xaxis.set_major_formatter(FixedFormatter(labels))
+                        plt.tight_layout()
+                        if plt_show:
+                            plt.show(block=False)
+                        name_fig = folder_results + "/" + name_simu_root + "_MMD_wIte_" + str(nruns_mmd) + "runs.png" 
+                        plt.savefig(name_fig)
+                        if plt_show:
+                            plt.pause(1)
+                        plt.close(fig)
+                        plt.close()
+                        del fig
+
+            if evalmmmd:
+                if mmd_SGM.shape[0]>1:
+                    range_dims = range(len(dims))
+                    fig = plt.figure(figsize=(5,3))
+                    plt.loglog(dims,mmmd_SGM[range_dims,i_Res,0,0].flatten(),label='SGM')
+                    plt.fill_between(dims, q10mmd_SGM[range_dims,i_Res,0,0].flatten(), q90mmd_SGM[range_dims,i_Res,0,0].flatten(),
+                        alpha=alpha_plot)
+                    plt.loglog(dims,mmmd_MSGM[range_dims,i_Res,0,0].flatten(),label='MSGM')
+                    plt.fill_between(dims, q10mmd_MSGM[range_dims,i_Res,0,0].flatten(), q90mmd_MSGM[range_dims,i_Res,0,0].flatten(),
+                        alpha=alpha_plot)
+                    plt.loglog(dims,mmmd_ref[range_dims,i_Res,0,0].flatten(),label='train data')
+                    plt.fill_between(dims, q10mmd_ref[range_dims,i_Res,0,0].flatten(), q90mmd_ref[range_dims,i_Res,0,0].flatten(),
+                        alpha=alpha_plot)
+                    plt.legend()
+                    plt.ylabel('MMD')
+                    plt.xlabel('dimension')
+                    if datatype == 'era5':
+                        xx = dims
+                        plt.xticks(ticks=xx )
+                    else:
+                        xx = dims
+                        labels = [f'$2^{{{int(np.log2(idx))}}}$' for idx in xx]
+                        ax = plt.gca()
+                        ax.set_xticks(xx)
+                        ax.xaxis.set_major_locator(FixedLocator(xx))
+                        ax.xaxis.set_major_formatter(FixedFormatter(labels))   
+                    plt.tight_layout()
+                    if plt_show:
+                        plt.show(block=False)
+                    name_fig = folder_results + "/" + name_simu_root + "_MMD_wDim_" + str(nruns_mmd) + "runs.png" 
+                    plt.savefig(name_fig)
+                    if plt_show:
+                        plt.pause(1)
+                    plt.close(fig)
+                    plt.close()
+                    del fig

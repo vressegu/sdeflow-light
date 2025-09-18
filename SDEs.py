@@ -157,7 +157,7 @@ class VariancePreservingSDE(SDE):
     # This class need to be changed since the forward SDE cannot be solved analitically
     def __init__(self, beta_min=0.1, beta_max=20.0, T=1.0, t_epsilon=0.001, num_steps_forward = 100, device='cpu'):
         super().__init__(beta_min=beta_min, beta_max=beta_max, T=T, t_epsilon=t_epsilon, num_steps_forward = num_steps_forward, device=device)
-        self.name_SDE = "VariancePreservingSDE"
+        self.name_SDE = "SGM"
 
     @property
     def logvar_mean_T(self):
@@ -217,11 +217,14 @@ class multiplicativeNoise(SDE):
     """
     # This class need to be changed since the forward SDE cannot be solved analitically
     def __init__(self, y0, beta_min=0.1, beta_max=20.0, T=1.0, t_epsilon=0.001, \
-                 norm_sampler = "ecdf", kernel = 'gaussian', plot_validate = False, \
+                 norm_sampler = "ecdf", norm_map = None, kernel = 'gaussian', plot_validate = False, \
                  num_steps_forward = 100, device='cpu', estim_cst_norm_dens_r_T = True):
         super().__init__(beta_min=beta_min, beta_max=beta_max, T=T, t_epsilon=t_epsilon, num_steps_forward=num_steps_forward, device=device)
         self.norm_correction = True
         self.r_T = torch.linalg.norm(y0, dim= 1)
+        self.norm_map = norm_map
+        if norm_map == "log":
+            self.r_T = torch.log(self.r_T + 1e-6)
         r_T = self.r_T.reshape(len(self.r_T),1)
         self.norm_sampler = norm_sampler
         bandwidth = 0.1*torch.std(r_T).item()
@@ -230,15 +233,16 @@ class multiplicativeNoise(SDE):
         self.dim = y0.shape[1]
         self.G = self.new_G(self.dim)
         self.L_G = 0.5*torch.einsum('ijk, jmk -> im', self.G, self.G)   # ito correction tensor
-        self.name_SDE = "multiplicativeNoise"
+        self.name_SDE = "MSGM"
         if not (norm_sampler=="ecdf"):
             self.name_SDE += norm_sampler + kernel
-
+        if norm_map == "log":
+            self.name_SDE += "logNorm"
         if plot_validate:
             estim_cst_norm_dens_r_T = True
         if estim_cst_norm_dens_r_T:
             r_T = self.r_T.reshape(len(r_T),1)
-            r_plot = torch.linspace(0,max(r_T[:,0]) + 0.1*abs(max(r_T[:,0])), 1000).reshape(1000,1)
+            r_plot = torch.linspace(min(r_T[:,0]) ,max(r_T[:,0]), 1000).reshape(1000,1)
             log_dens = torch.tensor(self.kde.score_samples(r_plot)).to(torch.float32).to(device)
             dens = torch.exp(log_dens)
             dr = (r_plot[1,0]-r_plot[0,0])
@@ -328,24 +332,20 @@ class multiplicativeNoise(SDE):
     def sample(self, t, y0, return_noise=False):
         return self.sample_scheme(t, y0, return_noise=return_noise).to(self.device)
 
-    def generate_uniform_on_sphere(self,num_samples): 
-        # Let X_i be N(0,1) and  lambda^2 =2 sum X_i^2, then (X_1,...,X_d) / lambda  is uniform in S^{d-1}
-        X = torch.randn(num_samples, self.dim,device=self.device)
-        X_norm = torch.linalg.norm(X, dim = 1).reshape(num_samples,1)
-        X =  X / X_norm 
-        del X_norm
-        return X
-
     def gen_radial_distribution(self,num_samples): 
         U = torch.rand(num_samples,device=self.device)   # uniform         
         # could be replaced by KS density
         if self.norm_sampler == "ecdf":
             r_gen = torch.quantile(self.r_T, U).reshape(num_samples,1)
         else:
-            r_gen = self.kde.sample(num_samples).to(torch.float32).to(device)
-            mask_r_gen = (r_gen < 0)
-            r_gen =  (1. - mask_r_gen) * r_gen
-            del mask_r_gen
+            r_gen = torch.from_numpy(self.kde.sample(num_samples)).to(torch.float32).to(device)
+            if not (self.norm_map == "log"):
+                mask_r_gen = (r_gen < 0).float()
+                r_gen =  (1. - mask_r_gen) * r_gen
+                del mask_r_gen
+
+        if self.norm_map == "log":
+            r_gen = torch.exp(r_gen) - 1e-6
 
         validate = False
         if validate:
@@ -364,7 +364,7 @@ class multiplicativeNoise(SDE):
     def latent_sample(self,num_samples, n):
         # init from prior
         r = self.gen_radial_distribution(num_samples)
-        s = self.generate_uniform_on_sphere(num_samples)
+        s = randu_on_sphere((num_samples, self.dim),device = self.device) 
         x0 = r * s 
 
         validate = False
@@ -392,7 +392,7 @@ class multiplicativeNoise(SDE):
     def cond_latent_sample(self,t_, T, x):
         # conditionnal latent sample of yT knowing x=y0
         r_x = torch.linalg.norm(x.clone().detach().to(self.device), dim= 1).reshape(x.shape[0],1)
-        s = self.generate_uniform_on_sphere(x.shape[0])
+        s = randu_on_sphere((x.shape[0], self.dim),device = self.device) 
         yT =  r_x * s
         del r_x, s
         return yT
@@ -414,11 +414,21 @@ def sample_rademacher(shape):
 def sample_gaussian(shape):
     return torch.randn(*shape,device=device)
 
+def randu_on_sphere(shape,device = device): 
+    # Let X_i be N(0,1) and  lambda^2 =2 sum X_i^2, then (X_1,...,X_d) / lambda  is uniform in S^{d-1}
+    X = torch.randn(*shape,device=device)
+    X_norm = torch.linalg.norm(X, dim = 1).reshape(shape[0],1)
+    X =  X / X_norm 
+    # del X_norm
+    return X
+
 def sample_v(shape, vtype='rademacher'):
     if vtype == 'rademacher':
         return sample_rademacher(shape)
     elif vtype == 'normal' or vtype == 'gaussian':
         return sample_gaussian(shape)
+    elif vtype == 'uniform' :
+        return randu_on_sphere(shape)
     else:
         Exception(f'vtype {vtype} not supported')
 
