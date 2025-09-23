@@ -407,7 +407,7 @@ if __name__ == '__main__':
                             sampler = PIV(dim, normalized=normalized_data, localized = localized, few_data=few_data, ntrain_max=ntrain_max)
                             log_scale_pdf = True
                             plot_xlim = 6
-                            val_hist = plot_xlim
+                            val_hist = 2*plot_xlim
                         case 'gaussian':
                             # correlation = False
                             # normalized_data = False
@@ -556,7 +556,6 @@ if __name__ == '__main__':
                                     crop_data_plot=crop_data_plot, plot_crop=plot_crop, plot_xlim=plot_xlim, plot_ref_pdf=plot_ref_pdf, \
                                     pdf_theor=pdf_theor, log_scale_pdf=log_scale_pdf, columns_plot=columns_plot, \
                                     plt_show=plt_show, dpi=dpi, height_seaborn=height_seaborn, ssize=ssize)
-                    
 
                     ## 3. Train
 
@@ -564,11 +563,6 @@ if __name__ == '__main__':
                     for iterations_ref in iterationss:
                         i_iterations +=1
 
-                        # nosamples = np.linspace( n0, sampler.max_nsamples, sampler.max_nsamples/10)  1000 2000 3000.... 10000
-                        # if iter = k * 1000     (assume iterations = 10000)
-                        #  -> choose nosamples[k] samples
-                        # Technique to "generate" new sampler : boostrapping
-                        
                         xtest = xtest.to(device)             
 
                         i_batch_size = -1
@@ -620,6 +614,8 @@ if __name__ == '__main__':
                             print("batch_size = " + str(batch_size) ) 
                             print("ssm_intT = " + str(ssm_intT) )  
                             print("fair_comparison = " + str(fair_comparison) )  
+                            print("premodule = " + str(premodule) )
+                            print("ntrain_max = " + str(ntrain_max))
 
                             name_simu_root = m_name_simu_root(sampler.name, gen_sde.base_sde.name_SDE, \
                                                                 iterations_ref, batch_size, num_steps_forward, \
@@ -638,9 +634,9 @@ if __name__ == '__main__':
                                 xs_forward = rk4_stratonovich_sampler(for_sde, xtest.clone(), num_steps_forward,  \
                                                                     lmbd=0., keep_all_samples=True, \
                                                                     include_t0=True, norm_correction = MSGM) # sample
+                                
                                 preprocessing(xtest, xs_forward, num_steps_forward, name_simu_root, \
                                                 noising_plots, plt_show, folder_results, val_hist, std_test_plot, device)
-                                
 
                             if (not justLoad):
                                 # init optimizer

@@ -419,7 +419,6 @@ def postprocessing(inds, i_dims, i_Res, i_num_stepss_backward, i_iterations, i_r
     
     # MMD
     if evalmmmd and not justLoadmmmd:
-        max_num_samples_for_mmd
         num_samples_for_mmd = min([xtest.shape[0],max_num_samples_for_mmd])
         xtest = xtest[0:num_samples_for_mmd-1,:]
         xgen = xgen[0:num_samples_for_mmd-1,:]
@@ -428,6 +427,9 @@ def postprocessing(inds, i_dims, i_Res, i_num_stepss_backward, i_iterations, i_r
             dist_train_to_test = compute_mmd(std_norm * x_mmd1,std_norm * xtest)
             dist = compute_mmd(std_norm * xgen,std_norm * xtest)
         mmd_ref[i_dims, i_Res, i_num_stepss_backward,i_iterations,i_run] = dist_train_to_test
+        print("MMD train to test = " + str(dist_train_to_test.sqrt().item()))
+        print("MSGM = " + str(MSGM))
+        print("MMD gen. to test = " + str(dist.sqrt().item()))
         if MSGM:
             mmd_MSGM[i_dims, i_Res, i_num_stepss_backward,i_iterations,i_run] = dist
         else:

@@ -248,14 +248,14 @@ class PIV:
     def __init__(self, dim = 2, normalized = False, localized = False, few_data = False, ntrain_max = np.inf):
         self.dim = dim
         self.name='PIV'
-        self.name = self.name + str(self.dim)
+        self.name += str(self.dim)
         if localized:
             self.name += 'loc'
         if few_data:
             # self.name = self.name + 'fewData'
             self.name += str(ntrain_max) + 'pts'
         if normalized:
-            self.name = self.name + '_norm'
+            self.name += '_norm'
     
         folder_str = "/Users/vresseiguier/Coding/MultiplicativeDiffusion/newPIV"
         if localized:
