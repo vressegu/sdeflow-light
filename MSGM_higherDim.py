@@ -30,9 +30,7 @@ from sde_scheme import euler_maruyama_sampler,heun_sampler,rk4_stratonovich_samp
 from own_plotting import plot_selected_inds, def_pd, pairplots, pairplots_single, \
                          preprocessing, postprocessing
 from SDEs import forward_SDE,SDE,VariancePreservingSDE,PluginReverseSDE,multiplicativeNoise
-from data import ERA5,ncar_weather_station,weather_station,eof_pressure,Lorenz96,\
-                 PODmodes,SwissRoll,Cauchy,Gaussian,GaussianCauchy,\
-                 PIV
+from data import SwissRoll,Cauchy,Gaussian,PIV
 import gc
 
 np.random.seed(0)
@@ -46,7 +44,6 @@ pd.set_option('display.max_rows', DISPLAY_MAX_ROWS)
 
 # Train
 T0 = 1
-
 MSGMs = [0,1]
 beta_min=0.1 # new default
 beta_max=20
@@ -92,47 +89,15 @@ first_run = True
 # else:
 #     evalmmmd = True # 2nd pass (long)
 
-
 # Fair comparison more CV
 ntrain_maxs = [ np.inf ]
 iterationss = [ 2**20]
-# num_steps_forward = 64 # old default
-num_steps_forward = 16 # new default ?
-# num_steps_forward = 1024
-# num_steps_forward = 128
+num_steps_forward = 16 # default
 num_stepss_backward = [128]
 nruns_mmd = 1
 fair_comparison = True # comparaison SGM vs MSGM with same RAM usage and same learning time
-# ssm_intT_ref = True
 ssm_intT_ref = False
 evalmmmd = False
-
-
-# # No Fair comparison
-# ntrain_maxs = [ np.inf ]
-# iterationss = [ 2**14]
-# num_steps_forward = 64
-# # num_steps_forward = 128
-# num_stepss_backward = [128]
-# nruns_mmd = 1
-# # fair_comparison = True # comparaison SGM vs MSGM with same RAM usage and same learning time
-# fair_comparison = False # comparaison SGM vs MSGM with same RAM usage and same learning time
-# # ssm_intT_ref = True
-# ssm_intT_ref = False
-
-
-# # Optimal (expressivity) (long to run)
-# ntrain_maxs = [ np.inf ]
-# # iterationss = [ 2**20]
-# iterationss = [2**19, 2**20]
-# # num_steps_forward = 128
-# # num_stepss_backward = [128]
-# num_steps_forward = 256
-# num_stepss_backward = [64,128,256,512]
-# nruns_mmd = 1
-# fair_comparison = False # comparaison SGM vs MSGM with same RAM usage and same learning time
-# ssm_intT_ref = False
-
 
 # # expressivity for cauchy (long to run)
 # ntrain_maxs = [ np.inf ]
@@ -140,7 +105,7 @@ evalmmmd = False
 # num_steps_forward = 128
 # num_stepss_backward = [128]
 # nruns_mmd = 1
-# fair_comparison = False # comparaison SGM vs MSGM with same RAM usage and same learning time
+# fair_comparison = False 
 # ssm_intT_ref = False
 # beta_min=0.1
 # beta_max=1
@@ -153,11 +118,6 @@ datatype = 'swissroll'
 # datatype = 'PIV'
 # datatype = 'gaussian'
 # datatype = 'cauchy'
-# datatype = 'gaussianCauchy'
-# datatype = 'POD'
-# datatype = 'era5'
-# datatype = 'era5temp'
-# datatype = 'era5vorttemp'
 normalized_data = True
 mixedTimes = False 
 Res=[None]
@@ -183,16 +143,6 @@ match datatype:
         localized = True
     case 'gaussian': # multi-dimesnional gaussian
         dims = [2,4,8,16,32]
-    case 'gaussianCauchy': # multi-dimesnional gaussian
-        # dims = [2,16]
-        dims = [2]
-
-        # norm_sampler = "kde"
-        norm_sampler = "ecdf"
-        norm_map = "log"
-        vtype = 'rademacher'
-        # vtype = 'uniform'
-        beta_max=2
         
     case 'cauchy': # multi-dimesnional Cauchy
         # dims = [2,4,8,16]
@@ -218,60 +168,6 @@ match datatype:
 
         num_steps_forward = 128 # cauchy
 
-    case 'POD': # POD
-        dims = [2,4,8,16]
-        Res=[300,3900]
-
-        dims = [16]
-        Res=[300,3900]
-
-        mixedTimes = True 
-        
-        concatenateRe = False
-
-    # case 'lorenz':
- 
-    # case 'eof_pressure':        
- 
-    # case 'weather_station':
-         
-    # case 'ncar':
-         
-    case 'era5': # ERA5
-        # dims = [2,4,8,16,32]
-        # # dims = [2]
-        # Res=[1]
-
-        # ERA5-3var
-        # dims = [3,6,9,18,30]
-        dims = [30]
-        Res=[1]
-
-
-        season = "all"
-        # season = "winter"
-        use_deseason = False
-
-    case 'era5temp' : # ERA5 temperature only
-        dims = [10]
-
-        season = "all"
-        # season = "winter"
-        use_deseason = True
-
-    case 'era5vorttemp' : # ERA5 temperature only
-        # dims = [4,20]
-        # dims = [2,4,8,16]
-
-        # season = "all"
-        season = "winter"
-        use_deseason = True
-
-        dims = [16]
-        beta_max=5
-        beta_max_SGM=beta_max
-
-        mixedTimes = True 
     case _:
         raise ValueError("Unknown datatype: {}".format(datatype))
 
@@ -419,19 +315,6 @@ if __name__ == '__main__':
                             plot_xlim = 4
                             val_hist = 2*plot_xlim
 
-                        case 'gaussianCauchy':
-                            correlation = True # default
-                            sampler = GaussianCauchy(dim, normalized=normalized_data, correlation = correlation)
-                            crop_data_plot = True
-                            # plot_xlim = 0.3
-                            # plot_xlim = 0.1 # for d=2 / warning : should depend of d : overwise we remove all far points
-                            plot_xlim = 5 # for d=2 / warning : should depend of d : overwise we remove all far points / or separate crop and plot_xlim
-                            plot_crop = 3*plot_xlim
-                            if MSGM:
-                                val_hist = 0.4
-                            else:
-                                val_hist = 0.2
-                            log_scale_pdf = True
                         case 'cauchy':
                             sampler = Cauchy(dim, normalized=normalized_data, correlation = correlation)
                             crop_data_plot = True
@@ -461,68 +344,6 @@ if __name__ == '__main__':
                             else:
                                 val_hist = plot_xlim
 
-                        case 'POD':
-                            sampler = PODmodes(Re,dim, normalized=normalized_data, mixedTimes = mixedTimes, concatenateRe = concatenateRe, few_data=few_data, ntrain_max=ntrain_max)
-                            if normalized_data:
-                                val_hist = 2*plot_xlim
-                        case 'lorenz':
-                            sampler = Lorenz96(Re,dim, normalized=normalized_data)
-                        case 'eof_pressure':
-                            sampler = eof_pressure(dim)
-                        case 'weather_station':
-                            sampler = weather_station(dim) 
-                        case 'ncar':
-                            sampler = ncar_weather_station(dim) 
-                        case 'era5':
-                            sampler = ERA5(dim, variables = ["10m_u_component_of_wind", "10m_v_component_of_wind", "vorticity"],\
-                                           season = season, use_deseason = use_deseason, bool_check_plot = True) 
-                            normalized_data = False
-                            columns_plot=["$u$, Berlin", "$v$, Berlin", "$\omega$, Berlin",\
-                                     "$u$, Paris", "$v$, Paris", "$\omega$, Paris"]
-                            val_hist = 10.0
-
-                            dimplot_era5 = 6
-                            columns_plot=["$u$, Berlin", "$v$, Berlin", "$\omega$, Berlin",\
-                                     "$u$, Paris", "$v$, Paris", "$\omega$, Paris"]
-
-                            # dimplot_era5 = 3
-                            # columns_plot=["$u$, Berlin", "$v$, Berlin", "$\omega$, Berlin"]
-                            plot_xlim = 5.0
-                            
-                        case 'era5temp':
-                            # sampler = ERA5(dim, variables = ["2m_temperature"],cities = ["Paris", "Berlin"],\
-                                        #    season = season) 
-                            sampler = ERA5(dim, variables = ["2m_temperature"],\
-                                           season = season, use_deseason = use_deseason, bool_check_plot = True) 
-                            normalized_data = False
-                            val_hist = 10.0
-                            # # dimplot_era5 = 2
-                            # # columns_plot=["$T$, Berlin",\
-                            # #          "$T$, Paris"]
-                            # dimplot_era5 = 8
-                            # columns_plot = [ "$T$, Berlin", "$T$, Madrid", "$T$, Rome", \
-                            #            "$T$, Vienna", "$T$, Amsterdam", "$T$, Stockholm", "$T$, Athens", "$T$, Warsaw"]
-                            dimplot_era5 = 10
-                            columns_plot = ["$T$, Paris", "$T$, London", "$T$, Berlin", \
-                                       "$T$, Vienna", "$T$, Amsterdam", "$T$, Stockholm", "$T$, Athens", "$T$, Warsaw", "$T$, Madrid", "$T$, Rome"]
-
-                            plot_xlim = 5.0
-                            
-                        case 'era5vorttemp':
-                            # sampler = ERA5(dim, variables = ["2m_temperature", "vorticity"],cities = ["Paris", "Berlin"],\
-                                        #    season = season) 
-                            sampler = ERA5(dim, variables = ["2m_temperature", "vorticity"],\
-                                           season = season, use_deseason = use_deseason, bool_check_plot = True, mixedTimes = mixedTimes) 
-                            normalized_data = False
-                            val_hist = 10.0
-                            # dimplot_era5 = 4
-                            dimplot_era5 = 16
-                            dimplot = dimplot_era5
-                            columns_plot=["$T$, Berlin", "$\omega$, Berlin",\
-                                     "$T$, Paris", "$\omega$, Paris"]
-
-                            plot_xlim = 5.0
-                            log_scale_pdf = True
                         case _:
                             raise ValueError("Unknown datatype: {}".format(datatype))
 
