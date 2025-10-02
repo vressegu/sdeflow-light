@@ -74,7 +74,7 @@ class SDE(torch.nn.Module):
         return self.beta_min + (self.beta_max-self.beta_min)*t
 
     @torch.no_grad()
-    def sample_scheme(self, t, y0, return_noise=False):
+    def sample_scheme(self, t, y0, keep_all_samples, return_noise=False):
         """
         sample yt | y0
         """
@@ -99,10 +99,14 @@ class SDE(torch.nn.Module):
                         num_steps_int[k] = num_steps_tot - 1
 
         yt = torch.zeros_like(y0)
-        y_allt = self.sample_scheme_allt(y0, include_t0=include_t0)
+        y_allt = self.sample_scheme_allt(y0, include_t0=include_t0, 
+                                        keep_all_samples=keep_all_samples, samplesToKeep=num_steps_int)
         for k in range(y0.shape[0]):
             if num_steps_int[k]>0 :
-                yt[k,:] = y_allt[num_steps_int[k],k,:]
+                if keep_all_samples:
+                    yt[k,:] = y_allt[num_steps_int[k],k,:]
+                else:
+                    yt[k,:] = y_allt[k,:]
             else:
                 # print('warning : small random time')
                 ytemp = rk4_stratonovich_sampler(forward_SDE(self, self.T).to(device), 
@@ -116,13 +120,14 @@ class SDE(torch.nn.Module):
         return yt.to(device)
 
     @torch.no_grad()
-    def sample_scheme_allt(self, y0, include_t0=True):
+    def sample_scheme_allt(self, y0, include_t0=True, keep_all_samples=True, samplesToKeep=None):
         """
         sample y0, y_t_1, y_t_2, ..., y_T | y0
         """
 
         return rk4_stratonovich_sampler(forward_SDE(self, self.T).to(device), y0, num_steps=self.num_steps_forward, \
-                                          lmbd=0, keep_all_samples=True, include_t0=include_t0) # sample
+                                          lmbd=0, keep_all_samples=keep_all_samples, samplesToKeep=samplesToKeep, 
+                                          include_t0=include_t0) # sample
 
     def sample_Song_et_al(self, t, y0, return_noise=False):
         """
@@ -332,7 +337,8 @@ class MSGMsde(SDE):
         return torch.einsum('ijk, bj -> bik', self.G, (beta_t**0.5) * y  )         # diffusion part 
     
     def sample(self, t, y0, return_noise=False):
-        return self.sample_scheme(t, y0, return_noise=return_noise).to(self.device)
+        return self.sample_scheme(t, y0, return_noise=return_noise,
+                                   keep_all_samples=False).to(self.device)
 
     def gen_radial_distribution(self,num_samples): 
         U = torch.rand(num_samples,device=self.device)   # uniform         

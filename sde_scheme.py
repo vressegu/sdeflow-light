@@ -25,7 +25,9 @@ def EMstep(mu, delta , sigma , dW):
 
 ### 2.0 Define Euler Maruyama method with a step size $\Delta t$
 @torch.no_grad()
-def euler_maruyama_sampler(sde, x_0, num_steps=1000, lmbd=0., keep_all_samples=True, include_t0=False, T_ = -1, norm_correction = False):
+def euler_maruyama_sampler(sde, x_0, num_steps=1000, lmbd=0., 
+                             keep_all_samples=True, samplesToKeep=None,
+                             include_t0=False, T_=-1, norm_correction = False):
     """
     Euler Maruyama method with a step size delta
     """
@@ -50,6 +52,11 @@ def euler_maruyama_sampler(sde, x_0, num_steps=1000, lmbd=0., keep_all_samples=T
         else :
             xs = torch.zeros((x_0.shape[0],x_0.shape[1],num_steps+1),device='cpu')
             xs[:,:,0]=x_t.clone().to('cpu')
+    elif samplesToKeep is not None:
+        if not (len(samplesToKeep) == batch_size):
+            raise ValueError('Error: len(samplesToKeep) must correspond to batch size.')
+        xs = torch.zeros((x_0.shape[0],x_0.shape[1]),device='cpu')
+
     t = torch.zeros(batch_size, *([1]*ndim), device=device)
     with torch.no_grad():
         for i in range(num_steps):
@@ -61,16 +68,22 @@ def euler_maruyama_sampler(sde, x_0, num_steps=1000, lmbd=0., keep_all_samples=T
                 x_t = x_t * (norm_x_0/torch.norm(x_t,dim=1))[:,None]
             if keep_all_samples:
                 xs[:,:,i+include_t0]=x_t.clone().to('cpu')
+            elif samplesToKeep is not None:
+                if (i+include_t0) in samplesToKeep:
+                    idx_samplesToKeep = (samplesToKeep == (i+include_t0)).flatten()
+                    xs[idx_samplesToKeep,:]=x_t[idx_samplesToKeep,:].clone().to('cpu')
                 
     if keep_all_samples:
         xs = torch.permute(xs, (2, 0, 1))
-    else:
+    elif samplesToKeep is None:
         xs=x_t.clone().to('cpu')
     
     return xs.to('cpu')
 
 @torch.no_grad()
-def heun_sampler(sde, x_0, num_steps=1000, lmbd=0., keep_all_samples=True, include_t0=False, T_=-1, norm_correction = False):
+def heun_sampler(sde, x_0, num_steps=1000, lmbd=0., 
+                             keep_all_samples=True, samplesToKeep=None,
+                             include_t0=False, T_=-1, norm_correction = False):
     """
     Heun method (Runge-Kutta 2) for SDEs in Stratonovich form.
     """
@@ -96,6 +109,10 @@ def heun_sampler(sde, x_0, num_steps=1000, lmbd=0., keep_all_samples=True, inclu
         else :
             xs = torch.zeros((x_0.shape[0],x_0.shape[1],num_steps+1),device='cpu')
             xs[:,:,0]=x_t.clone().to('cpu')
+    elif samplesToKeep is not None:
+        if not (len(samplesToKeep) == batch_size):
+            raise ValueError('Error: len(samplesToKeep) must correspond to batch size.')
+        xs = torch.zeros((x_0.shape[0],x_0.shape[1]),device='cpu')
         
     with torch.no_grad():
         for i in range(num_steps):
@@ -122,16 +139,22 @@ def heun_sampler(sde, x_0, num_steps=1000, lmbd=0., keep_all_samples=True, inclu
 
             if keep_all_samples:
                 xs[:,:,i+include_t0]=x_t.clone().to('cpu')
+            elif samplesToKeep is not None:
+                if (i+include_t0) in samplesToKeep:
+                    idx_samplesToKeep = (samplesToKeep == (i+include_t0)).flatten()
+                    xs[idx_samplesToKeep,:]=x_t[idx_samplesToKeep,:].clone().to('cpu')
 
     if keep_all_samples:
         xs = torch.permute(xs, (2, 0, 1))
-    else:
+    elif samplesToKeep is None:
         xs=x_t.clone().to('cpu')
     
     return xs.to('cpu')
 
 @torch.no_grad()
-def rk4_stratonovich_sampler(sde, x_0, num_steps=1000, lmbd=0., keep_all_samples=True, include_t0=False, T_=-1, norm_correction = False):
+def rk4_stratonovich_sampler(sde, x_0, num_steps=1000, lmbd=0., 
+                             keep_all_samples=True, samplesToKeep=None,
+                             include_t0=False, T_=-1, norm_correction = False):
     """
     Runge-Kutta 4th order method for Stratonovich SDEs with skew-symmetric noise.
     
@@ -167,6 +190,10 @@ def rk4_stratonovich_sampler(sde, x_0, num_steps=1000, lmbd=0., keep_all_samples
         else :
             xs = torch.zeros((x_0.shape[0],x_0.shape[1],num_steps+1),device='cpu')
             xs[:,:,0]=x_t.clone().to('cpu')
+    elif samplesToKeep is not None:
+        if not (len(samplesToKeep) == batch_size):
+            raise ValueError('Error: len(samplesToKeep) must correspond to batch size.')
+        xs = torch.zeros((x_0.shape[0],x_0.shape[1]),device='cpu')
     
     sqrt_delta = delta**0.5
 
@@ -208,10 +235,14 @@ def rk4_stratonovich_sampler(sde, x_0, num_steps=1000, lmbd=0., keep_all_samples
 
             if keep_all_samples:
                 xs[:,:,i+include_t0]=x_t.clone().to('cpu')
+            elif samplesToKeep is not None:
+                if (i+include_t0) in samplesToKeep:
+                    idx_samplesToKeep = (samplesToKeep == (i+include_t0)).flatten()
+                    xs[idx_samplesToKeep,:]=x_t[idx_samplesToKeep,:].clone().to('cpu')
 
     if keep_all_samples:
         xs = torch.permute(xs, (2, 0, 1))
-    else:
+    elif samplesToKeep is None:
         xs=x_t.clone().to('cpu')
     
     return xs.to('cpu')
