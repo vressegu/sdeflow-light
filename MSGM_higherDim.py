@@ -29,7 +29,7 @@ from NN import MLP, NormalizeLogRadius, evaluate
 from sde_scheme import euler_maruyama_sampler,heun_sampler,rk4_stratonovich_sampler
 from own_plotting import plot_selected_inds, def_pd, pairplots, pairplots_single, \
                          preprocessing, postprocessing
-from SDEs import forward_SDE,SDE,VariancePreservingSDE,PluginReverseSDE,multiplicativeNoise
+from SDEs import forward_SDE,SDE,SGMsde,PluginReverseSDE,MSGMsde
 from data import ERA5,ncar_weather_station,weather_station,eof_pressure,Lorenz96,\
                  PODmodes,SwissRoll,Cauchy,Gaussian,GaussianCauchy,\
                  PIV
@@ -590,7 +590,7 @@ if __name__ == '__main__':
                             with torch.no_grad():
                                 if MSGM:
                                     x_init = sampler.sample(num_samples_init).to(device)
-                                    inf_sde = multiplicativeNoise(x_init,beta_min=beta_min, beta_max=beta_max, \
+                                    inf_sde = MSGMsde(x_init,beta_min=beta_min, beta_max=beta_max, \
                                                                 t_epsilon=t_eps, T=T, num_steps_forward=num_steps_forward, \
                                                                 device=device, estim_cst_norm_dens_r_T = False, \
                                                                 norm_sampler = norm_sampler,
@@ -598,7 +598,7 @@ if __name__ == '__main__':
                                                                 plot_validate = plot_validate)
                                     del x_init
                                 else:
-                                    inf_sde = VariancePreservingSDE(beta_min=beta_min_SGM, beta_max=beta_max_SGM, \
+                                    inf_sde = SGMsde(beta_min=beta_min_SGM, beta_max=beta_max_SGM, \
                                                                     t_epsilon=t_eps, T=T, num_steps_forward=num_steps_forward, \
                                                                     device=device)
                             gen_sde = PluginReverseSDE(inf_sde, drift_q, T, vtype=vtype, debias=False, ssm_intT=ssm_intT).to(device)

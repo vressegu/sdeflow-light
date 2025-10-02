@@ -149,7 +149,7 @@ class SDE(torch.nn.Module):
 Log2PI = float(np.log(2 * np.pi))
 
 
-class VariancePreservingSDE(SDE):
+class SGMsde(SDE):
     """
     Implementation of the variance preserving SDE proposed by Song et al. 2021
     See eq (32-33) of https://openreview.net/pdf?id=PxTIG12RRHS
@@ -211,7 +211,7 @@ class VariancePreservingSDE(SDE):
 ##########################################
 
 
-class multiplicativeNoise(SDE):
+class MSGMsde(SDE):
     """
     d Y = G(Y) o dB_t
     """
