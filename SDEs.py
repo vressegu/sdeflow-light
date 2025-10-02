@@ -83,7 +83,6 @@ class SDE(torch.nn.Module):
 
         num_steps_tot = self.num_steps_forward
         include_t0=True
-        y_allt = self.sample_scheme_allt(y0, include_t0=include_t0)
 
         num_steps_floats = num_steps_tot * t/self.T
         num_steps_int = torch.trunc(num_steps_floats).to(torch.int).to('cpu')
@@ -100,12 +99,15 @@ class SDE(torch.nn.Module):
                         num_steps_int[k] = num_steps_tot - 1
 
         yt = torch.zeros_like(y0)
+        y_allt = self.sample_scheme_allt(y0, include_t0=include_t0)
         for k in range(y0.shape[0]):
             if num_steps_int[k]>0 :
                 yt[k,:] = y_allt[num_steps_int[k],k,:]
             else:
                 # print('warning : small random time')
-                ytemp = rk4_stratonovich_sampler(forward_SDE(self, self.T).to(device), y0[k,:][np.newaxis, ...], 1, lmbd=0, keep_all_samples=False, include_t0=False, T_ = t[k])
+                ytemp = rk4_stratonovich_sampler(forward_SDE(self, self.T).to(device), 
+                                                    y0[k,:][np.newaxis, ...], 1, 
+                                                    lmbd=0, keep_all_samples=False, include_t0=False, T_ = t[k])
                 yt[k,:] = ytemp[0,:]
                 del ytemp
         
