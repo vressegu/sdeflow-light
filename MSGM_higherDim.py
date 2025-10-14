@@ -356,9 +356,9 @@ def m_name_simu_root(sampler_name, gen_sde_name_SDE, iterations_ref, batch_size,
 if torch.cuda.is_available():
     device = 'cuda'
     print('use gpu\n')
-# elif torch.backends.mps.is_available():
-#     device = 'mps'
-#     print('use mps\n')
+elif torch.backends.mps.is_available():
+    device = 'mps'
+    print('use mps\n')
 else:
     device = 'cpu'
     print('use cpu\n')
@@ -574,7 +574,7 @@ if __name__ == '__main__':
                     for iterations_ref in iterationss:
                         i_iterations +=1
 
-                        xtest = xtest.to(device)             
+                        xtest = xtest.to('cpu')             
 
                         i_batch_size = -1
                         for batch_size_ref in batch_sizes:
@@ -612,7 +612,7 @@ if __name__ == '__main__':
                                     inf_sde = SGMsde(beta_min=beta_min_SGM, beta_max=beta_max_SGM, \
                                                                     t_epsilon=t_eps, T=T, num_steps_forward=num_steps_forward, \
                                                                     device=device)
-                            gen_sde = PluginReverseSDE(inf_sde, drift_q, T, vtype=vtype, debias=False, ssm_intT=ssm_intT).to(device)
+                            gen_sde = PluginReverseSDE(inf_sde, drift_q, T, vtype=vtype, debias=False, ssm_intT=ssm_intT, deviceReverseSDE=device).to(device)
 
                             print("data = " + sampler.name )
                             print("name_SDE = " + str(inf_sde.name_SDE) )   
@@ -642,12 +642,12 @@ if __name__ == '__main__':
                             with torch.no_grad():
                                 print('integrate forward SDE')
                                 for_sde = forward_SDE(inf_sde, T)
-                                xs_forward = rk4_stratonovich_sampler(for_sde, xtest.clone(), num_steps_forward,  \
+                                xs_forward = rk4_stratonovich_sampler(for_sde, xtest.clone().to(device), num_steps_forward,  \
                                                                     lmbd=0., keep_all_samples=True, \
                                                                     include_t0=True, norm_correction = MSGM) # sample
                                 
                                 preprocessing(xtest, xs_forward, num_steps_forward, name_simu_root, \
-                                                noising_plots, plt_show, folder_results, val_hist, std_test_plot, device)
+                                                noising_plots, plt_show, folder_results, val_hist, std_test_plot, 'cpu')
 
                             if (not justLoad):
                                 # init optimizer
@@ -743,7 +743,7 @@ if __name__ == '__main__':
                                                         crop_data_plot, plot_crop, plot_xlim, plot_ref_pdf, \
                                                         pdf_theor, log_scale_pdf, columns_plot, \
                                                         scatter_plots, denoising_plots, include_t0_reverse, plt_show, dpi, height_seaborn, ssize, \
-                                                        evalmmmd, justLoadmmmd, justLoad, save_results, lmbd, val_hist, device, \
+                                                        evalmmmd, justLoadmmmd, justLoad, save_results, lmbd, val_hist, 'cpu', \
                                                         mmd_ref, mmd_MSGM,mmd_SGM,max_num_samples_for_mmd)
 
                     ## Convergence plots (with MMD)

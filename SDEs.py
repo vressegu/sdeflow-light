@@ -29,8 +29,8 @@ import gc
 # init device
 if torch.cuda.is_available():
     device = 'cuda'
-# elif torch.backends.mps.is_available():
-#     device = 'mps'
+elif torch.backends.mps.is_available():
+    device = 'mps'
 else:
     device = 'cpu'
 
@@ -69,6 +69,12 @@ class SDE(torch.nn.Module):
         # self.forward_SDE = forward_SDE(self, self.T).to(device)
         self.num_steps_forward = num_steps_forward
         self.norm_correction = False
+
+    def to(self, device):
+        new = super().to(device)
+        new.device = torch.device(device)
+        new.T = self.T.to(device)
+        return new
 
     def beta(self, t):
         return self.beta_min + (self.beta_max-self.beta_min)*t
@@ -291,6 +297,11 @@ class MSGMsde(SDE):
             del log_dens, dens, r_plot 
         gc.collect()
 
+    def to(self, device):
+        new = super().to(device)
+        new.r_T = self.r_T.to(device)
+        new.G = self.G.to(device)
+        return new
 
     def new_G(self, n) : 
         # from n independent random matrices 
@@ -447,14 +458,15 @@ class PluginReverseSDE(torch.nn.Module):
     g <- g
     (time is inverted)
     """
-    def __init__(self, base_sde, drift_a, T, vtype='rademacher', debias=False, ssm_intT=False):
+    def __init__(self, base_sde, drift_a, T, vtype='rademacher', debias=False, ssm_intT=False, deviceReverseSDE=device):
         super().__init__()
-        self.base_sde = base_sde
+        self.base_sde = base_sde.to(deviceReverseSDE)
         self.a = drift_a
-        self.T = T
+        self.T = T.to(deviceReverseSDE)
         self.vtype = vtype
         self.ssm_intT = ssm_intT
         self.debias = debias
+        self.deviceReverseSDE = deviceReverseSDE
 
     # Drift
     def mu(self, t, y, lmbd=0.):
