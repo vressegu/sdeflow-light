@@ -12,6 +12,7 @@ from netCDF4 import Dataset
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from pathlib import Path
 import random
+from own_plotting import plots_vort
 
 class ERA5:
     def __init__(self, dim = 40, \
@@ -245,11 +246,19 @@ class ERA5:
         return s_ann, s_full
 
 class PIV:
-    def __init__(self, dim = 2, normalized = False, localized = False, few_data = False, ntrain_max = np.inf):
+    def __init__(self, dim = 2, normalized = False, 
+                 localized = False, 
+                 largeImage = False, 
+                 few_data = False, 
+                 ntrain_max = np.inf):
         self.dim = dim
         self.name='PIV'
         self.name += str(self.dim)
-        if localized:
+        if largeImage:
+            self.name += 'largeIm'
+            localized = True
+            npixelx = np.int32( np.sqrt(dim) )
+        elif localized:
             self.name += 'loc'
         if few_data:
             # self.name = self.name + 'fewData'
@@ -260,31 +269,66 @@ class PIV:
         folder_str = "/Users/vresseiguier/Coding/MultiplicativeDiffusion/newPIV"
         if localized:
             folder_str += '2'
+        if largeImage:
+            folder_str += '/largerImage'
         folder = Path(folder_str)
         prefix = "Serie_"
 
-        npdata = np.empty((32, 0))   # if not already
+        if largeImage:
+            npixelx_max = 64
+        else:
+            npixelx_max = 4
+        dmax = 2*(npixelx_max**2)
+        npdata = np.empty((dmax, 0))   # if not already
 
         print("Loading PIV data from folder:", folder)
-        for file in sorted(folder.glob(prefix + "*_vortdiv.npy")):
-            # print("Processing", file.name)
-            dataPt = np.load(folder / f"{file.stem}.npy")  
-            npdata = np.concatenate((npdata, dataPt.reshape(-1, 1)), axis=1)
-            # print("data shape:", dataPt.shape)
-            # print(dataPt)
-            if any(np.isnan(dataPt.flatten())):
-                print("Processing", file.name)
-                print("data shape:", npdata.shape)
-                print(dataPt)
+        if largeImage:
+            file = folder_str + "/vortdivtot.npy"
+            npdata = np.load(file)  
+        else:
+            for file in sorted(folder.glob(prefix + "*_vortdiv.npy")):
+                # print("Processing", file.name)
+                dataPt = np.load(folder / f"{file.stem}.npy")  
+                npdata = np.concatenate((npdata, dataPt.reshape(-1, 1)), axis=1)
+                if any(np.isnan(dataPt.flatten())):
+                    print("Processing", file.name)
+                    print("data shape:", npdata.shape)
+                    print(dataPt)
         npdata = npdata.transpose() /2.5
 
         # center and mormalize data
         npdata = npdata-npdata.mean(axis=0)
         # keep only dim dimension
-        npdata = npdata[:,0:self.dim]
+        if largeImage :
+            if not (dim == npixelx**2):
+                raise ValueError("Incorrect dim to subsample: {}".format(dim))
+            print("Subsample images to match the required dimension")
+            npdata = npdata.reshape(([npdata.shape[0],npixelx_max,npixelx_max,2]),order='F')
+
+            time_id = 0
+            plots_vort(npdata[time_id,:,:,0])
+            name_fig = "originalimageAtt" + str(time_id) + ".png" 
+            plt.savefig(name_fig)
+            plt.close()
+            plt.close('all')
+
+            ix = np.linspace(0,npdata.shape[1]-1,npixelx,dtype=int)
+            iy = np.linspace(0,npdata.shape[2]-1,npixelx,dtype=int)
+            npdata = npdata[:,:,:,0] # keeping only vorticity
+            npdata = npdata[:,ix,:] # subsampling 
+            npdata = npdata[:,:,iy] # subsampling 
+
+            plots_vort(npdata[time_id,:,:])
+            name_fig = "subsampleimageAtt" + str(time_id) + ".png" 
+            plt.savefig(name_fig)
+            plt.close()
+            plt.close('all')
+
+            npdata = npdata.reshape(([npdata.shape[0],dim]),order='F')
+        else:
+            npdata = npdata[:,0:self.dim]
 
         if few_data:
-            # n_train = 1000
             n_train= min([2*npdata.shape[0]// 3, ntrain_max])
             n_test = npdata.shape[0] - n_train 
         else:

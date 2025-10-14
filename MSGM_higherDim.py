@@ -298,6 +298,9 @@ dimplot_max = 8
 val_hist = plot_xlim
 crop_data_plot = False
 plot_crop = plot_xlim
+largeDim = (dims[0] > 16)
+if largeDim:
+    num_samples = 1000
 
 # Load results 
 justLoad = False
@@ -404,10 +407,17 @@ if __name__ == '__main__':
                             sampler = SwissRoll()
                             normalized_data = False
                         case 'PIV':
-                            sampler = PIV(dim, normalized=normalized_data, localized = localized, few_data=few_data, ntrain_max=ntrain_max)
+                            sampler = PIV(dim, 
+                                          normalized=normalized_data, 
+                                          largeImage = largeImage,
+                                          localized = localized, 
+                                          few_data=few_data, 
+                                          ntrain_max=ntrain_max)
                             log_scale_pdf = True
                             plot_xlim = 6
                             val_hist = 2*plot_xlim
+                            if MSGM and dims[0]>16:
+                                val_hist *= 5
                         case 'gaussian':
                             # correlation = False
                             # normalized_data = False
@@ -534,6 +544,7 @@ if __name__ == '__main__':
                     with torch.no_grad():
                         xtest = sampler.sampletest(num_samples)
                         sampler.dim = xtest.shape[1]
+                        largeDim = (xtest.shape[1] > 16)
                         std_test = xtest.std(axis=0)
                         if normalized_data:
                             std_norm = sampler.get_std()
