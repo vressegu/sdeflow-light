@@ -328,10 +328,6 @@ def m_name_simu_root(sampler_name, gen_sde_name_SDE, iterations_ref, batch_size,
         + str(num_samples_init) + "InitSples_" \
         + str(batch_size) + "batchSize_" \
         + str(num_steps_forward) + "stepsForw_"
-    print("beta_min_SGM = " + str(beta_min_SGM))
-    print("beta_min = " + str(beta_min))
-    print("beta_max_SGM = " + str(beta_max_SGM))
-    print("beta_max = " + str(beta_max))
     if MSGM:
         name_simu_root += \
             str(beta_min) + "beta_min" \
@@ -617,7 +613,9 @@ if __name__ == '__main__':
                             print("data = " + sampler.name )
                             print("name_SDE = " + str(inf_sde.name_SDE) )   
                             print("num_steps_forward = " + str(num_steps_forward))
+                            print("beta_min_SGM = " + str(beta_min_SGM))
                             print("beta_min = " + str(beta_min))
+                            print("beta_max_SGM = " + str(beta_max_SGM))
                             print("beta_max = " + str(beta_max))
                             print("t_eps = " + str(t_eps))     
                             print("iterations = " + str(iterations) )
