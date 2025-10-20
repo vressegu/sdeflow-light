@@ -559,7 +559,9 @@ class PluginReverseSDE(torch.nn.Module):
                 batchsize = x.shape[0]
                 dim = x.shape[1]
                 t_, mask_le_t_eps = self.sample_t_linspace(x)
-                y = self.base_sde.sample_scheme_allt(x, include_t0=False)
+                y = self.base_sde.sample_scheme_allt(x, 
+                                                     keep_all_samples=True,
+                                                     include_t0=False)
                 y = y[~mask_le_t_eps,:,:]
 
                 # n_subsample = 4
