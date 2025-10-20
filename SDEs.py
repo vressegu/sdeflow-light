@@ -578,6 +578,7 @@ class PluginReverseSDE(torch.nn.Module):
                 t_ = t_.reshape((batchsize*num_steps,1))
                 x = x.reshape((batchsize*num_steps,dim))
                 y = y.reshape((batchsize*num_steps,dim))
+                # WARNING order='F' IS NOT USED 
             else:
                 # sampling t uniformly between [0, T], truncated at t_epsilon
                 t_ = self.sample_t(x)
