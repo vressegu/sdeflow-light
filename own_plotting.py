@@ -343,6 +343,38 @@ def preprocessing(xtest, xs_forward, num_steps_forward, name_simu_root, \
     d_cov_xgen_forward = torch.norm(cov_xgen_forward - cov_wwn)/torch.sqrt(xtest.shape[1]*torch.trace(cov_wwn**2))
     print("dist cov_xgen_forward  to  weak white noise (w. same var.)= " + str(d_cov_xgen_forward.item()))
 
+    # --- plot ---
+    # --- define min/max for shared colorbar ---
+    vmin = min(cov_xtest.min(), cov_xgen_forward.min(), cov_xgen_forward_converged.min()).item()
+    vmax = max(cov_xtest.max(), cov_xgen_forward.max(), cov_xgen_forward_converged.max()).item()
+    fig, axs = plt.subplots(1, 4, figsize=(20, 5))
+    im0 = axs[0].imshow(cov_xtest, cmap='viridis', vmin=vmin, vmax=vmax)
+    axs[0].set_title("Cov(xtest)")
+    axs[0].set_xlabel("Dimension")
+    axs[0].set_ylabel("Dimension")
+    im1 = axs[1].imshow(cov_xgen_forward, cmap='viridis', vmin=vmin, vmax=vmax)
+    axs[1].set_title("Cov(xgen_forward)")
+    axs[1].set_xlabel("Dimension")
+    im2 = axs[2].imshow(cov_xgen_forward_converged, cmap='viridis', vmin=vmin, vmax=vmax)
+    axs[2].set_title("Cov(xgen_forward_converged)")
+    axs[2].set_xlabel("Dimension")
+    im3 = axs[3].imshow(cov_xgen_forward_converged-cov_xgen_forward, cmap='viridis', vmin=vmin, vmax=vmax)
+    axs[3].set_title("Cov(xgen_forward_converged - xgen_forward)")
+    axs[3].set_xlabel("Dimension")
+    # --- shared colorbar ---
+    cbar = fig.colorbar(im0, ax=axs)
+    cbar.set_label("Covariance value")
+    plt.tight_layout()
+    time.sleep(0.5)
+    if plt_show:
+        plt.show(block=False)
+    name_fig = folder_results + "/" + name_simu_root + "_cov.png" 
+    plt.savefig(name_fig)
+    if plt_show:
+        plt.pause(1)
+    plt.close()
+    plt.close('all')
+
     # print energy
     energy_xtest = torch.sum((xtest**2),dim=1).mean()
     energy_xgen_forward = torch.sum((xgen_forward**2),dim=1).mean()
