@@ -331,18 +331,16 @@ def preprocessing(xtest, xs_forward, num_steps_forward, name_simu_root, \
     xgen_forward_var_mean = xgen_forward_var.mean()
     xtest_var = torch.var(xtest.T,dim=1)
     xtest_var_mean = xtest_var.mean()
-
     # comparaison to cov ot X_inf
     cov_xgen_forward_converged = xtest_var_mean * torch.eye(xtest.shape[1]).to('cpu')
     # since tr(cov)=E||X||^2 is theoretically conserved
-    d_cov_xtest = torch.norm(cov_xtest - cov_xgen_forward_converged)/torch.norm(cov_xgen_forward_converged)
-    d_cov_xgen_forward = torch.norm(cov_xgen_forward - cov_xgen_forward_converged)/torch.norm(cov_xgen_forward_converged)
+    d_cov_xtest = torch.norm(cov_xtest - cov_xgen_forward_converged)/torch.sqrt(xtest.shape[1]*torch.trace(cov_xgen_forward_converged**2))
+    d_cov_xgen_forward = torch.norm(cov_xgen_forward - cov_xgen_forward_converged)/torch.sqrt(xtest.shape[1]*torch.trace(cov_xgen_forward_converged**2))
     print("dist cov_xtest to  cov_xgen_forward_converged (dist to  weak white noise)= " + str(d_cov_xtest.item()))
     print("dist cov_xgen_forward  to  cov_xgen_forward_converged = " + str(d_cov_xgen_forward.item()))
-
     # comparaison to cov of weak white noise (with same variance)
     cov_wwn = xgen_forward_var_mean * torch.eye(xtest.shape[1]).to('cpu')
-    d_cov_xgen_forward = torch.norm(cov_xgen_forward - cov_wwn)/torch.norm(cov_wwn)
+    d_cov_xgen_forward = torch.norm(cov_xgen_forward - cov_wwn)/torch.sqrt(xtest.shape[1]*torch.trace(cov_wwn**2))
     print("dist cov_xgen_forward  to  weak white noise (w. same var.)= " + str(d_cov_xgen_forward.item()))
 
     # print energy
