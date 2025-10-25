@@ -406,6 +406,7 @@ if __name__ == '__main__':
                             sampler = PIV(dim, 
                                           normalized=normalized_data, 
                                           largeImage = largeImage,
+                                          smoothing = smoothing,
                                           localized = localized, 
                                           few_data=few_data, 
                                           ntrain_max=ntrain_max)

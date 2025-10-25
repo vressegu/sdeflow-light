@@ -249,6 +249,7 @@ class PIV:
     def __init__(self, dim = 2, normalized = False, 
                  localized = False, 
                  largeImage = False, 
+                 smoothing = 0,
                  few_data = False, 
                  ntrain_max = np.inf):
         self.dim = dim
@@ -256,6 +257,10 @@ class PIV:
         self.name += str(self.dim)
         if largeImage:
             self.name += 'largeIm'
+            if smoothing == 1:
+                self.name += 'smooth'
+            if smoothing == 2:
+                self.name += 'superSmooth'
             localized = True
             npixelx = np.int32( np.sqrt(dim) )
         elif localized:
@@ -302,7 +307,6 @@ class PIV:
         if largeImage :
             if not (dim == npixelx**2):
                 raise ValueError("Incorrect dim to subsample: {}".format(dim))
-            print("Subsample images to match the required dimension")
             npdata = npdata.reshape(([npdata.shape[0],npixelx_max,npixelx_max,2]),order='F')
 
             time_id = 0
@@ -312,12 +316,33 @@ class PIV:
             plt.close()
             plt.close('all')
 
+            npdata = npdata[:,:,:,0] # keeping only vorticity
+            
+            if smoothing>0:
+                print("Filtered images")
+                from scipy.ndimage import gaussian_filter
+                if smoothing == 1:
+                    sigmax = npdata.shape[1]//(3*npixelx)
+                elif smoothing == 2:
+                    sigmax = npdata.shape[1]//(npixelx)
+                    npdata *= 4
+                # sigmay = npdata.shape[2]//npixelx
+                # print('npdata.shape = ', npdata.shape)
+                for i in range(npdata.shape[0]):
+                    npdata[i,:,:] = gaussian_filter(npdata[i,:,:], sigma=sigmax)
+                    # npdata[i,:,:] = gaussian_filter(npdata[i,:,1], sigma=sigmay)
+                    # print('npdata.shape = ', npdata.shape)
+                plots_vort(npdata[time_id,:,:])
+                name_fig = "smoothedimageAtt" + str(time_id) + ".png" 
+                plt.savefig(name_fig)
+                plt.close()
+                plt.close('all')
+            # else:
+            print("Subsample images to match the required dimension")
             ix = np.linspace(0,npdata.shape[1]-1,npixelx,dtype=int)
             iy = np.linspace(0,npdata.shape[2]-1,npixelx,dtype=int)
-            npdata = npdata[:,:,:,0] # keeping only vorticity
             npdata = npdata[:,ix,:] # subsampling 
             npdata = npdata[:,:,iy] # subsampling 
-
             plots_vort(npdata[time_id,:,:])
             name_fig = "subsampleimageAtt" + str(time_id) + ".png" 
             plt.savefig(name_fig)
