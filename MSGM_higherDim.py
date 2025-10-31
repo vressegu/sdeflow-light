@@ -25,7 +25,7 @@ from netCDF4 import Dataset
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 import seaborn as sns
 
-from NN import MLP, NormalizeLogRadius, evaluate
+from NNUnet import VorticityUNet
 from sde_scheme import euler_maruyama_sampler,heun_sampler,rk4_stratonovich_sampler
 from own_plotting import plot_selected_inds, def_pd, pairplots, pairplots_single, \
                          preprocessing, postprocessing
@@ -57,6 +57,7 @@ norm_map = "log"
 beta_min_SGM = 0.1 # default
 beta_max_SGM = 20 # default
 
+NNarchi = "MLP"
 num_samples_init_max = int(1e5)
 vtype = 'rademacher'
 lr = 0.001 # default
@@ -336,6 +337,8 @@ def m_name_simu_root(sampler_name, gen_sde_name_SDE, iterations_ref, batch_size,
         name_simu_root += \
             str(beta_min_SGM) + "beta_min" \
             + str(beta_max_SGM) + "beta_max"
+    if not (NNarchi == "MLP"):
+        name_simu_root += "_" + NNarchi
     if (premodule is not None):
         name_simu_root += "_" + premodule
     if (not (lr == 0.001)):
@@ -591,7 +594,24 @@ if __name__ == '__main__':
                             print('num_samples_init = ' + str(num_samples_init))
                         
                             # init models
-                            drift_q = MLP(input_dim=sampler.dim, index_dim=1, hidden_dim=128, premodule = premodule).to(device)
+                            if (NNarchi == "MLP"):
+                                drift_q = MLP(input_dim=sampler.dim, index_dim=1, hidden_dim=128, premodule = premodule).to(device)
+                            elif (NNarchi == "Unet"):
+                                npixelx = torch.sqrt(torch.tensor(sampler.dim, dtype=torch.float32)).to(torch.int32)
+                                print('npixelx = ' + str(npixelx.item()))
+                                if not (sampler.dim == npixelx**2):
+                                    raise ValueError("Incorrect dim to define square image: {}".format(sampler.dim))
+                                drift_q = VorticityUNet(
+                                    base_channels=32,
+                                    channel_mults=(1,2,4),
+                                    num_res_blocks=2,
+                                    premodule=premodule,        # None or "NormalizeLogRadius"
+                                    in_space=npixelx,                # 16x16 images
+                                    attention_resolutions=(2,4), # attention at 8x8 and 4x4
+                                    flatten_order="F",   # <-- set to "C" or "F" to match pipeline
+                                ).to(device)
+                            else:
+                                raise ValueError("Unknown NN archi: {}".format(NNarchi))
                             T = torch.nn.Parameter(torch.FloatTensor([T0]), requires_grad=False)
 
 
@@ -624,6 +644,7 @@ if __name__ == '__main__':
                             print("batch_size = " + str(batch_size) ) 
                             print("ssm_intT = " + str(ssm_intT) )  
                             print("fair_comparison = " + str(fair_comparison) )  
+                            print("NNarchi = " + NNarchi )
                             print("premodule = " + str(premodule) )
                             print("ntrain_max = " + str(ntrain_max))
 

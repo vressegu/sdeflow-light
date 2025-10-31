@@ -421,13 +421,12 @@ def preprocessing(xtest, xs_forward, num_steps_forward, name_simu_root, \
             plt.close('all')
 
 
-def plots_vort(U):
+def plots_vort(U,vmin=-2,vmax=2):
     # X, Y may be non-uniform → use pcolormesh (respects coordinates)
     fig, axs = plt.subplots(1, 1, figsize=(6, 5), constrained_layout=True)
 
-    Umax = 2
     # U component
-    pcm = axs.pcolormesh(U[-1:0:-1,:], shading='auto', vmin=-Umax,vmax=Umax)
+    pcm = axs.pcolormesh(U[-1:0:-1,:], shading='auto', vmin=vmin,vmax=vmax)
     axs.set_title("vorticity (1/s)")
     axs.set_aspect('equal')
     fig.colorbar(pcm, ax=axs)
