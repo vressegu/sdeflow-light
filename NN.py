@@ -32,35 +32,6 @@ class NormalizeLogRadius(nn.Module):
         log_norm = torch.log(norm)
         return torch.cat([x_normalized, log_norm], dim=-1)
     
-class PolarCoordinatesWithLogRadius(nn.Module):
-    """Convert x ∈ R^d to polar/spherical coordinates.
-       - d=2 → (r, θ)
-       - d=3 → (r, θ, φ)
-       Returns a tensor of size (..., d)
-    """
-    def __init__(self, eps=1e-12):
-        super().__init__()
-        self.eps = eps
-
-    def forward(self, x):
-        # x: (..., d)
-        d = x.shape[-1]
-        norm = torch.norm(x, dim=-1, keepdim=True).clamp_min(self.eps)
-        lognorm = torch.log(norm)  # log r
-
-        if d == 2:
-            theta = torch.atan2(x[...,1], x[...,0]).unsqueeze(-1)  # angle
-            out = torch.cat([lognorm, theta], dim=-1)  # (r, θ)
-
-        elif d == 3:
-            theta = torch.atan2(x[...,1], x[...,0]).unsqueeze(-1)  # azimuth
-            phi = torch.acos((x[...,2] / norm).clamp(-1+1e-7, 1-1e-7)).unsqueeze(-1)  # polar
-            out = torch.cat([lognorm, theta, phi], dim=-1)  # (r, θ, φ)
-
-        else:
-            raise NotImplementedError("PolarCoordinates currently supports d=2 or d=3.")
-
-        return out
 
 class MLP(nn.Module):
     def __init__(self,
@@ -78,14 +49,11 @@ class MLP(nn.Module):
 
         self.output_dim = self.input_dim # represent the a vector field so input dim = output dim
 
-        assert premodule is None or premodule in ["PolarCoordinatesWithLogRadius", "NormalizeLogRadius"]
+        assert premodule is None or premodule in ["NormalizeLogRadius"]
         self.premodule = premodule
         if premodule == "NormalizeLogRadius": 
             self.pre = NormalizeLogRadius()                                    # non - learnable
             self.learnable_network_input_dim = self.input_dim +  1
-        elif premodule == "PolarCoordinatesWithLogRadius": 
-            self.pre = PolarCoordinatesWithLogRadius() 
-            self.learnable_network_input_dim = self.input_dim
         else: # premodule is None
             self.pre = None
             self.learnable_network_input_dim = self.input_dim
