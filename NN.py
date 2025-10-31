@@ -28,9 +28,9 @@ class NormalizeLogRadius(nn.Module):
         # x: (batch, d)
         norm = torch.norm(x, dim=-1, keepdim=True)
         norm = norm + self.eps
-        x_normalized = x / norm
+        x_normalized = x / (norm/torch.sqrt(torch.tensor(x.shape[-1], dtype=norm.dtype, device=norm.device)))  # scale to keep std consistent
         log_norm = torch.log(norm)
-        return torch.cat([x_normalized, log_norm], dim=-1)
+        return x_normalized, log_norm
     
 
 class MLP(nn.Module):
@@ -76,10 +76,9 @@ class MLP(nn.Module):
 
         # forward
         if self.pre is not None:
-            h = self.pre(input)                   # (batch, learnable_network_input_dim)
-            h = torch.cat([h, t], dim=1)         # concat index
-        else:
-            h = torch.cat([input, t], dim=1)     # concat
+            h, log_norm = self.pre(input)                   # (batch, learnable_network_input_dim)
+            input = torch.cat([h, log_norm], dim=1)     # concat
+        h = torch.cat([input, t], dim=1)     # concat
         output = self.main(h)                    # forward
         return output.view(*sz)
 
