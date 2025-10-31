@@ -203,6 +203,7 @@ class VorticityUNet(nn.Module):
 
         if self.pre is not None:
             x, log_norm = self.pre(x)  # (batch, learnable_network_input_dim)
+            x = x * torch.sqrt(torch.tensor(x.shape[-1], dtype=log_norm.dtype, device=log_norm.device))  # scale to keep std consistent
 
         if x.dim() == 2:
             B, d = x.shape

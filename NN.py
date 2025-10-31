@@ -28,7 +28,7 @@ class NormalizeLogRadius(nn.Module):
         # x: (batch, d)
         norm = torch.norm(x, dim=-1, keepdim=True)
         norm = norm + self.eps
-        x_normalized = x / (norm/torch.sqrt(torch.tensor(x.shape[-1], dtype=norm.dtype, device=norm.device)))  # scale to keep std consistent
+        x_normalized = x / norm
         log_norm = torch.log(norm)
         return x_normalized, log_norm
     
