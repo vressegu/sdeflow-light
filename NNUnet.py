@@ -9,8 +9,8 @@ import torch.nn.functional as F
 
 # ---------- colleague's helpers / UNetModel ----------
 # If these live elsewhere, adjust imports accordingly.
-from model.nn_utils import conv_nd, linear, normalization, SiLU, timestep_embedding  # needed here
-from model.unet import UNetModel  # your colleague's UNet class
+from model.nn_utils import conv_nd, linear, SiLU, timestep_embedding  # needed here
+from model.unet import UNetModel  # UNet class
 from NN import NormalizeLogRadius, evaluate
 
 from own_plotting import plots_vort
