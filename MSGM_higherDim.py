@@ -303,6 +303,9 @@ plot_crop = plot_xlim
 largeDim = (dims[0] > 16)
 if largeDim:
     num_samples = 1000
+    force_cpu = False
+else:
+    force_cpu = True
 
 # Load results 
 justLoad = False
@@ -353,10 +356,10 @@ def m_name_simu_root(sampler_name, gen_sde_name_SDE, iterations_ref, batch_size,
     return name_simu_root
 
 # init device
-if torch.cuda.is_available():
+if torch.cuda.is_available() and not force_cpu:
     device = 'cuda'
     print('use gpu\n')
-elif torch.backends.mps.is_available():
+elif torch.backends.mps.is_available() and not force_cpu:
     device = 'mps'
     print('use mps\n')
 else:
