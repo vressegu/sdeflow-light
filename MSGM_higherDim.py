@@ -25,6 +25,7 @@ from netCDF4 import Dataset
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 import seaborn as sns
 
+from NN import MLP, evaluate
 from NNUnet import VorticityUNet
 from sde_scheme import euler_maruyama_sampler,heun_sampler,rk4_stratonovich_sampler
 from own_plotting import plot_selected_inds, def_pd, pairplots, pairplots_single, \
