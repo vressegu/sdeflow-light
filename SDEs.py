@@ -26,14 +26,6 @@ from sde_scheme import euler_maruyama_sampler,heun_sampler,rk4_stratonovich_samp
 import gc
 
 
-# init device
-if torch.cuda.is_available():
-    device = 'cuda'
-elif torch.backends.mps.is_available():
-    device = 'mps'
-else:
-    device = 'cpu'
-
 # class OU_SDE(torch.nn.Module): 
 class forward_SDE(torch.nn.Module): 
 
@@ -115,7 +107,7 @@ class SDE(torch.nn.Module):
                     yt[k,:] = y_allt[k,:]
             else:
                 # print('warning : small random time')
-                ytemp = rk4_stratonovich_sampler(forward_SDE(self, self.T).to(device), 
+                ytemp = rk4_stratonovich_sampler(forward_SDE(self, self.T).to(self.device), 
                                                     y0[k,:][np.newaxis, ...], 1, 
                                                     lmbd=0, keep_all_samples=False, include_t0=False, T_ = t[k])
                 yt[k,:] = ytemp[0,:]
@@ -123,7 +115,7 @@ class SDE(torch.nn.Module):
         
         del y_allt, num_steps_int
 
-        return yt.to(device)
+        return yt.to(self.device)
 
     @torch.no_grad()
     def sample_scheme_allt(self, y0, include_t0=True, keep_all_samples=True, samplesToKeep=None):
@@ -131,7 +123,7 @@ class SDE(torch.nn.Module):
         sample y0, y_t_1, y_t_2, ..., y_T | y0
         """
 
-        return rk4_stratonovich_sampler(forward_SDE(self, self.T).to(device), y0, num_steps=self.num_steps_forward, \
+        return rk4_stratonovich_sampler(forward_SDE(self, self.T).to(self.device), y0, num_steps=self.num_steps_forward, \
                                           lmbd=0, keep_all_samples=keep_all_samples, samplesToKeep=samplesToKeep, 
                                           include_t0=include_t0) # sample
 
@@ -203,7 +195,6 @@ class SGMsde(SDE):
         # return self.sample_scheme(t, y0)
         return self.sample_Song_et_al(t, y0, return_noise)
 
-    # def latent_sample(self,num_samples, n, device=device):
     def latent_sample(self,num_samples, n):
         # init from prior
         return torch.randn(num_samples, n, device=self.device) 
@@ -422,18 +413,18 @@ class MSGMsde(SDE):
         r_yT = torch.linalg.norm(yT.clone().detach(), dim= 1)
         del yT
         r_yT = r_yT.reshape(len(r_yT),1)
-        return torch.tensor(self.kde.score_samples(r_yT.cpu())).to(torch.float32).to(device) - self.cst_log_dens
+        return torch.tensor(self.kde.score_samples(r_yT.cpu())).to(torch.float32).to(self.device) - self.cst_log_dens
 
 ###################################################################################################
 
 ### Reverse SDE
-def sample_rademacher(shape):
+def sample_rademacher(shape, device):
     return (torch.rand(*shape,device=device).ge(0.5)).float() * 2 - 1
 
-def sample_gaussian(shape):
-    return torch.randn(*shape,device=device)
+def sample_gaussian(shape, device):
+    return torch.randn(*shape, device=device)
 
-def randu_on_sphere(shape,device = device): 
+def randu_on_sphere(shape, device): 
     # Let X_i be N(0,1) and  lambda^2 =2 sum X_i^2, then (X_1,...,X_d) / lambda  is uniform in S^{d-1}
     X = torch.randn(*shape,device=device)
     X_norm = torch.linalg.norm(X, dim = 1).reshape(shape[0],1)
@@ -441,13 +432,13 @@ def randu_on_sphere(shape,device = device):
     # del X_norm
     return X
 
-def sample_v(shape, vtype='rademacher'):
+def sample_v(shape, device, vtype='rademacher'):
     if vtype == 'rademacher':
-        return sample_rademacher(shape)
+        return sample_rademacher(shape, device=device)
     elif vtype == 'normal' or vtype == 'gaussian':
-        return sample_gaussian(shape)
+        return sample_gaussian(shape, device=device)
     elif vtype == 'uniform' :
-        return randu_on_sphere(shape)
+        return randu_on_sphere(shape, device=device)
     else:
         Exception(f'vtype {vtype} not supported')
 
@@ -458,7 +449,7 @@ class PluginReverseSDE(torch.nn.Module):
     g <- g
     (time is inverted)
     """
-    def __init__(self, base_sde, drift_a, T, vtype='rademacher', debias=False, ssm_intT=False, deviceReverseSDE=device):
+    def __init__(self, base_sde, drift_a, T, vtype='rademacher', debias=False, ssm_intT=False, deviceReverseSDE='cpu'):
         super().__init__()
         self.base_sde = base_sde.to(deviceReverseSDE)
         self.a = drift_a
@@ -539,7 +530,7 @@ class PluginReverseSDE(torch.nn.Module):
         #mu_to_div = self.ga(t_, y)
 
         with torch.no_grad():
-            v = sample_v(x.shape, vtype=self.vtype).to(y)
+            v = sample_v(x.shape, vtype=self.vtype, device=self.deviceReverseSDE).to(y)
 
         mMu = (
             torch.autograd.grad(mu_to_div, y, v, create_graph=self.training)[0] * v
