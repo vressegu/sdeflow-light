@@ -77,7 +77,7 @@ class MLP(nn.Module):
         # forward
         if self.pre is not None:
             h, log_norm = self.pre(input)                   # (batch, learnable_network_input_dim)
-            input = torch.cat([h, log_norm], dim=1)     # concat
+            input = torch.cat([h, log_norm], dim=-1)     # concat
         h = torch.cat([input, t], dim=1)     # concat
         output = self.main(h)                    # forward
         return output.view(*sz)
