@@ -28,7 +28,7 @@ def flat_to_img(x: torch.Tensor, H: int, W: int, order: Literal["C","F"]="C") ->
     x: (B, d) with d = H*W  ->  (B, 1, H, W)
     """
     B, d = x.shape
-    x = x/(2*scale_image)+0.5  # rescale to (0,1) for NN
+    x = x/scale_image  # rescale to (0,1) for NN
     assert d == H*W, f"Expected d={H*W}, got {d}"
     if order == "C":
         x = x.view(B, 1, H, W)
@@ -40,8 +40,7 @@ def flat_to_img(x: torch.Tensor, H: int, W: int, order: Literal["C","F"]="C") ->
         with torch.no_grad():
             for i in range(min(B, 5)):
                 xt = xcopy[i,0,:,:].cpu().squeeze().numpy()
-                # print(xt.shape)
-                plots_vort(xt,vmin=0,vmax=1)
+                plots_vort(xt,vmin=-1,vmax=1)
                 plt.show(block=False)
                 name_fig = "images/NNimage_In_" + str(i) + ".png"
                 plt.savefig(name_fig)
@@ -62,7 +61,7 @@ def img_to_flat(y: torch.Tensor, order: Literal["C","F"]="C") -> torch.Tensor:
         with torch.no_grad():
             for i in range(min(B, 5)):
                 xt = xcopy[i,0,:,:].cpu().squeeze().numpy()
-                plots_vort(xt,vmin=0,vmax=1)
+                plots_vort(xt,vmin=-1,vmax=1)
                 plt.show(block=False)
                 name_fig = "images/NNimage_Out_" + str(i) + ".png"
                 plt.savefig(name_fig)
@@ -70,7 +69,7 @@ def img_to_flat(y: torch.Tensor, order: Literal["C","F"]="C") -> torch.Tensor:
             plt.close()
             plt.close('all')
 
-    y = 2*scale_image*(y-0.5)  # scale from (0,1) for NN
+    y = scale_image*y  # scale from (0,1) for NN
     assert C == 1, f"Expected 1 channel, got {C}"
     if order == "C":
         return y.reshape(B, H*W)
@@ -224,7 +223,7 @@ class VorticityUNet(nn.Module):
                     print("NNimage_Pre or NoPre_Out_" + str(i) + ".png")
                     xt = xcopy[i,0,:,:].cpu().squeeze().numpy()
                     # print(xt.shape)
-                    plots_vort(xt,vmin=0,vmax=1)
+                    plots_vort(xt,vmin=-1,vmax=1)
                     plt.show(block=False)
                     if self.pre is None:
                         name_fig = "images/NNimage_NoPre_Out_" + str(i) + ".png"
