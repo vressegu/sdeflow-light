@@ -404,6 +404,10 @@ if __name__ == '__main__':
 
                     num_samples_init = min(num_samples_init_max,iterationss[0]*batch_sizes[0])
 
+                    directory = "images"
+                    if not os.path.exists(directory):
+                        os.makedirs(directory)
+
                     ## 1. Initialize dataset
                     match datatype:
                         case 'swissroll':

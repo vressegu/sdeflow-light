@@ -311,7 +311,7 @@ class PIV:
 
             time_id = 0
             plots_vort(npdata[time_id,:,:,0])
-            name_fig = "originalimageAtt" + str(time_id) + ".png" 
+            name_fig = "images/originalimageAtt" + str(time_id) + ".png" 
             plt.savefig(name_fig)
             plt.close()
             plt.close('all')
@@ -333,7 +333,7 @@ class PIV:
                     # npdata[i,:,:] = gaussian_filter(npdata[i,:,1], sigma=sigmay)
                     # print('npdata.shape = ', npdata.shape)
                 plots_vort(npdata[time_id,:,:])
-                name_fig = "smoothedimageAtt" + str(time_id) + ".png" 
+                name_fig = "images/smoothedimageAtt" + str(time_id) + ".png" 
                 plt.savefig(name_fig)
                 plt.close()
                 plt.close('all')
@@ -344,7 +344,7 @@ class PIV:
             npdata = npdata[:,ix,:] # subsampling 
             npdata = npdata[:,:,iy] # subsampling 
             plots_vort(npdata[time_id,:,:])
-            name_fig = "subsampleimageAtt" + str(time_id) + ".png" 
+            name_fig = "images/subsampleimageAtt" + str(time_id) + ".png" 
             plt.savefig(name_fig)
             plt.close()
             plt.close('all')

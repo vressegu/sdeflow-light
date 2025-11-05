@@ -43,7 +43,7 @@ def flat_to_img(x: torch.Tensor, H: int, W: int, order: Literal["C","F"]="C") ->
                 # print(xt.shape)
                 plots_vort(xt,vmin=0,vmax=1)
                 plt.show(block=False)
-                name_fig = "NNimage_In_" + str(i) + ".png"
+                name_fig = "images/NNimage_In_" + str(i) + ".png"
                 plt.savefig(name_fig)
                 plt.pause(1)
             plt.close()
@@ -64,7 +64,7 @@ def img_to_flat(y: torch.Tensor, order: Literal["C","F"]="C") -> torch.Tensor:
                 xt = xcopy[i,0,:,:].cpu().squeeze().numpy()
                 plots_vort(xt,vmin=0,vmax=1)
                 plt.show(block=False)
-                name_fig = "NNimage_Out_" + str(i) + ".png"
+                name_fig = "images/NNimage_Out_" + str(i) + ".png"
                 plt.savefig(name_fig)
                 plt.pause(1)
             plt.close()
@@ -227,9 +227,9 @@ class VorticityUNet(nn.Module):
                     plots_vort(xt,vmin=0,vmax=1)
                     plt.show(block=False)
                     if self.pre is None:
-                        name_fig = "NNimage_NoPre_Out_" + str(i) + ".png"
+                        name_fig = "images/NNimage_NoPre_Out_" + str(i) + ".png"
                     else:
-                        name_fig = "NNimage_Pre_Out_" + str(i) + ".png"
+                        name_fig = "images/NNimage_Pre_Out_" + str(i) + ".png"
                     plt.savefig(name_fig)
                     plt.pause(1)
                 plt.close()
