@@ -21,14 +21,17 @@ from quantitative_comparison import compute_mmd
 
 ### 4.1. Define plotting tools
 @torch.no_grad()
-def get_2d_histogram_plot(data, val=3, num=64, vmin = 0, vmax=10, use_grid=False, origin='lower',logscale=True):
+def get_2d_histogram_plot(data, val=3, 
+                           offset_dimplot=0, 
+                          num=64, vmin = 0, vmax=10, 
+                          use_grid=False, origin='lower',logscale=True):
 
     # get data
-    x = data[:, 0]
-    if data.shape[1]<3:
-        y = data[:, 1]
+    x = data[:, offset_dimplot]
+    if (offset_dimplot+data.shape[1])<3:
+        y = data[:, offset_dimplot+1]
     else:
-        y = data[:, 2]
+        y = data[:, offset_dimplot+2]
         val = val/2
 
     xmin = -val
@@ -78,13 +81,15 @@ def get_2d_histogram_plot(data, val=3, num=64, vmin = 0, vmax=10, use_grid=False
     return image
 
 @torch.no_grad()
-def plot_selected_inds(xs, inds, use_xticks=True, use_yticks=True, lmbd = 0.,include_t0=False, backward=True, plt_show=True, val=3):
+def plot_selected_inds(xs, inds, use_xticks=True, use_yticks=True, lmbd = 0.,
+                        offset_dimplot=0, 
+                        include_t0=False, backward=True, plt_show=True, val=3):
     imgs_ = []
     l_inds = len(inds)
     if backward:
         inds = reversed(inds)
     for ind in inds:
-        imgs_ += [get_2d_histogram_plot(xs[ind].to('cpu').numpy(), val)]
+        imgs_ += [get_2d_histogram_plot(xs[ind].to('cpu').numpy(), val,  offset_dimplot=offset_dimplot)]
     img_ = np.concatenate(imgs_, axis=1)
 
     height, width, _ = img_.shape
@@ -122,7 +127,8 @@ def plot_selected_inds(xs, inds, use_xticks=True, use_yticks=True, lmbd = 0.,inc
 
 
 @torch.no_grad()
-def def_pd(xgen, std_norm, std_test_plot, datatype, dimplot=2, \
+def def_pd(xgen, std_norm, std_test_plot, datatype, 
+           dimplot=2, offset_dimplot=0, \
               crop_data_plot=False, plot_crop=3, columns_plot=None):
     
     xgen_plot = std_norm * xgen
@@ -156,20 +162,23 @@ def def_pd(xgen, std_norm, std_test_plot, datatype, dimplot=2, \
                                 columns=columns_plot \
                                 )
     else:
-        pddatagen = pd.DataFrame(xgen_plot[:,0:dimplot].to('cpu'), columns=columns_plot)
+        pddatagen = pd.DataFrame(xgen_plot[:,offset_dimplot:(offset_dimplot+dimplot)].to('cpu'), columns=columns_plot)
 
     return pddatagen
 
 
 @torch.no_grad()
-def pairplots(xgen, xtest, std_norm, std_test_plot, datatype, name_simu, dimplot=2, \
+def pairplots(xgen, xtest, std_norm, std_test_plot, datatype, name_simu, 
+              dimplot=2, offset_dimplot=0, \
               crop_data_plot=False, plot_crop=3, plot_xlim=3, plot_ref_pdf=False, \
               pdf_theor=None, log_scale_pdf=False, columns_plot=None, \
               plt_show=False, dpi=200, height_seaborn=2.5, ssize=10):
 
-    pddatatest = def_pd(xtest, std_norm, std_test_plot, datatype, dimplot=dimplot, \
+    pddatatest = def_pd(xtest, std_norm, std_test_plot, datatype, 
+                        dimplot=dimplot, offset_dimplot=offset_dimplot, \
               crop_data_plot=crop_data_plot, plot_crop=plot_crop, columns_plot=columns_plot)
-    pddatagen = def_pd(xgen, std_norm, std_test_plot, datatype, dimplot=dimplot, \
+    pddatagen = def_pd(xgen, std_norm, std_test_plot, datatype, 
+                       dimplot=dimplot, offset_dimplot=offset_dimplot, \
               crop_data_plot=crop_data_plot, plot_crop=plot_crop, columns_plot=columns_plot)
 
     pddata = pd.concat([pddatatest.assign(samples="test"),
@@ -218,8 +227,8 @@ def pairplots(xgen, xtest, std_norm, std_test_plot, datatype, name_simu, dimplot
             sns.kdeplot(x=x, color=palette["gen."], lw=1.5, **kws)
         
         if plot_ref_pdf:
-            plot_xlim_col = plot_xlim * std_norm[0] * std_test_plot[0]
-            # plot_xlim_col = plot_xlim * std_norm[i] * std_test_plot[i]
+            plot_xlim_col = plot_xlim * std_norm[offset_dimplot+0] * std_test_plot[offset_dimplot+0]
+            # plot_xlim_col = plot_xlim * std_norm[offset_dimplot+i] * std_test_plot[offset_dimplot+i]
             x_min, x_max = -plot_xlim_col, plot_xlim_col
             xx = torch.linspace(x_min, x_max, 2000)
             pdf_theo = pdf_theor.log_prob(xx).exp()
@@ -239,11 +248,11 @@ def pairplots(xgen, xtest, std_norm, std_test_plot, datatype, name_simu, dimplot
 
     # --- Pass 1: lower triangle only ---
     for i, row in enumerate(g.axes):
-        plot_ylim_row = plot_xlim * std_norm[i] * std_test_plot[i]
+        plot_ylim_row = plot_xlim * std_norm[offset_dimplot+i] * std_test_plot[offset_dimplot+i]
         for j, ax in enumerate(row):
             if ax is None:
                 continue
-            plot_xlim_col = plot_xlim * std_norm[j] * std_test_plot[j]
+            plot_xlim_col = plot_xlim * std_norm[offset_dimplot+j] * std_test_plot[offset_dimplot+j]
 
             if j < i:  # lower triangle
                 ax.set_xlim((-plot_xlim_col, plot_xlim_col))
@@ -255,7 +264,7 @@ def pairplots(xgen, xtest, std_norm, std_test_plot, datatype, name_simu, dimplot
         if ax is None:
             continue
         var = g.diag_vars[i]
-        plot_xlim_col = plot_xlim * std_norm[i] * std_test_plot[i]
+        plot_xlim_col = plot_xlim * std_norm[offset_dimplot+i] * std_test_plot[offset_dimplot+i]
 
         x_min, x_max = -plot_xlim_col, plot_xlim_col
         ax.set_xlim((x_min, x_max))
@@ -290,19 +299,21 @@ def pairplots(xgen, xtest, std_norm, std_test_plot, datatype, name_simu, dimplot
 
 
 @torch.no_grad()
-def pairplots_single( xtest, std_norm, std_test_plot, datatype, name_simu, dimplot=2, \
+def pairplots_single( xtest, std_norm, std_test_plot, datatype, name_simu, 
+                     dimplot=2, offset_dimplot=0, \
             crop_data_plot=False, plot_crop=3, plot_xlim=3, plot_ref_pdf=False, \
             pdf_theor=None, log_scale_pdf=False, columns_plot=None, \
             plt_show=False, dpi=200, height_seaborn=2.5, ssize=10):
 
-    pddatatest = def_pd(xtest, std_norm, std_test_plot, datatype, dimplot=dimplot, \
+    pddatatest = def_pd(xtest, std_norm, std_test_plot, datatype, 
+                        dimplot=dimplot, offset_dimplot=offset_dimplot, \
             crop_data_plot=crop_data_plot, plot_crop=plot_crop, columns_plot=columns_plot)
     plot_kws={"s": ssize}
     scatter = sns.pairplot(pddatatest, aspect=1, height=height_seaborn, corner=True,plot_kws=plot_kws)
     for i, row in enumerate(scatter.axes):
-        plot_ylim_row = plot_xlim * std_norm[i]* std_test_plot[i]
+        plot_ylim_row = plot_xlim * std_norm[offset_dimplot+i]* std_test_plot[offset_dimplot+i]
         for j, ax in enumerate(row):
-            plot_xlim_col = plot_xlim * std_norm[j]* std_test_plot[j]
+            plot_xlim_col = plot_xlim * std_norm[offset_dimplot+j]* std_test_plot[offset_dimplot+j]
             if ax is not None:
                 if i == j:  # Diagonal
                     ax.set_xlim((-plot_xlim_col,plot_xlim_col))
@@ -319,7 +330,7 @@ def pairplots_single( xtest, std_norm, std_test_plot, datatype, name_simu, dimpl
     plt.close('all')
 
 
-def preprocessing(xtest, xs_forward, num_steps_forward, name_simu_root, \
+def preprocessing(xtest, xs_forward, num_steps_forward, name_simu_root, offset_dimplot,
                   noising_plots, plt_show, folder_results, val_hist, std_test_plot, device):
     
     xgen_forward = xs_forward[-1,:,:].to(device)
@@ -390,9 +401,10 @@ def preprocessing(xtest, xs_forward, num_steps_forward, name_simu_root, \
     if (noising_plots):
         plot_selected_inds(xs_forward, inds_forward, \
             use_xticks= True, use_yticks=False, lmbd = 0., \
+            offset_dimplot=offset_dimplot,
             include_t0=True, backward=False,
             plt_show=plt_show,
-            val=val_hist* std_test_plot[0]) # plot
+            val=val_hist* std_test_plot[offset_dimplot]) # plot
         time.sleep(0.5)
         if plt_show:
             plt.show(block=False)
@@ -432,7 +444,7 @@ def plots_vort(U,vmin=-2,vmax=2):
     fig.colorbar(pcm, ax=axs)
 
 def postprocessing(inds, i_dims, i_Res, i_num_stepss_backward, i_iterations, i_run, MSGM, sampler, \
-                   xs, xtest, std_norm, std_test_plot, datatype, name_simu, dimplot, \
+                   xs, xtest, std_norm, std_test_plot, datatype, name_simu, dimplot, offset_dimplot, \
                    crop_data_plot, plot_crop, plot_xlim, plot_ref_pdf, \
                    pdf_theor, log_scale_pdf, columns_plot, \
                    scatter_plots, denoising_plots, include_t0_reverse, plt_show, dpi, height_seaborn, ssize, \
@@ -455,16 +467,17 @@ def postprocessing(inds, i_dims, i_Res, i_num_stepss_backward, i_iterations, i_r
     del nan_mask
 
     if (scatter_plots) and (i_run == 0):
-        pairplots(xgen, xtest, std_norm, std_test_plot, datatype, name_simu, dimplot=dimplot, \
+        pairplots(xgen, xtest, std_norm, std_test_plot, datatype, name_simu, dimplot=dimplot, offset_dimplot=offset_dimplot, \
                     crop_data_plot=crop_data_plot, plot_crop=plot_crop, plot_xlim=plot_xlim, plot_ref_pdf=plot_ref_pdf, \
                     pdf_theor=pdf_theor, log_scale_pdf=log_scale_pdf, columns_plot=columns_plot, \
                     plt_show=plt_show, dpi=dpi, height_seaborn=height_seaborn, ssize=ssize)
 
     if (denoising_plots) and (i_run == 0):
         plot_selected_inds(xs, inds, True, False, lmbd, 
+                            offset_dimplot=offset_dimplot,
                             include_t0=include_t0_reverse, 
                             plt_show=plt_show, 
-                            val=val_hist * std_test_plot[0]) # plot
+                            val=val_hist * std_test_plot[offset_dimplot]) # plot
         time.sleep(0.5)
         if plt_show:
             plt.show(block=False)

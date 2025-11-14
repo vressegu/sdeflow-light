@@ -296,6 +296,7 @@ height_seaborn_ref = 1
 height_seaborn = height_seaborn_ref
 ssize = height_seaborn
 dpi=200
+offset_dimplot = 0
 dimplot_max = 8
 val_hist = plot_xlim
 crop_data_plot = False
@@ -425,7 +426,11 @@ if __name__ == '__main__':
                             plot_xlim = 6
                             val_hist = 2*plot_xlim
                             if MSGM and dims[0]>16:
-                                val_hist *= 5
+                                if smoothing < 2:
+                                    val_hist *= 5
+                                else:
+                                    val_hist *= 2
+                            offset_dimplot = dims[0]//2
                         case 'gaussian':
                             # correlation = False
                             # normalized_data = False
@@ -565,13 +570,15 @@ if __name__ == '__main__':
 
                         plt.close('all')
                         dimplot = np.min([dimplot_max,xtest.shape[1]])
-                        columns_plot=range(1,1+dimplot)
+                        columns_plot=range(1+offset_dimplot,1+offset_dimplot+dimplot)
 
-                        pairplots_single(xtest, std_norm, std_test_plot, datatype, sampler.name , dimplot=dimplot, \
+                        pairplots_single(xtest, std_norm, std_test_plot, datatype, sampler.name , 
+                                         dimplot=dimplot, offset_dimplot=offset_dimplot, \
                                     crop_data_plot=crop_data_plot, plot_crop=plot_crop, plot_xlim=plot_xlim, plot_ref_pdf=plot_ref_pdf, \
                                     pdf_theor=pdf_theor, log_scale_pdf=log_scale_pdf, columns_plot=columns_plot, \
                                     plt_show=plt_show, dpi=dpi, height_seaborn=height_seaborn, ssize=ssize)
-                        pairplots_single(sampler.sample(num_samples).to('cpu'), std_norm, std_test_plot, datatype, sampler.name + "_train", dimplot=dimplot, \
+                        pairplots_single(sampler.sample(num_samples).to('cpu'), std_norm, std_test_plot, datatype, sampler.name + "_train", 
+                                         dimplot=dimplot, offset_dimplot=offset_dimplot, \
                                     crop_data_plot=crop_data_plot, plot_crop=plot_crop, plot_xlim=plot_xlim, plot_ref_pdf=plot_ref_pdf, \
                                     pdf_theor=pdf_theor, log_scale_pdf=log_scale_pdf, columns_plot=columns_plot, \
                                     plt_show=plt_show, dpi=dpi, height_seaborn=height_seaborn, ssize=ssize)
@@ -674,7 +681,7 @@ if __name__ == '__main__':
                                                                     lmbd=0., keep_all_samples=True, \
                                                                     include_t0=True, norm_correction = MSGM) # sample
                                 
-                                preprocessing(xtest, xs_forward, num_steps_forward, name_simu_root, \
+                                preprocessing(xtest, xs_forward, num_steps_forward, name_simu_root, offset_dimplot,
                                                 noising_plots, plt_show, folder_results, val_hist, std_test_plot, 'cpu')
 
                             if (not justLoad):
@@ -767,7 +774,7 @@ if __name__ == '__main__':
                                             if (save_results):
                                                 torch.save(xs, name_simu + ".pt")
                                         postprocessing(inds, i_dims, i_Res, i_num_stepss_backward, i_iterations, i_run, MSGM, sampler, \
-                                                        xs, xtest, std_norm, std_test_plot, datatype, name_simu, dimplot, \
+                                                        xs, xtest, std_norm, std_test_plot, datatype, name_simu, dimplot, offset_dimplot, \
                                                         crop_data_plot, plot_crop, plot_xlim, plot_ref_pdf, \
                                                         pdf_theor, log_scale_pdf, columns_plot, \
                                                         scatter_plots, denoising_plots, include_t0_reverse, plt_show, dpi, height_seaborn, ssize, \
