@@ -3,6 +3,43 @@
 
 import torch
 import torch.nn as nn
+import numpy as np
+import random
+
+from own_plotting import plots_vort
+import matplotlib.pyplot as plt
+plot_debug= False
+
+def save_checkpoint(path, gen_sde, optim, iteration):
+    checkpoint = {
+        "iteration": iteration,
+        "model": gen_sde.state_dict(),
+        "optimizer": optim.state_dict(),
+        "torch_rng": torch.get_rng_state().cpu(),
+        "numpy_rng": np.random.get_state(),
+        "python_rng": random.getstate(),
+    }
+    torch.save(checkpoint, path)
+
+def load_checkpoint(path, gen_sde, optim, device):
+    # Add weights_only=False to allow optimizer / RNG / numpy objects
+    checkpoint = torch.load(path, map_location=device, weights_only=False)
+
+    gen_sde.load_state_dict(checkpoint['model'])
+    optim.load_state_dict(checkpoint['optimizer'])
+
+    # --- restore RNG states correctly ---
+    torch_rng = checkpoint["torch_rng"]
+    if not torch_rng.dtype == torch.uint8:
+        torch_rng = torch_rng.to(torch.uint8)
+    torch.set_rng_state(torch_rng.cpu())  # MUST BE CPU
+
+    np.random.set_state(checkpoint['numpy_rng'])
+    random.setstate(checkpoint['python_rng'])
+
+    start_iter = checkpoint['iteration']
+    print(f"Resuming from iteration {start_iter+1}")
+    return start_iter
 
 
 #  Define models
