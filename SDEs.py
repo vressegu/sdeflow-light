@@ -235,9 +235,9 @@ class MSGMsde(SDE):
         self.kde = KernelDensity(kernel=kernel, bandwidth=bandwidth).fit(r_T.clone().detach().cpu())
         self.r_T = self.r_T.to(self.device)  # if you use it later in device ops
         self.dim = y0.shape[1]
-        self.G = self.new_G(self.dim)
-        self.L_G = 0.5*torch.einsum('ijk, jmk -> im', self.G, self.G)   # ito correction tensor
         self.name_SDE = "MSGM"
+        self.new_G(self.dim)
+        self.L_G = 0.5*torch.einsum('ijk, jmk -> im', self.G, self.G)   # ito correction tensor
         if not (norm_sampler=="ecdf"):
             self.name_SDE += norm_sampler + kernel
         if norm_map == "log":
@@ -320,7 +320,8 @@ class MSGMsde(SDE):
 
         del F, L_G, tr_L
 
-        return G
+        self.G = G
+
 
     def f(self, t, y):
         # return 0.5 * div_Sigma(t, y)
