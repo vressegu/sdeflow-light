@@ -657,6 +657,7 @@ if __name__ == '__main__':
                             print("t_eps = " + str(t_eps))     
                             print("iterations = " + str(iterations) )
                             print("iterations_ref = " + str(iterations_ref) )
+                            print("lr = " + str(lr) )
                             print("batch_size = " + str(batch_size) ) 
                             print("ssm_intT = " + str(ssm_intT) )  
                             print("fair_comparison = " + str(fair_comparison) )  
