@@ -221,9 +221,11 @@ class MSGMsde(SDE):
     """
     # This class need to be changed since the forward SDE cannot be solved analitically
     def __init__(self, y0, beta_min=0.1, beta_max=20.0, T=1.0, t_epsilon=0.001, \
+                 denseTensor = True, \
                  norm_sampler = "ecdf", norm_map = None, kernel = 'gaussian', plot_validate = False, \
                  num_steps_forward = 100, device='cpu', estim_cst_norm_dens_r_T = True):
         super().__init__(beta_min=beta_min, beta_max=beta_max, T=T, t_epsilon=t_epsilon, num_steps_forward=num_steps_forward, device=device)
+        self.denseTensor = denseTensor
         self.norm_correction = True
         self.r_T = torch.linalg.norm(y0, dim= 1)
         self.norm_map = norm_map
@@ -236,7 +238,11 @@ class MSGMsde(SDE):
         self.r_T = self.r_T.to(self.device)  # if you use it later in device ops
         self.dim = y0.shape[1]
         self.name_SDE = "MSGM"
-        self.new_G(self.dim)
+        if denseTensor:
+            self.new_G(self.dim)
+        else:
+            self.name_SDE += "_sparseTens"
+            self.sparse_G_full(self.dim) 
         self.L_G = 0.5*torch.einsum('ijk, jmk -> im', self.G, self.G)   # ito correction tensor
         if not (norm_sampler=="ecdf"):
             self.name_SDE += norm_sampler + kernel
@@ -322,6 +328,39 @@ class MSGMsde(SDE):
 
         self.G = G
 
+    def sparse_G_full(self, n) : 
+        # warning no rank condition here 
+        G = torch.zeros(n,n,n,device=self.device)
+        for k in range(n): 
+            F = torch.zeros(n,n,device=self.device)
+            F[k,(k+1)%n] = 1
+            F = 0.5 * (F - F.T)
+            G[:,:,k] = F
+        # print(G)
+        # G = G.to_sparse()
+        # print(G)
+        
+        # # normalisation to control how fast the dynamic is
+        L_G = 0.5*torch.einsum('ijk, jmk -> im', G, G)   # ito correction tensor
+        tr_L = torch.trace(L_G)
+        G = torch.sqrt( - 0.5 * n / tr_L ) * G
+        
+        # check
+        validate = False
+        # validate = True
+        if validate:
+            print(tr_L)
+            for l in range(n): 
+                print("G[:,l,:] of rank d-1 ?")
+                print(G[:,l,:])
+            for k in range(n): 
+                print("G[:,:,k] skew sym ?")
+                print(G[:,:,k])
+
+        del F, L_G, tr_L
+
+        self.G = G
+    
 
     def f(self, t, y):
         # return 0.5 * div_Sigma(t, y)

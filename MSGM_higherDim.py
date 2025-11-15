@@ -57,6 +57,7 @@ norm_map = "log"
 # default values from git repo
 beta_min_SGM = 0.1 # default
 beta_max_SGM = 20 # default
+denseTensor = True
 
 NNarchi = "MLP"
 num_samples_init_max = int(1e5)
@@ -638,6 +639,7 @@ if __name__ == '__main__':
                                                                 device=device, estim_cst_norm_dens_r_T = False, \
                                                                 norm_sampler = norm_sampler,
                                                                 norm_map = norm_map, \
+                                                                denseTensor=denseTensor, \
                                                                 plot_validate = plot_validate)
                                     del x_init
                                 else:
