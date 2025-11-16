@@ -303,7 +303,13 @@ class MSGMsde(SDE):
     def to(self, device):
         new = super().to(device)
         new.r_T = self.r_T.to(device)
-        new.G = self.G.to(device)
+        if self.sparseTensor:
+            new.G_I = self.G_I.to(device)
+            new.G_J = self.G_J.to(device)
+            new.G_K = self.G_K.to(device)
+            new.G_V = self.G_V.to(device)
+        else:
+            new.G = self.G.to(device)
         return new
 
     def new_G(self, n) : 
@@ -376,13 +382,27 @@ class MSGMsde(SDE):
         indices = torch.tensor([i_list, j_list, k_list])   # shape (3, 2n)
         values  = torch.tensor(v_list, dtype=torch.float32)
 
-        self.G = torch.sparse_coo_tensor(
-            indices, values, size=(n, n, n)
-        ).coalesce()
+        # keep a CPU sparse object for debugging/IO if you want:
+        try:
+            self.G_sparse_cpu = torch.sparse_coo_tensor(indices, values, size=(n, n, n)).coalesce()
+        except Exception:
+            # if sparse COO creation on CPU fails for some reason, skip storing CPU sparse
+            self.G_sparse_cpu = None
+
+        # move raw arrays to the active device (MPS)
+        self.G_I = indices[0].to(self.device)   # (nnz,)
+        self.G_J = indices[1].to(self.device)
+        self.G_K = indices[2].to(self.device)
+        self.G_V = values.to(self.device)       # (nnz,)
+
+        # Optionally delete CPU copies to save RAM
+        del indices, values
 
     def IJK(self):
         if self.sparseTensor:
-            I, J, K = self.G.indices()
+            I = self.G_I
+            J = self.G_J
+            K = self.G_K
             return I, J, K
         else:
             return None, None, None
@@ -406,7 +426,7 @@ class MSGMsde(SDE):
         if sparse:
             # extract sparse G indices
             I, J, K = self.IJK()
-            V = self.G.values()
+            V = self.G_V
             yJ = (beta_t**0.5) * y[:, J]              # (B,2n)
             return V.unsqueeze(0) * yJ                # (B,2n)
         else:
