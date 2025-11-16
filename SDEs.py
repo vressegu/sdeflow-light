@@ -338,7 +338,7 @@ class MSGMsde(SDE):
             F = torch.zeros(n,n,device=self.device)
             F[k,(k+1)%n] = 1
             F = 0.5 * (F - F.T)
-            F *= torch.sqrt(torch.tensor(n, dtype=torch.float32))
+            F *= torch.sqrt(torch.tensor(2, dtype=torch.float32))
             G[:,:,k] = F
         # print(G)
         # G = G.to_sparse()
@@ -370,7 +370,7 @@ class MSGMsde(SDE):
             i_list.extend([k, (k+1)%n])
             j_list.extend([(k+1)%n, k])
             k_list.extend([k, k])
-            coef = 0.5 * torch.sqrt(torch.tensor(n, dtype=torch.float32))
+            coef = 0.5 * torch.sqrt(torch.tensor(2, dtype=torch.float32))
             v_list.extend([coef, -coef])
 
         indices = torch.tensor([i_list, j_list, k_list])   # shape (3, 2n)
