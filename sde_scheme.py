@@ -39,13 +39,6 @@ def EMstep(mu, delta, sigma, dW, sparse=False, I=None, K=None):
 
     return mu * delta + dx
 
-
-def IJK(sde):
-    if sde.sparseTensor:
-        I, J, K = sde.G_sparse.indices()
-        return I, J, K
-    return None, None, None
-
 ### 2.0 Define Euler Maruyama method with a step size $\Delta t$
 @torch.no_grad()
 def euler_maruyama_sampler(sde, x_0, num_steps=1000, lmbd=0., 
@@ -65,7 +58,7 @@ def euler_maruyama_sampler(sde, x_0, num_steps=1000, lmbd=0.,
     delta = T_ / num_steps
     ts = torch.linspace(0, 1, num_steps + 1) * T_
     sparseG = sde.base_sde.sparseTensor
-    I, J, K = IJK(sde.base_sde)
+    I, J, K = sde.base_sde.IJK()
 
     # sample
     x_t = x_0.detach().clone().to(device)
@@ -123,7 +116,7 @@ def heun_sampler(sde, x_0, num_steps=1000, lmbd=0.,
     delta = T_ / num_steps
     ts = torch.linspace(0, 1, num_steps + 1) * T_
     sparseG = sde.base_sde.sparseTensor
-    I, J, K = IJK(sde.base_sde)
+    I, J, K = sde.base_sde.IJK()
 
     # Sampling
     x_t = x_0.detach().clone().to(device)
@@ -224,7 +217,7 @@ def rk4_stratonovich_sampler(sde, x_0, num_steps=1000, lmbd=0.,
     
     sqrt_delta = delta**0.5
     sparseG = sde.base_sde.sparseTensor
-    I, J, K = IJK(sde.base_sde)
+    I, J, K = sde.base_sde.IJK()
 
     with torch.no_grad():
         for i in range(num_steps):

@@ -71,6 +71,9 @@ class SDE(torch.nn.Module):
     def beta(self, t):
         return self.beta_min + (self.beta_max-self.beta_min)*t
 
+    def IJK(self):
+        return None, None, None
+
     @torch.no_grad()
     def sample_scheme(self, t, y0, keep_all_samples, return_noise=False):
         """
@@ -244,7 +247,7 @@ class MSGMsde(SDE):
             self.L_G = 0.5*torch.einsum('ijk, jmk -> im', self.G, self.G)   # ito correction tensor
         else:
             self.name_SDE += "_sparseTens"
-            self.sparse_G_full(self.dim) # FOR DEBUG ONLY
+            # self.sparse_G_full(self.dim) # FOR DEBUG ONLY
             self.sparse_G(self.dim)
             self.L_G = 0.5*torch.eye(self.dim, device=self.device)   # ito correction tensor
         if not (norm_sampler=="ecdf"):
@@ -266,9 +269,10 @@ class MSGMsde(SDE):
 
         if plot_validate :   
             beta_G = - 2*torch.trace(self.L_G)/self.dim            
-            print("G")
-            print(self.G[:,:,0])
-            print(self.G[:,:,1])
+            if denseTensor:
+                print("G")
+                print(self.G[:,:,0])
+                print(self.G[:,:,1])
             print("L_G")
             print(self.L_G)
             print("beta_G = " + str(beta_G))
@@ -345,7 +349,6 @@ class MSGMsde(SDE):
         # print(G)
         # check
         validate = False
-        # validate = True
         if validate:
             L_G = 0.5*torch.einsum('ijk, jmk -> im', G, G)   # ito correction tensor
             tr_L = torch.trace(L_G)
@@ -376,9 +379,16 @@ class MSGMsde(SDE):
         indices = torch.tensor([i_list, j_list, k_list])   # shape (3, 2n)
         values  = torch.tensor(v_list, dtype=torch.float32)
 
-        self.G_sparse = torch.sparse_coo_tensor(
+        self.G = torch.sparse_coo_tensor(
             indices, values, size=(n, n, n)
         ).coalesce()
+
+    def IJK(self):
+        if self.sparseTensor:
+            I, J, K = self.G.indices()
+            return I, J, K
+        else:
+            return None, None, None
 
     def f(self, t, y):
         # return 0.5 * div_Sigma(t, y)
@@ -396,8 +406,8 @@ class MSGMsde(SDE):
         beta_t = self.beta(t)
         if sparse:
             # extract sparse G indices
-            I, J, K = self.G_sparse.indices()
-            V = self.G_sparse.values()
+            I, J, K = self.IJK()
+            V = self.G.values()
             yJ = (beta_t**0.5) * y[:, J]              # (B,2n)
             return V.unsqueeze(0) * yJ                # (B,2n)
         else:
@@ -537,7 +547,7 @@ class PluginReverseSDE(torch.nn.Module):
         if self.base_sde.sparseTensor:
             # --- Sparse case --------------------------------------------------
             # extract sparse G indices
-            I, J, K = self.base_sde.G_sparse.indices()
+            I, J, K = self.base_sde.IJK()
             a = self.a(y, s.squeeze())                     # (B,n)
             aK = a[:, K]                                   # (B,2n)
             prod = g * aK                # (B,2n)
