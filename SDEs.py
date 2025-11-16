@@ -188,7 +188,6 @@ class SGMsde(SDE):
 
     def div_Sigma(self, t, y):
         return torch.zeros_like(y)
-        # return L_G * y
 
     def g(self, t, y):
         beta_t = self.beta(t)
@@ -344,9 +343,7 @@ class MSGMsde(SDE):
             F = 0.5 * (F - F.T)
             F *= torch.sqrt(torch.tensor(2, dtype=torch.float32))
             G[:,:,k] = F
-        # print(G)
-        # G = G.to_sparse()
-        # print(G)
+        
         # check
         validate = False
         if validate:
@@ -393,14 +390,16 @@ class MSGMsde(SDE):
     def f(self, t, y):
         # return 0.5 * div_Sigma(t, y)
         beta_t = self.beta(t)
-        return torch.einsum('ij, bj -> bi', self.L_G, (beta_t) * y)
+        if self.sparseTensor:
+            return 0.5*(beta_t) * y
+        else:
+            return torch.einsum('ij, bj -> bi', self.L_G, (beta_t) * y)
 
     def f_strato(self, t, y):
         return torch.zeros_like(y)
 
     def div_Sigma(self, t, y):
-        beta_t = self.beta(t)
-        return torch.einsum('ij, bj -> bi', 2*self.L_G, (beta_t) * y)
+        return 2*self.f(t,y)
 
     def g(self, t, y, sparse = False):
         beta_t = self.beta(t)
