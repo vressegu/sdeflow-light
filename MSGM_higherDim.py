@@ -25,7 +25,7 @@ from netCDF4 import Dataset
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 import seaborn as sns
 
-from NN import MLP, evaluate
+from NN import MLP, evaluate, save_checkpoint, load_checkpoint
 from NNUnet import VorticityUNet
 from sde_scheme import euler_maruyama_sampler,heun_sampler,rk4_stratonovich_sampler
 from own_plotting import plot_selected_inds, def_pd, pairplots, pairplots_single, \
@@ -310,6 +310,7 @@ else:
     force_cpu = True
 
 # Load results 
+loadCheckpoint = False
 justLoad = False
 justLoadmmmd = False
 if not first_run:
@@ -658,6 +659,7 @@ if __name__ == '__main__':
                             print("t_eps = " + str(t_eps))     
                             print("iterations = " + str(iterations) )
                             print("iterations_ref = " + str(iterations_ref) )
+                            print("lr = " + str(lr) )
                             print("batch_size = " + str(batch_size) ) 
                             print("ssm_intT = " + str(ssm_intT) )  
                             print("fair_comparison = " + str(fair_comparison) )  
@@ -690,35 +692,60 @@ if __name__ == '__main__':
                                 # init optimizer
                                 optim = torch.optim.Adam(gen_sde.parameters(), lr=lr)
 
+                                checkpoint_path = folder_results + "/" + name_simu_root + "_checkpoint.pt"
+                                start_iter = 0
+                                if os.path.exists(checkpoint_path) and loadCheckpoint:
+                                    start_iter = load_checkpoint(checkpoint_path, gen_sde, optim, device)
+                                    start_iter += 1  # next iteration
+
                                 # train
                                 start_time = time.time()
-                                for i in range(iterations):
-                                    optim.zero_grad() # init optimizer
-                                    with torch.no_grad():
-                                        x = sampler.sample(batch_size).to(device) # sample data
-                                    loss = gen_sde.ssm(x).mean() # forward and compute loss
-                                    loss.backward() # backward
-                                    optim.step() # update
-
-                                    # print
-                                    if (i == 0) or ((i+1) % print_every == 0):
-                                        # elbo
-                                        elbo, elbo_std = evaluate(gen_sde, x)
+                                try:
+                                    for i in range(start_iter, iterations):
+                                        optim.zero_grad() # init optimizer
+                                        with torch.no_grad():
+                                            x = sampler.sample(batch_size).to(device) # sample data
+                                        loss = gen_sde.ssm(x).mean() # forward and compute loss
+                                        loss.backward() # backward
+                                        optim.step() # update
 
                                         # print
-                                        elapsed = time.time() - start_time
-                                        print('| iter {:6d} | {:5.2f} ms/step | loss {:8.3f} | elbo {:8.3f} | elbo std {:8.3f} '
-                                            .format(i+1, elapsed*1000/print_every, loss.item(), elbo.item(), elbo_std.item()))
-                                        start_time = time.time()
+                                        if (i == 0) or ((i+1) % print_every == 0):
+                                            # elbo
+                                            elbo, elbo_std = evaluate(gen_sde, x)
 
-                                        del elbo, elbo_std
-                                        gc.collect()
-                                    
-                                    del x
-                                    # torch.mps.empty_cache()  # does not do much on MPS, but still good practice
-                                    # gc.collect()
-                                del loss, optim
-                                gc.collect()
+                                            # print
+                                            elapsed = time.time() - start_time
+                                            print('| iter {:6d} | {:5.2f} ms/step | loss {:8.3f} | elbo {:8.3f} | elbo std {:8.3f} '
+                                                .format(i+1, elapsed*1000/print_every, loss.item(), elbo.item(), elbo_std.item()))
+                                            
+                                            # checkpoint
+                                            save_checkpoint(checkpoint_path, gen_sde, optim, i)
+
+                                            start_time = time.time()
+                                            del elbo, elbo_std
+                                            gc.collect()
+                                        
+                                        del x
+                                        # torch.mps.empty_cache()  # does not do much on MPS, but still good practice
+                                        # gc.collect()
+
+                                    checkpoint_path_final = folder_results + "/" + name_simu_root + "_checkpoint_final.pt"
+                                    save_checkpoint(checkpoint_path_final, gen_sde, optim, iterations-1)
+
+                                    del loss, optim
+                                    gc.collect()
+
+                                except Exception as e:
+                                    print("Training interrupted:", e)
+                                    print("Checkpoint kept for safety.")
+                                    raise e
+
+                                else:
+                                    # executes ONLY if the loop fully completes
+                                    if os.path.exists(checkpoint_path):
+                                        os.remove(checkpoint_path)
+                                    print("Training finished successfully, checkpoint removed.")
 
 
                             ## 4. Visualize
