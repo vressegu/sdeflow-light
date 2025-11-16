@@ -407,15 +407,14 @@ class MSGMsde(SDE):
         else:
             return None, None, None
 
-    def f(self, t, y):
-        # return 0.5 * div_Sigma(t, y)
+    def f(self, t, y): # ito drift
         beta_t = self.beta(t)
         if self.sparseTensor:
             return 0.5*(beta_t) * y
         else:
             return torch.einsum('ij, bj -> bi', self.L_G, (beta_t) * y)
 
-    def f_strato(self, t, y):
+    def f_strato(self, t, y):  # stratonovich drift
         return torch.zeros_like(y)
 
     def div_Sigma(self, t, y):
