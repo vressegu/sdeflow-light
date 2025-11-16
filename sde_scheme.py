@@ -16,12 +16,35 @@ import sys
 import os
 
 @torch.no_grad()
-def EMstep(mu, delta , sigma , dW):
-    if len(sigma.shape)>2 :
-        dx = torch.einsum('bij, bj -> bi', sigma, dW )
-    else :
-        dx = sigma * dW
+def EMstep(mu, delta, sigma, dW, sparse=False, I=None, K=None):
+    """
+    sigma: 
+       dense case  -> (B,n,n)
+       sparse case -> (B,2n)  (same indexing as G_sparse.values())
+    I,K: sparse indices
+    """
+
+    if sparse:
+        # sigma[b,e] multiplies dW[b, K[e]]
+        prod = sigma * dW[:, K]   # (B, 2n)
+
+        dx = torch.zeros_like(dW)     # (B,n)
+        dx.scatter_add_(1, I.unsqueeze(0).expand(dW.size(0), -1), prod)
+
+    else:
+        if sigma.dim() > 2:
+            dx = torch.einsum('bij, bj -> bi', sigma, dW)
+        else:
+            dx = sigma * dW
+
     return mu * delta + dx
+
+
+def IJK(sde):
+    if sde.sparseTensor:
+        I, J, K = sde.G_sparse.indices()
+        return I, J, K
+    return None, None, None
 
 ### 2.0 Define Euler Maruyama method with a step size $\Delta t$
 @torch.no_grad()
@@ -41,6 +64,8 @@ def euler_maruyama_sampler(sde, x_0, num_steps=1000, lmbd=0.,
         T_ = T_.item()
     delta = T_ / num_steps
     ts = torch.linspace(0, 1, num_steps + 1) * T_
+    sparseG = sde.base_sde.sparseTensor
+    I, J, K = IJK(sde.base_sde)
 
     # sample
     x_t = x_0.detach().clone().to(device)
@@ -62,8 +87,8 @@ def euler_maruyama_sampler(sde, x_0, num_steps=1000, lmbd=0.,
         for i in range(num_steps):
             t.fill_(ts[i].item())
             mu = sde.mu(t, x_t, lmbd=lmbd)
-            sigma = sde.sigma(t, x_t, lmbd=lmbd)
-            x_t = x_t + EMstep(mu, delta , sigma , delta ** 0.5 * torch.randn_like(x_t)) # one step update of Euler Maruyama method with a step size delta
+            sigma = sde.sigma(t, x_t, lmbd=lmbd, sparse=sparseG)
+            x_t = x_t + EMstep(mu, delta , sigma , delta ** 0.5 * torch.randn_like(x_t), sparse=sparseG, I=I, K=K)
             if norm_correction:
                 x_t = x_t * (norm_x_0/torch.norm(x_t,dim=1))[:,None]
             if keep_all_samples:
@@ -97,6 +122,8 @@ def heun_sampler(sde, x_0, num_steps=1000, lmbd=0.,
         T_ = T_.item()
     delta = T_ / num_steps
     ts = torch.linspace(0, 1, num_steps + 1) * T_
+    sparseG = sde.base_sde.sparseTensor
+    I, J, K = IJK(sde.base_sde)
 
     # Sampling
     x_t = x_0.detach().clone().to(device)
@@ -120,20 +147,20 @@ def heun_sampler(sde, x_0, num_steps=1000, lmbd=0.,
 
             # Compute mu and sigma at the start of the interval
             mu_1 = sde.mu_Strato(t, x_t, lmbd=lmbd)
-            sigma_1 = sde.sigma(t, x_t, lmbd=lmbd)
+            sigma_1 = sde.sigma(t, x_t, lmbd=lmbd, sparse=sparseG)
             dW = delta**0.5 * torch.randn_like(x_t)  # Wiener increment
 
             # Predictor step (Euler)
-            x_predict = x_t + EMstep(mu_1, delta , sigma_1 , dW)
+            x_predict = x_t + EMstep(mu_1, delta , sigma_1 , dW, sparse=sparseG, I=I, K=K)
             # x_predict = x_t + delta * mu_1 + sigma_1 * dW
 
             # Corrector step
             mu_2 = sde.mu_Strato(t + delta, x_predict, lmbd=lmbd)
-            sigma_2 = sde.sigma(t + delta, x_predict, lmbd=lmbd)
+            sigma_2 = sde.sigma(t + delta, x_predict, lmbd=lmbd, sparse=sparseG)
 
             # Average drift and diffusion terms
             # x_t = x_t + (delta / 2) * (mu_1 + mu_2) + (sigma_1 + sigma_2) * (dW / 2)
-            x_t = x_t + EMstep(mu_1 + mu_2, delta / 2 , sigma_1 + sigma_2 , dW / 2)
+            x_t = x_t + EMstep(mu_1 + mu_2, delta / 2 , sigma_1 + sigma_2 , dW / 2, sparse=sparseG, I=I, K=K)
             if norm_correction:
                 x_t = x_t * (norm_x_0/torch.norm(x_t,dim=1))[:,None]
 
@@ -196,6 +223,8 @@ def rk4_stratonovich_sampler(sde, x_0, num_steps=1000, lmbd=0.,
         xs = torch.zeros((x_0.shape[0],x_0.shape[1]),device='cpu')
     
     sqrt_delta = delta**0.5
+    sparseG = sde.base_sde.sparseTensor
+    I, J, K = IJK(sde.base_sde)
 
     with torch.no_grad():
         for i in range(num_steps):
@@ -206,27 +235,26 @@ def rk4_stratonovich_sampler(sde, x_0, num_steps=1000, lmbd=0.,
             
             # Stage 1
             mu_Strato_1 = sde.mu_Strato(t, x_t, lmbd=lmbd)
-            sigma_1 = sde.sigma(t, x_t, lmbd=lmbd)
-            K1 = EMstep(mu_Strato_1, delta, sigma_1, dW)
-            # K1 = delta * mu_Strato_1 + sigma_1 * dW
+            sigma_1 = sde.sigma(t, x_t, lmbd=lmbd, sparse=sparseG)
+            K1 = EMstep(mu_Strato_1, delta, sigma_1, dW, sparse=sparseG, I=I, K=K)
             
             # Stage 2
             x_mid = x_t + K1 / 2
             mu_Strato_2 = sde.mu_Strato(t + delta / 2, x_mid, lmbd=lmbd)
-            sigma_2 = sde.sigma(t + delta / 2, x_mid, lmbd=lmbd)
-            K2 = EMstep(mu_Strato_2 , delta, sigma_2 , dW)
+            sigma_2 = sde.sigma(t + delta / 2, x_mid, lmbd=lmbd, sparse=sparseG)
+            K2 = EMstep(mu_Strato_2 , delta, sigma_2 , dW, sparse=sparseG, I=I, K=K)
             
             # Stage 3
             x_mid = x_t + K2 / 2
             mu_Strato_3 = sde.mu_Strato(t + delta / 2, x_mid, lmbd=lmbd)
-            sigma_3 = sde.sigma(t + delta / 2, x_mid, lmbd=lmbd)
-            K3 = EMstep(mu_Strato_3 ,delta,  sigma_3 , dW)
+            sigma_3 = sde.sigma(t + delta / 2, x_mid, lmbd=lmbd , sparse=sparseG)
+            K3 = EMstep(mu_Strato_3 ,delta,  sigma_3 , dW, sparse=sparseG, I=I, K=K)
             
             # Stage 4
             x_end = x_t + K3
             mu_Strato_4 = sde.mu_Strato(t + delta, x_end, lmbd=lmbd)
-            sigma_4 = sde.sigma(t + delta, x_end, lmbd=lmbd)
-            K4 = EMstep(mu_Strato_4, delta , sigma_4 , dW)
+            sigma_4 = sde.sigma(t + delta, x_end, lmbd=lmbd , sparse=sparseG)
+            K4 = EMstep(mu_Strato_4, delta , sigma_4 , dW, sparse=sparseG, I=I, K=K)
             
             # Combine stages (weighted sum)
             x_t = x_t + (K1 + 2 * K2 + 2 * K3 + K4) / 6

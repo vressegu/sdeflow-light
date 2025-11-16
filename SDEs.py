@@ -43,8 +43,8 @@ class forward_SDE(torch.nn.Module):
         return self.base_sde.f_strato(s, y) 
     
     # Diffusion
-    def sigma(self, s, y, lmbd=0.):
-        return self.base_sde.g(s, y)
+    def sigma(self, s, y, lmbd=0., sparse = False):
+        return self.base_sde.g(s, y, sparse = sparse)
 
 class SDE(torch.nn.Module):
     """
@@ -163,6 +163,7 @@ class SGMsde(SDE):
     def __init__(self, beta_min=0.1, beta_max=20.0, T=1.0, t_epsilon=0.001, num_steps_forward = 100, device='cpu'):
         super().__init__(beta_min=beta_min, beta_max=beta_max, T=T, t_epsilon=t_epsilon, num_steps_forward = num_steps_forward, device=device)
         self.name_SDE = "SGM"
+        self.sparseTensor = False
 
     @property
     def logvar_mean_T(self):
@@ -225,7 +226,7 @@ class MSGMsde(SDE):
                  norm_sampler = "ecdf", norm_map = None, kernel = 'gaussian', plot_validate = False, \
                  num_steps_forward = 100, device='cpu', estim_cst_norm_dens_r_T = True):
         super().__init__(beta_min=beta_min, beta_max=beta_max, T=T, t_epsilon=t_epsilon, num_steps_forward=num_steps_forward, device=device)
-        self.denseTensor = denseTensor
+        self.sparseTensor = not denseTensor
         self.norm_correction = True
         self.r_T = torch.linalg.norm(y0, dim= 1)
         self.norm_map = norm_map
@@ -242,7 +243,8 @@ class MSGMsde(SDE):
             self.new_G(self.dim)
         else:
             self.name_SDE += "_sparseTens"
-            self.sparse_G_full(self.dim) 
+            self.sparse_G_full(self.dim) # FOR DEBUG ONLY
+            self.sparse_G(self.dim)
         self.L_G = 0.5*torch.einsum('ijk, jmk -> im', self.G, self.G)   # ito correction tensor
         if not (norm_sampler=="ecdf"):
             self.name_SDE += norm_sampler + kernel
@@ -335,32 +337,47 @@ class MSGMsde(SDE):
             F = torch.zeros(n,n,device=self.device)
             F[k,(k+1)%n] = 1
             F = 0.5 * (F - F.T)
+            F *= torch.sqrt(torch.tensor(n, dtype=torch.float32))
             G[:,:,k] = F
         # print(G)
         # G = G.to_sparse()
         # print(G)
-        
-        # # normalisation to control how fast the dynamic is
-        L_G = 0.5*torch.einsum('ijk, jmk -> im', G, G)   # ito correction tensor
-        tr_L = torch.trace(L_G)
-        G = torch.sqrt( - 0.5 * n / tr_L ) * G
-        
         # check
         validate = False
         # validate = True
         if validate:
-            print(tr_L)
+            L_G = 0.5*torch.einsum('ijk, jmk -> im', G, G)   # ito correction tensor
+            tr_L = torch.trace(L_G)
+            print("tr_L = " + str(tr_L))
+            print("normalisation = " + str(torch.sqrt( - 0.5 * n / tr_L ).item()))
             for l in range(n): 
                 print("G[:,l,:] of rank d-1 ?")
                 print(G[:,l,:])
             for k in range(n): 
                 print("G[:,:,k] skew sym ?")
                 print(G[:,:,k])
-
-        del F, L_G, tr_L
-
+        del F
         self.G = G
-    
+
+    def sparse_G(self, n) : 
+        i_list = []
+        j_list = []
+        k_list = []
+        v_list = []
+
+        for k in range(n):
+            i_list.extend([k, (k+1)%n])
+            j_list.extend([(k+1)%n, k])
+            k_list.extend([k, k])
+            coef = 0.5 * torch.sqrt(torch.tensor(n, dtype=torch.float32))
+            v_list.extend([coef, -coef])
+
+        indices = torch.tensor([i_list, j_list, k_list])   # shape (3, 2n)
+        values  = torch.tensor(v_list, dtype=torch.float32)
+
+        self.G_sparse = torch.sparse_coo_tensor(
+            indices, values, size=(n, n, n)
+        ).coalesce()
 
     def f(self, t, y):
         # return 0.5 * div_Sigma(t, y)
@@ -374,9 +391,16 @@ class MSGMsde(SDE):
         beta_t = self.beta(t)
         return torch.einsum('ij, bj -> bi', 2*self.L_G, (beta_t) * y)
 
-    def g(self, t, y):
+    def g(self, t, y, sparse = False):
         beta_t = self.beta(t)
-        return torch.einsum('ijk, bj -> bik', self.G, (beta_t**0.5) * y  )         # diffusion part 
+        if sparse:
+            # extract sparse G indices
+            I, J, K = self.G_sparse.indices()
+            V = self.G_sparse.values()
+            yJ = (beta_t**0.5) * y[:, J]              # (B,2n)
+            return V.unsqueeze(0) * yJ                # (B,2n)
+        else:
+            return torch.einsum('ijk, bj -> bik', self.G, (beta_t**0.5) * y  )         # diffusion part 
     
     def sample(self, t, y0, return_noise=False):
         return self.sample_scheme(t, y0, return_noise=return_noise,
@@ -508,10 +532,22 @@ class PluginReverseSDE(torch.nn.Module):
         return (1. - 0.5 * lmbd) * self.ga(s, y) - self.base_sde.f(s, y) + (1. - lmbd) * self.base_sde.div_Sigma(s, y)
     
     def ga(self, s, y):
-        if len(self.base_sde.g(s, y).shape)>2 :
-            return torch.einsum('bij, bj -> bi', self.base_sde.g(s, y), self.a(y, s.squeeze()))
-        else :
-            return self.base_sde.g(s, y) * self.a(y, s.squeeze())
+        g = self.base_sde.g(s, y, self.base_sde.sparseTensor)
+        if self.base_sde.sparseTensor:
+            # --- Sparse case --------------------------------------------------
+            # extract sparse G indices
+            I, J, K = self.base_sde.G_sparse.indices()
+            a = self.a(y, s.squeeze())                     # (B,n)
+            aK = a[:, K]                                   # (B,2n)
+            prod = g * aK                # (B,2n)
+            dx = torch.zeros(y.shape[0], y.shape[1], device=y.device)
+            dx.scatter_add_(1, I.unsqueeze(0).expand(y.shape[0], -1), prod)
+        else:
+            if g.dim()>2 :
+                dx = torch.einsum('bij, bj -> bi', self.base_sde.g(s, y), self.a(y, s.squeeze()))
+            else :
+                dx = g * self.a(y, s.squeeze())
+        return dx
 
 
     # Stratonovich Drift
@@ -519,8 +555,8 @@ class PluginReverseSDE(torch.nn.Module):
         return self.mu(t, y, lmbd) - 0.5 * (1. - lmbd) * self.base_sde.div_Sigma(self.T-t, y)
 
     # Diffusion
-    def sigma(self, t, y, lmbd=0.):
-        return (1. - lmbd) ** 0.5 * self.base_sde.g(self.T-t, y)
+    def sigma(self, t, y, lmbd=0., sparse=False):
+        return (1. - lmbd) ** 0.5 * self.base_sde.g(self.T-t, y, sparse)
 
     # # WARNING : DSM is not relevant in MSGM
     # # SSM needs to be defined instead
