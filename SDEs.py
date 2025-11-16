@@ -61,6 +61,7 @@ class SDE(torch.nn.Module):
         # self.forward_SDE = forward_SDE(self, self.T).to(device)
         self.num_steps_forward = num_steps_forward
         self.norm_correction = False
+        self.sparseTensor = False
 
     def to(self, device):
         new = super().to(device)
@@ -166,7 +167,6 @@ class SGMsde(SDE):
     def __init__(self, beta_min=0.1, beta_max=20.0, T=1.0, t_epsilon=0.001, num_steps_forward = 100, device='cpu'):
         super().__init__(beta_min=beta_min, beta_max=beta_max, T=T, t_epsilon=t_epsilon, num_steps_forward = num_steps_forward, device=device)
         self.name_SDE = "SGM"
-        self.sparseTensor = False
 
     @property
     def logvar_mean_T(self):
@@ -189,7 +189,7 @@ class SGMsde(SDE):
     def div_Sigma(self, t, y):
         return torch.zeros_like(y)
 
-    def g(self, t, y):
+    def g(self, t, y, sparse = False):
         beta_t = self.beta(t)
         return torch.ones_like(y) * beta_t**0.5
 
