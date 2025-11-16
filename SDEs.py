@@ -241,11 +241,12 @@ class MSGMsde(SDE):
         self.name_SDE = "MSGM"
         if denseTensor:
             self.new_G(self.dim)
+            self.L_G = 0.5*torch.einsum('ijk, jmk -> im', self.G, self.G)   # ito correction tensor
         else:
             self.name_SDE += "_sparseTens"
             self.sparse_G_full(self.dim) # FOR DEBUG ONLY
             self.sparse_G(self.dim)
-        self.L_G = 0.5*torch.einsum('ijk, jmk -> im', self.G, self.G)   # ito correction tensor
+            self.L_G = 0.5*torch.eye(self.dim, device=self.device)   # ito correction tensor
         if not (norm_sampler=="ecdf"):
             self.name_SDE += norm_sampler + kernel
         if norm_map == "log":
