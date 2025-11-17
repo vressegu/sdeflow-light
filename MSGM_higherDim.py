@@ -172,18 +172,40 @@ match datatype:
     case 'swissroll': # Swiss roll
         dims = [2]
     case 'PIV': # vorticity and divergence from 2D PIV
-        dims = [2,4,8,16,32]
+        denseTensor = True
         ratio = 4
+
+        # denseTensor = False
+        # ratio = 1/4
+        # num_steps_forward = int(num_steps_forward / ratio)
+
         beta_max /= ratio # 20/ratio
         beta_min /= ratio
         t_eps /= ratio 
         beta_max_SGM=beta_max
         beta_min_SGM=beta_min
 
-
+        # Small image case (4x4)
+        # dims = [2,4,8,16,32]
+        dims = [4**2]
         few_data = True
-
         localized = True
+        largeImage = False
+        smoothing = False
+        NNarchi = "MLP"
+
+        # # Larger image case (16x16)
+        # dims = [16**2]
+        # few_data = False
+        # localized = False
+        # largeImage = True
+        # smoothing = 2
+        # NNarchi = "Unet"
+        # fair_comparison = False
+        # iterationss = [ 100000]
+        # batch_sizes = [128]
+        # lr = 0.0001
+        # num_stepss_backward = [2048,512,128]
     case 'gaussian': # multi-dimesnional gaussian
         dims = [2,4,8,16,32]
     case 'gaussianCauchy': # multi-dimesnional gaussian
