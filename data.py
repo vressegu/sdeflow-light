@@ -14,7 +14,7 @@ from pathlib import Path
 import random
 from own_plotting import plots_vort
 
-pathData = '../MultiplicativeDiffusion/'
+pathData = '../MSGM-data/'
 
 class ERA5:
     def __init__(self, dim = 40, \
@@ -272,11 +272,13 @@ class PIV:
         if normalized:
             self.name += '_norm'
     
-        folder_str = pathData + "newPIV"
-        if localized:
-            folder_str += '2'
+        folder_str = pathData
         if largeImage:
-            folder_str += '/largerImage'
+            folder_str += 'largerImage'
+        else:
+            folder_str += "newPIV"
+            if localized:
+                folder_str += '2'
         folder = Path(folder_str)
         prefix = "Serie_"
 
@@ -288,18 +290,18 @@ class PIV:
         npdata = np.empty((dmax, 0))   # if not already
 
         print("Loading PIV data from folder:", folder)
-        if largeImage:
-            file = folder_str + "/vortdivtot.npy"
-            npdata = np.load(file)  
-        else:
-            for file in sorted(folder.glob(prefix + "*_vortdiv.npy")):
-                # print("Processing", file.name)
-                dataPt = np.load(folder / f"{file.stem}.npy")  
-                npdata = np.concatenate((npdata, dataPt.reshape(-1, 1)), axis=1)
-                if any(np.isnan(dataPt.flatten())):
-                    print("Processing", file.name)
-                    print("data shape:", npdata.shape)
-                    print(dataPt)
+        # if largeImage:
+        #     file = folder_str + "/vortdivtot.npy"
+        #     npdata = np.load(file)  
+        # else:
+        for file in sorted(folder.glob(prefix + "*_vortdiv.npy")):
+            # print("Processing", file.name)
+            dataPt = np.load(folder / f"{file.stem}.npy")  
+            npdata = np.concatenate((npdata, dataPt.reshape(-1, 1)), axis=1)
+            if any(np.isnan(dataPt.flatten())):
+                print("Processing", file.name)
+                print("data shape:", npdata.shape)
+                print(dataPt)
         npdata = npdata.transpose() /2.5
 
         # center and mormalize data
