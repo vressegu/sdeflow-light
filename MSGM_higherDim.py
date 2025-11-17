@@ -335,7 +335,6 @@ else:
     force_cpu = True
 
 # Load results 
-loadCheckpoint = False
 justLoad = False
 justLoadmmmd = False
 if not first_run:
