@@ -758,12 +758,6 @@ if __name__ == '__main__':
                                         # torch.mps.empty_cache()  # does not do much on MPS, but still good practice
                                         # gc.collect()
 
-                                    checkpoint_path_final = folder_results + "/" + name_simu_root + "_checkpoint_final.pt"
-                                    save_checkpoint(checkpoint_path_final, gen_sde, optim, iterations-1)
-
-                                    del loss, optim
-                                    gc.collect()
-
                                 except Exception as e:
                                     print("Training interrupted:", e)
                                     print("Checkpoint kept for safety.")
@@ -776,6 +770,10 @@ if __name__ == '__main__':
                                             os.remove(checkpoint_path)
                                         print("Training finished successfully, checkpoint removed.")
 
+                                checkpoint_path_final = folder_results + "/" + name_simu_root + "_checkpoint_final.pt"
+                                save_checkpoint(checkpoint_path_final, gen_sde, optim, iterations-1)
+                                del loss
+                                gc.collect()
 
                             ## 4. Visualize
                             with torch.no_grad():
@@ -822,6 +820,10 @@ if __name__ == '__main__':
                                         if (justLoad):
                                             save_results = False
                                             xs = torch.load(name_simu + ".pt", weights_only=True)
+                                            checkpoint_path_final = folder_results + "/" + name_simu_root + "_checkpoint_final.pt"
+                                            if os.path.exists(checkpoint_path_final):
+                                                optim = torch.optim.Adam(gen_sde.parameters(), lr=lr)
+                                                load_checkpoint(checkpoint_path_final, gen_sde, optim, device)
                                         else:
                                             x_0 = gen_sde.latent_sample(num_samples, sampler.dim) # init from prior
                                             xs = rk4_stratonovich_sampler(gen_sde, x_0, num_steps_backward, lmbd=lmbd,\
