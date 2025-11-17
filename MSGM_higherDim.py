@@ -167,6 +167,7 @@ Res=[None]
 dbg = False
 print("datatype", datatype)
 delayed = False
+useCheckpoint = False
 
 match datatype:
     case 'swissroll': # Swiss roll
@@ -178,6 +179,7 @@ match datatype:
         # denseTensor = False
         # ratio = 1/4
         # num_steps_forward = int(num_steps_forward / ratio)
+        # useCheckpoint = False
 
         beta_max /= ratio # 20/ratio
         beta_min /= ratio
@@ -716,7 +718,7 @@ if __name__ == '__main__':
 
                                 checkpoint_path = folder_results + "/" + name_simu_root + "_checkpoint.pt"
                                 start_iter = 0
-                                if os.path.exists(checkpoint_path) and loadCheckpoint:
+                                if os.path.exists(checkpoint_path) and useCheckpoint:
                                     start_iter = load_checkpoint(checkpoint_path, gen_sde, optim, device)
                                     start_iter += 1  # next iteration
 
@@ -742,7 +744,8 @@ if __name__ == '__main__':
                                                 .format(i+1, elapsed*1000/print_every, loss.item(), elbo.item(), elbo_std.item()))
                                             
                                             # checkpoint
-                                            save_checkpoint(checkpoint_path, gen_sde, optim, i)
+                                            if useCheckpoint:
+                                                save_checkpoint(checkpoint_path, gen_sde, optim, i)
 
                                             start_time = time.time()
                                             del elbo, elbo_std
@@ -764,10 +767,11 @@ if __name__ == '__main__':
                                     raise e
 
                                 else:
-                                    # executes ONLY if the loop fully completes
-                                    if os.path.exists(checkpoint_path):
-                                        os.remove(checkpoint_path)
-                                    print("Training finished successfully, checkpoint removed.")
+                                    if useCheckpoint:
+                                        # executes ONLY if the loop fully completes
+                                        if os.path.exists(checkpoint_path):
+                                            os.remove(checkpoint_path)
+                                        print("Training finished successfully, checkpoint removed.")
 
 
                             ## 4. Visualize
