@@ -14,6 +14,8 @@ from pathlib import Path
 import random
 from own_plotting import plots_vort
 
+pathData = '../MultiplicativeDiffusion/'
+
 class ERA5:
     def __init__(self, dim = 40, \
                 variables = ["10m_u_component_of_wind", "10m_v_component_of_wind", "2m_temperature", "vorticity"],
@@ -44,7 +46,6 @@ class ERA5:
         if mixedTimes:
             self.name += 'mix'
 
-        pathData = '../MultiplicativeDiffusion/'
         folder = os.path.join(pathData, 'ERA5-cities')
 
         # ------------- Load all city/variable series -------------
@@ -271,7 +272,7 @@ class PIV:
         if normalized:
             self.name += '_norm'
     
-        folder_str = "/Users/vresseiguier/Coding/MultiplicativeDiffusion/newPIV"
+        folder_str = pathData + "newPIV"
         if localized:
             folder_str += '2'
         if largeImage:
@@ -388,7 +389,6 @@ class ncar_weather_station:
         self.name='ncar_weather'
         self.name = self.name + str(self.dim)
 
-        pathData = '../MultiplicativeDiffusion/'
         folder = pathData + 'isfs_m2hats_qc_geo_hr_202309'
         file = 'subsample_data'
         file_path = folder + '/' + file + '.npy'
@@ -422,7 +422,6 @@ class weather_station:
         self.name='weather'
         self.name = self.name + str(self.dim)
 
-        pathData = '../MultiplicativeDiffusion/'
         folder = pathData + 'weather-data-2022-12-05-to-2023-02-27'
         file_names1 = [f'CR300-{i}_Mesures_0{i}' for i in range(14,16)]  
         file_names2 = [f'CR300-{i}_Mesures_{i}' for i in range(559,572)]  
@@ -504,7 +503,6 @@ class eof_pressure:
         self.name='eof_pressure_NA'
         self.name = self.name + str(self.dim)
 
-        pathData = '../MultiplicativeDiffusion/'
         dataset = Dataset(pathData + 'pcs2.nc', 'r')
         # dataset = Dataset(pathData + 'pcs.nc', 'r')
         pseudo_pcs = dataset.variables['pseudo_pcs'][:] # var can be 'Theta', 'S', 'V', 'U' etc..
@@ -540,9 +538,6 @@ class Lorenz96:
         # Re = str(Re)
         self.name = self.name + str(self.dim)
 
-        pathData = '../MultiplicativeDiffusion/'
-
-        # npdata = np.load('./L96_n' + str(n_dim_L96) + '_data.npy')
         pathData = pathData + './L96_n' + str(n_dim_L96) + '_data'
         npdata = np.load(pathData + '.npy')
         npdatatest = np.load(pathData + '_test.npy')
@@ -569,7 +564,6 @@ class Lorenz96:
         return torch.from_numpy(self.npdatatest[idx,:]).to(torch.float32)
 
 def load_POD_data(Re):
-    pathData = '../MultiplicativeDiffusion/'
     pathData = pathData + 'tempPODModes/LES_Re' + str(Re) + '/temporalModes_16modes'
     npdata = np.load(pathData + '/U.npy')
     npdatatest = np.load(pathData + '_test/U.npy')
