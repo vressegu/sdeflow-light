@@ -64,6 +64,7 @@ num_samples_init_max = int(1e5)
 vtype = 'rademacher'
 lr = 0.001 # default
 print_every = 10000
+save_every = 100000
 
 # Inference
 include_t0_reverse = True # for plots
@@ -746,6 +747,9 @@ if __name__ == '__main__':
                                             # checkpoint
                                             if useCheckpoint:
                                                 save_checkpoint(checkpoint_path, gen_sde, optim, i)
+                                                if ((i+1) % save_every == 0):
+                                                    checkpoint_save_path = folder_results + "/" + name_simu_root + "_checkpoint_" + str(i+1) + ".pt"
+                                                    save_checkpoint(checkpoint_save_path, gen_sde, optim, i)
 
                                             start_time = time.time()
                                             del elbo, elbo_std
