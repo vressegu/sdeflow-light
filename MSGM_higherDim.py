@@ -781,6 +781,8 @@ if __name__ == '__main__':
                                         del x
                                         # torch.mps.empty_cache()  # does not do much on MPS, but still good practice
                                         # gc.collect()
+                                    del loss
+                                    gc.collect()
 
                                 except Exception as e:
                                     print("Training interrupted:", e)
@@ -796,8 +798,6 @@ if __name__ == '__main__':
 
                                 checkpoint_path_final = folder_results + "/" + name_simu_root + "_checkpoint_final.pt"
                                 save_checkpoint(checkpoint_path_final, gen_sde, optim, iterations-1)
-                                del loss
-                                gc.collect()
 
                             ## 4. Visualize
                             with torch.no_grad():
