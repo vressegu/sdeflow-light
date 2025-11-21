@@ -417,20 +417,40 @@ def preprocessing(xtest, xs_forward, num_steps_forward, name_simu_root, offset_d
     
     dim = xgen_forward.shape[1]
     npixelx = np.int32( np.sqrt(dim) )
-    if (dim >= 4**2) and (dim == npixelx**2): # can define an image
-        print("Plot noisy images")
-        # print("inds_forward = " + str(inds_forward))
-        for ind in inds_forward:
-            xtt_image=xs_forward[ind,0,:].numpy().reshape(([npixelx,npixelx]),order='F')
-            plots_vort(xtt_image)
-            if plt_show:
-                plt.show(block=False)
-            name_fig = folder_results + "/" + name_simu_root + "_Forward_imageAtt" + str(ind) + ".png" 
-            plt.savefig(name_fig)
-            if plt_show:
-                plt.pause(1)
-            plt.close()
-            plt.close('all')
+    if (dim >= 4**2):
+        if (dim == npixelx**2): # can define an image
+            print("Plot noisy images")
+            # print("inds_forward = " + str(inds_forward))
+            for ind in inds_forward:
+                xtt_image=xs_forward[ind,0,:].numpy().reshape(([npixelx,npixelx]),order='F')
+                plots_vort(xtt_image)
+                if plt_show:
+                    plt.show(block=False)
+                name_fig = folder_results + "/" + name_simu_root + "_Forward_imageAtt" + str(ind) + ".png" 
+                plt.savefig(name_fig)
+                if plt_show:
+                    plt.pause(1)
+                plt.close()
+                plt.close('all')
+        else:# can define time serie
+            print("Plot noisy timeseries")
+            time_axis = np.arange(0, dim)
+            for ind in inds_forward:
+                xtt_timeserie=xs_forward[ind,0,:].numpy()
+                fig, ax = plt.subplots(figsize=(10, 5))
+                ax.plot(time_axis, xtt_timeserie)
+                ax.set_title("Noisy sample at step " + str(ind))
+                ax.set_xlabel("time")
+                ax.set_ylabel("Value")
+                plt.tight_layout()
+                if plt_show:
+                    plt.show(block=False)
+                name_fig = folder_results + "/" + name_simu_root + "_Forward_timeserieAtt" + str(ind) + ".png" 
+                plt.savefig(name_fig)
+                if plt_show:
+                    plt.pause(1)
+                plt.close()
+                plt.close('all')
 
 
 def plots_vort(U,vmin=-2,vmax=2):
