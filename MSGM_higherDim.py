@@ -33,7 +33,7 @@ from own_plotting import plot_selected_inds, def_pd, pairplots, pairplots_single
 from SDEs import forward_SDE,SDE,SGMsde,PluginReverseSDE,MSGMsde
 from data import ERA5,ncar_weather_station,weather_station,eof_pressure,Lorenz96,\
                  PODmodes,SwissRoll,Cauchy,Gaussian,GaussianCauchy,\
-                 PIV
+                 PIV, Lorenz63
 import gc
 
 np.random.seed(0)
@@ -153,7 +153,7 @@ evalmmmd = False
 batch_sizes = [256]
 
 # Dataset
-datatype = 'swissroll'
+# datatype = 'lorenz63'
 # datatype = 'PIV'
 # datatype = 'gaussian'
 # datatype = 'cauchy'
@@ -173,12 +173,31 @@ useCheckpoint = False
 match datatype:
     case 'swissroll': # Swiss roll
         dims = [2]
-    case 'PIV': # vorticity and divergence from 2D PIV
-        denseTensor = True
-        ratio = 4
 
+    case 'lorenz63':
+        dims = [16]
+        denseTensor = True
+        ratio = 10 # for dense tensor and/or small image
+        num_steps_forward = 128 # expressivity
+        fair_comparison = False # expressivity
+        useCheckpoint = True
+
+        # dims = [1000]
         # denseTensor = False
-        # ratio = 1/4
+        # fair_comparison = False
+        # useCheckpoint = True
+
+        few_data = False
+        ntrain_maxs = [ np.inf ]
+
+        # few_data = True
+        # ntrain_maxs = [ 1000 ]
+
+        beta_max /= ratio # 20/ratio
+        beta_min /= ratio
+        t_eps /= ratio 
+        beta_max_SGM=beta_max
+        beta_min_SGM=beta_min
         # num_steps_forward = int(num_steps_forward / ratio)
         # useCheckpoint = False
 
@@ -514,7 +533,12 @@ if __name__ == '__main__':
                             sampler = PODmodes(Re,dim, normalized=normalized_data, mixedTimes = mixedTimes, concatenateRe = concatenateRe, few_data=few_data, ntrain_max=ntrain_max)
                             if normalized_data:
                                 val_hist = 2*plot_xlim
-                        case 'lorenz':
+                        case 'lorenz63':
+                            sampler = Lorenz63(dim, normalized=normalized_data, few_data=few_data, ntrain_max=ntrain_max)
+                            plot_xlim = 4
+                            val_hist = 2*plot_xlim
+                            offset_dimplot = dims[0]//2
+                        case 'lorenz96':
                             sampler = Lorenz96(Re,dim, normalized=normalized_data)
                         case 'eof_pressure':
                             sampler = eof_pressure(dim)
