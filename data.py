@@ -539,11 +539,11 @@ class Lorenz63:
             self.name = self.name + '_norm'
 
         folder_str = pathData
-        folder_str = folder_str + './L63_data'
+        folder_str = folder_str + './L63/L63_data_X' # X axis only
         npdata = np.load(folder_str + '.npy')
 
         npdata = npdata / 10.0
-        npdata = npdata[:,0,:].transpose(1,0) # X axis only
+        npdata = npdata.transpose(1,0) 
         if self.dim < npdata.shape[1]:
             times = range(0, npdata.shape[1]-1, npdata.shape[1]//self.dim)
             npdata = npdata[:,times]
