@@ -276,7 +276,7 @@ match datatype:
         
         concatenateRe = False
 
-    # case 'lorenz':
+    # case 'lorenz96':
  
     # case 'eof_pressure':        
  
