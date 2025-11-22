@@ -845,7 +845,7 @@ if __name__ == '__main__':
                                             save_results = False
                                             xs = torch.load(name_simu + ".pt", weights_only=True)
                                             checkpoint_path_final = folder_results + "/" + name_simu_root + "_checkpoint_final.pt"
-                                            if os.path.exists(checkpoint_path_final):
+                                            if os.path.exists(checkpoint_path_final) and useCheckpoint:
                                                 optim = torch.optim.Adam(gen_sde.parameters(), lr=lr)
                                                 load_checkpoint(checkpoint_path_final, gen_sde, optim, device)
                                         else:
