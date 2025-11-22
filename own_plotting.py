@@ -414,19 +414,24 @@ def preprocessing(xtest, xs_forward, num_steps_forward, name_simu_root, offset_d
             plt.pause(1)
         plt.close()
         plt.close('all')
+        
+        prefix_save = folder_results + "/" + name_simu_root + "_Forward"
+        plot_signal(xs_forward, inds_forward, prefix_save, plt_show=plt_show)
+        
     
-    dim = xgen_forward.shape[1]
+def plot_signal(xs,inds, prefix_save, plt_show=False):
+    dim = xs[-1,:,:].shape[1]
     npixelx = np.int32( np.sqrt(dim) )
     if (dim >= 4**2):
         if (dim == npixelx**2): # can define an image
             print("Plot noisy images")
-            # print("inds_forward = " + str(inds_forward))
-            for ind in inds_forward:
-                xtt_image=xs_forward[ind,0,:].numpy().reshape(([npixelx,npixelx]),order='F')
+            # print("inds = " + str(inds))
+            for ind in inds:
+                xtt_image=xs[ind,0,:].numpy().reshape(([npixelx,npixelx]),order='F')
                 plots_vort(xtt_image)
                 if plt_show:
                     plt.show(block=False)
-                name_fig = folder_results + "/" + name_simu_root + "_Forward_imageAtt" + str(ind) + ".png" 
+                name_fig = prefix_save + "_imageAtt" + str(ind) + ".png" 
                 plt.savefig(name_fig)
                 if plt_show:
                     plt.pause(1)
@@ -435,8 +440,8 @@ def preprocessing(xtest, xs_forward, num_steps_forward, name_simu_root, offset_d
         else:# can define time serie
             print("Plot noisy timeseries")
             time_axis = np.arange(0, dim)
-            for ind in inds_forward:
-                xtt_timeserie=xs_forward[ind,0,:].numpy()
+            for ind in inds:
+                xtt_timeserie=xs[ind,0,:].numpy()
                 fig, ax = plt.subplots(figsize=(10, 5))
                 ax.plot(time_axis, xtt_timeserie)
                 ax.set_title("Noisy sample at step " + str(ind))
@@ -445,7 +450,7 @@ def preprocessing(xtest, xs_forward, num_steps_forward, name_simu_root, offset_d
                 plt.tight_layout()
                 if plt_show:
                     plt.show(block=False)
-                name_fig = folder_results + "/" + name_simu_root + "_Forward_timeserieAtt" + str(ind) + ".png" 
+                name_fig = prefix_save + "_timeserieAtt" + str(ind) + ".png" 
                 plt.savefig(name_fig)
                 if plt_show:
                     plt.pause(1)
@@ -508,21 +513,8 @@ def postprocessing(inds, i_dims, i_Res, i_num_stepss_backward, i_iterations, i_r
         plt.close()
         plt.close('all')
 
-    dim = xgen.shape[1]
-    npixelx = np.int32( np.sqrt(dim) )
-    if (dim >= 4**2) and (dim == npixelx**2): # can define an image
-        print("Plot generated images")
-        for ind in inds:
-            xtt_image=xs[ind,0,:].numpy().reshape(([npixelx,npixelx]),order='F')
-            plots_vort(xtt_image)
-            if plt_show:
-                plt.show(block=False)
-            name_fig = name_simu + "_imageAtt" + str(ind) + ".png" 
-            plt.savefig(name_fig)
-            if plt_show:
-                plt.pause(1)
-            plt.close()
-            plt.close('all')
+    prefix_save = name_simu + "_Gen"
+    plot_signal(xs, inds, prefix_save, plt_show=plt_show)
     
     # MMD
     if evalmmmd and not justLoadmmmd:
