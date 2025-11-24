@@ -331,7 +331,7 @@ def pairplots_single( xtest, std_norm, std_test_plot, datatype, name_simu,
 
 
 def preprocessing(xtest, xs_forward, num_steps_forward, name_simu_root, offset_dimplot,
-                  noising_plots, plt_show, folder_results, val_hist, std_test_plot, device):
+                  noising_plots, plt_show, folder_results, val_hist, std_norm, std_test_plot, device):
     
     xgen_forward = xs_forward[-1,:,:].to(device)
 
@@ -415,20 +415,26 @@ def preprocessing(xtest, xs_forward, num_steps_forward, name_simu_root, offset_d
         plt.close()
         plt.close('all')
         
+        # Signal and image plots
         prefix_save = folder_results + "/" + name_simu_root + "_Forward"
-        plot_signal(xs_forward, inds_forward, prefix_save, plt_show=plt_show)
+        plot_signal(xs_forward, inds_forward, prefix_save, 
+                    std_norm=std_norm , std_test_plot=std_test_plot,
+                    plt_show=plt_show)
         
     
-def plot_signal(xs,inds, prefix_save, plt_show=False):
+def plot_signal(xs,inds, prefix_save, 
+                std_norm , std_test_plot, plt_show=False):
     dim = xs[-1,:,:].shape[1]
     npixelx = np.int32( np.sqrt(dim) )
-    if (dim >= 4**2):
+    factor_caxis = (std_norm * std_test_plot).max()
+    if (dim > 4**2):
         if (dim == npixelx**2): # can define an image
             print("Plot noisy images")
             # print("inds = " + str(inds))
             for ind in inds:
-                xtt_image=xs[ind,0,:].numpy().reshape(([npixelx,npixelx]),order='F')
-                plots_vort(xtt_image)
+                xtt_image = (std_norm * xs[ind,0,:].squeeze()).numpy()
+                xtt_image = xtt_image.reshape(([npixelx,npixelx]),order='F')
+                plots_vort(xtt_image, -factor_caxis, factor_caxis)
                 if plt_show:
                     plt.show(block=False)
                 name_fig = prefix_save + "_imageAtt" + str(ind) + ".png" 
@@ -441,12 +447,13 @@ def plot_signal(xs,inds, prefix_save, plt_show=False):
             print("Plot noisy timeseries")
             time_axis = np.arange(0, dim)
             for ind in inds:
-                xtt_timeserie=xs[ind,0,:].numpy()
+                xtt_timeserie=(std_norm*xs[ind,0,:].squeeze()).numpy()
                 fig, ax = plt.subplots(figsize=(10, 5))
                 ax.plot(time_axis, xtt_timeserie)
                 ax.set_title("Noisy sample at step " + str(ind))
                 ax.set_xlabel("time")
                 ax.set_ylabel("Value")
+                ax.set_ylim(-factor_caxis, factor_caxis)
                 plt.tight_layout()
                 if plt_show:
                     plt.show(block=False)
@@ -513,9 +520,12 @@ def postprocessing(inds, i_dims, i_Res, i_num_stepss_backward, i_iterations, i_r
         plt.close()
         plt.close('all')
 
+    # Signal and image plots
     prefix_save = name_simu + "_Gen"
-    plot_signal(xs, inds, prefix_save, plt_show=plt_show)
-    
+    plot_signal(xs, inds, prefix_save, 
+                    std_norm=std_norm , std_test_plot=std_test_plot,
+                    plt_show=plt_show)
+        
     # MMD
     if evalmmmd and not justLoadmmmd:
         num_samples_for_mmd = min([xtest.shape[0],max_num_samples_for_mmd])
