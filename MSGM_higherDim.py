@@ -734,7 +734,7 @@ if __name__ == '__main__':
                                                                     include_t0=True, norm_correction = MSGM) # sample
                                 
                                 preprocessing(xtest, xs_forward, num_steps_forward, name_simu_root, offset_dimplot,
-                                                noising_plots, plt_show, folder_results, val_hist, std_test_plot, 'cpu')
+                                                noising_plots, plt_show, folder_results, val_hist, std_norm, std_test_plot, 'cpu')
 
                             if (not justLoad):
                                 # init optimizer
