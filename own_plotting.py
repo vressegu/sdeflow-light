@@ -419,12 +419,16 @@ def preprocessing(xtest, xs_forward, num_steps_forward, name_simu_root, offset_d
         prefix_save = folder_results + "/" + name_simu_root + "_Forward"
         plot_signal(xs_forward, inds_forward, prefix_save, 
                     std_norm=std_norm , std_test_plot=std_test_plot,
-                    plt_show=plt_show)
+                    plt_show=plt_show, timeToDuplicate= 0)
         
     
 def plot_signal(xs,inds, prefix_save, 
-                std_norm , std_test_plot, plt_show=False):
+                std_norm , std_test_plot, plt_show=False, timeToDuplicate = None):
     dim = xs[-1,:,:].shape[1]
+    nb_samples = 10 if timeToDuplicate is not None else 1
+    nb_samples = min((nb_samples, xs.shape[1]))
+    if timeToDuplicate == -1:
+        timeToDuplicate = xs.shape[0] - 1
     npixelx = np.int32( np.sqrt(dim) )
     factor_caxis = (std_norm * std_test_plot).max()
     if (dim > 4**2):
@@ -432,37 +436,49 @@ def plot_signal(xs,inds, prefix_save,
             print("Plot noisy images")
             # print("inds = " + str(inds))
             for ind in inds:
-                xtt_image = (std_norm * xs[ind,0,:].squeeze()).numpy()
-                xtt_image = xtt_image.reshape(([npixelx,npixelx]),order='F')
-                plots_vort(xtt_image, -factor_caxis, factor_caxis)
-                if plt_show:
-                    plt.show(block=False)
-                name_fig = prefix_save + "_imageAtt" + str(ind) + ".png" 
-                plt.savefig(name_fig)
-                if plt_show:
-                    plt.pause(1)
-                plt.close()
-                plt.close('all')
+                if ind == timeToDuplicate and timeToDuplicate is not None:
+                    nb_samples_loc = nb_samples
+                else:
+                    nb_samples_loc = 1
+                for id_sample in range(nb_samples_loc):
+                    xtt_image = (std_norm * xs[ind,id_sample,:].squeeze()).numpy()
+                    xtt_image = xtt_image.reshape(([npixelx,npixelx]),order='F')
+                    plots_vort(xtt_image, -factor_caxis, factor_caxis)
+                    if plt_show:
+                        plt.show(block=False)
+                    name_fig = prefix_save + "_imageAtt" + str(ind) \
+                        + "_sample" + str(id_sample) + "_.png" 
+                    plt.savefig(name_fig)
+                    if plt_show:
+                        plt.pause(1)
+                    plt.close()
+                    plt.close('all')
         else:# can define time serie
             print("Plot noisy timeseries")
             time_axis = np.arange(0, dim)
             for ind in inds:
-                xtt_timeserie=(std_norm*xs[ind,0,:].squeeze()).numpy()
-                fig, ax = plt.subplots(figsize=(10, 5))
-                ax.plot(time_axis, xtt_timeserie)
-                ax.set_title("Noisy sample at step " + str(ind))
-                ax.set_xlabel("time")
-                ax.set_ylabel("Value")
-                ax.set_ylim(-factor_caxis, factor_caxis)
-                plt.tight_layout()
-                if plt_show:
-                    plt.show(block=False)
-                name_fig = prefix_save + "_timeserieAtt" + str(ind) + ".png" 
-                plt.savefig(name_fig)
-                if plt_show:
-                    plt.pause(1)
-                plt.close()
-                plt.close('all')
+                if ind == timeToDuplicate and timeToDuplicate is not None:
+                    nb_samples_loc = nb_samples
+                else:
+                    nb_samples_loc = 1
+                for id_sample in range(nb_samples_loc):
+                    xtt_timeserie=(std_norm*xs[ind,id_sample,:].squeeze()).numpy()
+                    fig, ax = plt.subplots(figsize=(10, 5))
+                    ax.plot(time_axis, xtt_timeserie)
+                    ax.set_title("Noisy sample at step " + str(ind))
+                    ax.set_xlabel("time")
+                    ax.set_ylabel("Value")
+                    ax.set_ylim(-factor_caxis, factor_caxis)
+                    plt.tight_layout()
+                    if plt_show:
+                        plt.show(block=False)
+                    name_fig = prefix_save + "_timeserieAtt" + str(ind) \
+                        + "_sample" + str(id_sample) + "_.png" 
+                    plt.savefig(name_fig)
+                    if plt_show:
+                        plt.pause(1)
+                    plt.close()
+                    plt.close('all')
 
 
 def plots_vort(U,vmin=-2,vmax=2):
@@ -524,7 +540,7 @@ def postprocessing(inds, i_dims, i_Res, i_num_stepss_backward, i_iterations, i_r
     prefix_save = name_simu + "_Gen"
     plot_signal(xs, inds, prefix_save, 
                     std_norm=std_norm , std_test_plot=std_test_plot,
-                    plt_show=plt_show)
+                    plt_show=plt_show, timeToDuplicate= -1)
         
     # MMD
     if evalmmmd and not justLoadmmmd:
