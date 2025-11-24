@@ -126,6 +126,9 @@ if not trajectory:
 # ---------------------------------------------------------------------
 plt.figure(figsize=(fig_size, fig_size))
 plt.scatter(x1, x2, s=3, c=COL, alpha=0.25, edgecolors="none")
+plt.axis('equal')
+xlim=plt.xlim()
+ylim=plt.ylim()
 plt.xlabel(r"$x_1$")
 plt.ylabel(r"$x_2$")
 plt.tight_layout()
@@ -136,6 +139,8 @@ plt.savefig("x1_x2.png")
 # ---------------------------------------------------------------------
 plt.figure(figsize=(fig_size, fig_size))
 plt.scatter(x1, x3, s=3, c=COL, alpha=0.25, edgecolors="none")
+plt.xlim(xlim)
+plt.ylim(ylim)
 plt.xlabel(r"$x_1$")
 plt.ylabel(r"$x_3$")
 plt.tight_layout()
@@ -146,6 +151,8 @@ plt.savefig("x1_x3.png")
 # ---------------------------------------------------------------------
 plt.figure(figsize=(fig_size, fig_size))
 plt.scatter(x1, x4, s=3, c=COL, alpha=0.25, edgecolors="none")
+plt.xlim(xlim)
+plt.ylim(ylim)
 plt.xlabel(r"$x_1$")
 plt.ylabel(r"$x_4$")
 plt.tight_layout()
@@ -156,6 +163,8 @@ plt.savefig("x1_x4.png")
 # ---------------------------------------------------------------------
 plt.figure(figsize=(fig_size, fig_size))
 plt.scatter(x4, x3, s=3, c=COL, alpha=0.25, edgecolors="none")
+plt.xlim(xlim)
+plt.ylim(ylim)
 plt.xlabel(r"$x_4$")
 plt.ylabel(r"$x_3$")
 plt.tight_layout()
@@ -179,6 +188,7 @@ ax.scatter(
     depthshade=True,
     alpha=0.85
 )
+plt.axis('equal')
 
 # --- labels (reduced fontsize) ---
 ax.set_xlabel(r"$x_1$", labelpad=3, fontsize=8)
