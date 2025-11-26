@@ -137,32 +137,7 @@ def def_pd(xgen, std_norm, std_test_plot, datatype,
         print( str( (1 - boolean_mask.sum()/ len(boolean_mask)).item() * 100) + " % of samples outside plot limits")
         xgen_plot = xgen_plot[boolean_mask,:]
 
-    if (datatype == 'era5') and xgen.shape[1]>= 9:
-
-        if dimplot == 6:
-            xgen_plot = torch.cat( ((xgen_plot)[:,6:9], (xgen_plot)[:,0:3]),dim=1)
-        elif dimplot == 3:
-            xgen_plot = xgen_plot[:,6:9]
-        else:
-            raise ValueError("Unknown dimplot for era5: {}".format(dimplot))
-        pddatagen = pd.DataFrame(xgen_plot.to('cpu').data.numpy(), \
-                                columns=columns_plot \
-                                )
-
-    elif (datatype == 'era5vorttemp') and xgen.shape[1]>= 6:
-        # dimplot = dimplot_era5
-        if dimplot == 4:
-            xgen_plot = torch.cat( ((xgen_plot)[:,4:6], (xgen_plot)[:,0:2]),dim=1)
-        elif dimplot == 2:
-            xgen_plot = xgen_plot[:,4:6]
-        else:
-            xgen_plot=xgen_plot[:,0:dimplot]
-            columns_plot=columns_plot
-        pddatagen = pd.DataFrame(xgen_plot.to('cpu').data.numpy(), \
-                                columns=columns_plot \
-                                )
-    else:
-        pddatagen = pd.DataFrame(xgen_plot[:,offset_dimplot:(offset_dimplot+dimplot)].to('cpu'), columns=columns_plot)
+    pddatagen = pd.DataFrame(xgen_plot[:,0:dimplot].to('cpu'), columns=columns_plot)
 
     return pddatagen
 
