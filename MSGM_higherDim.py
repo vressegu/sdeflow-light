@@ -890,8 +890,6 @@ if __name__ == '__main__':
                                 torch.save(mmd_ref, folder_results + "/" + name_simu_root + "_globalMMDfile_ref_" + str(nruns_mmd) + "runs.pt")
 
                 if evalmmmd:
-                    fig = plt.figure(figsize=(5,3))
-                    
                     # Take square root and evaluate mean and quantiles
                     mmmd_SGM = mmd_SGM.sqrt().mean(dim=4)
                     q10mmd_SGM = mmd_SGM.sqrt().quantile(0.1,dim=4)
@@ -904,6 +902,7 @@ if __name__ == '__main__':
                     q90mmd_ref = mmd_ref.sqrt().quantile(0.9,dim=4)
 
                     alpha_plot = 0.2
+                    fig = plt.figure(figsize=(5*scale_fig*1.3,3*scale_fig))
                     range_num_stepss_backward = range(len(num_stepss_backward))
                     plt.loglog(num_stepss_backward,mmmd_SGM[i_dims,i_Res,range_num_stepss_backward,0].flatten(),label='SGM')
                     plt.fill_between(num_stepss_backward, q10mmd_SGM[i_dims,i_Res,range_num_stepss_backward,0].flatten(), \
@@ -918,7 +917,6 @@ if __name__ == '__main__':
                                                             q90mmd_ref[i_dims,i_Res,range_num_stepss_backward,0].flatten(),
                         alpha=alpha_plot)
                     plt.legend()
-                    plt.ylabel('MMD')
                     plt.xlabel('nb timesteps in backward SDE')
                     xx = num_stepss_backward
                     labels = [f'$2^{{{int(np.log2(idx))}}}$' for idx in xx]
@@ -927,6 +925,10 @@ if __name__ == '__main__':
                     ax.xaxis.set_major_locator(FixedLocator(xx))
                     ax.xaxis.set_major_formatter(FixedFormatter(labels))
                     plt.tight_layout()
+                    # Shrink current axis by 20%
+                    box = ax.get_position()
+                    ax.set_position([box.x0, box.y0, box.width * 0.6, box.height])
+                    ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
                     if plt_show:
                         plt.show(block=False)
                     name_fig = folder_results + "/" + name_simu_root + "_MMD_wBckWardSteps_" + str(nruns_mmd) + "runs.png" 
@@ -940,7 +942,7 @@ if __name__ == '__main__':
 
                     if mmd_SGM.shape[3]>1:
                         range_iterations = range(len(iterationss))
-                        fig = plt.figure(figsize=(5,3))
+                        fig = plt.figure(figsize=(5*scale_fig*1.3,3*scale_fig))
                         plt.loglog(iterationss,mmmd_SGM[i_dims,i_Res,0,range_iterations].flatten(),label='SGM')
                         plt.fill_between(iterationss, q10mmd_SGM[i_dims,i_Res,0,range_iterations].flatten(), q90mmd_SGM[i_dims,i_Res,0,range_iterations].flatten(),
                             alpha=alpha_plot)
@@ -950,7 +952,6 @@ if __name__ == '__main__':
                         plt.loglog(iterationss,mmmd_ref[i_dims,i_Res,0,range_iterations].flatten(),label='train data')
                         plt.fill_between(iterationss, q10mmd_ref[i_dims,i_Res,0,range_iterations].flatten(), q90mmd_ref[i_dims,i_Res,0,range_iterations].flatten(),
                             alpha=alpha_plot)
-                        plt.legend()
                         plt.ylabel('MMD')
                         plt.xlabel('effective number of iterations')
                         xx = iterationss
@@ -960,6 +961,12 @@ if __name__ == '__main__':
                         ax.xaxis.set_major_locator(FixedLocator(xx))
                         ax.xaxis.set_major_formatter(FixedFormatter(labels))
                         plt.tight_layout()
+                        # Shrink current axis by 20%
+                        box = ax.get_position()
+                        # ax.set_position([box.x0, box.y0, box.width * 0.8, box.height])
+                        ax.set_position([box.x0, box.y0, box.width * 0.6, box.height])
+                        # Put a legend to the right of the current axis
+                        ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
                         if plt_show:
                             plt.show(block=False)
                         name_fig = folder_results + "/" + name_simu_root + "_MMD_wIte_" + str(nruns_mmd) + "runs.png" 
@@ -973,7 +980,7 @@ if __name__ == '__main__':
             if evalmmmd:
                 if mmd_SGM.shape[0]>1:
                     range_dims = range(len(dims))
-                    fig = plt.figure(figsize=(5,3))
+                    fig = plt.figure(figsize=(5*scale_fig*1.3,3*scale_fig))
                     plt.loglog(dims,mmmd_SGM[range_dims,i_Res,0,0].flatten(),label='SGM')
                     plt.fill_between(dims, q10mmd_SGM[range_dims,i_Res,0,0].flatten(), q90mmd_SGM[range_dims,i_Res,0,0].flatten(),
                         alpha=alpha_plot)
@@ -983,7 +990,6 @@ if __name__ == '__main__':
                     plt.loglog(dims,mmmd_ref[range_dims,i_Res,0,0].flatten(),label='train data')
                     plt.fill_between(dims, q10mmd_ref[range_dims,i_Res,0,0].flatten(), q90mmd_ref[range_dims,i_Res,0,0].flatten(),
                         alpha=alpha_plot)
-                    plt.legend()
                     plt.ylabel('MMD')
                     plt.xlabel('dimension')
                     if datatype == 'era5':
@@ -997,6 +1003,12 @@ if __name__ == '__main__':
                         ax.xaxis.set_major_locator(FixedLocator(xx))
                         ax.xaxis.set_major_formatter(FixedFormatter(labels))   
                     plt.tight_layout()
+                    # Shrink current axis by 20%
+                    box = ax.get_position()
+                    # ax.set_position([box.x0, box.y0, box.width * 0.8, box.height])
+                    ax.set_position([box.x0, box.y0, box.width * 0.6, box.height])
+                    # Put a legend to the right of the current axis
+                    ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
                     if plt_show:
                         plt.show(block=False)
                     name_fig = folder_results + "/" + name_simu_root + "_MMD_wDim_" + str(nruns_mmd) + "runs.png" 
