@@ -785,7 +785,6 @@ if __name__ == '__main__':
                                         del x
                                         # torch.mps.empty_cache()  # does not do much on MPS, but still good practice
                                         # gc.collect()
-                                    del loss
                                     gc.collect()
 
                                 except Exception as e:
