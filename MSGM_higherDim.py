@@ -190,9 +190,6 @@ match datatype:
         few_data = False
         ntrain_maxs = [ np.inf ]
 
-        # few_data = True
-        # ntrain_maxs = [ 1000 ]
-
         beta_max /= ratio # 20/ratio
         beta_min /= ratio
         t_eps /= ratio 
@@ -200,34 +197,61 @@ match datatype:
         beta_min_SGM=beta_min
         # num_steps_forward = int(num_steps_forward / ratio)
         # useCheckpoint = False
+                
+    case 'PIV': # vorticity and divergence from 2D PIV
+        largeImage = True
+        if not largeImage:
+            # Small image case (4x4)
+            denseTensor = True
+            ratio = 4
+            # dims = [2,4,8,16,32]
+            dims = [4**2]
+            few_data = True
+            localized = True
+            largeImage = False
+            smoothing = False
+            beta_max_SGM=beta_max
+            beta_min_SGM=beta_min
 
-        beta_max /= ratio # 20/ratio
-        beta_min /= ratio
-        t_eps /= ratio 
-        beta_max_SGM=beta_max
-        beta_min_SGM=beta_min
+        else:
+            # Larger image case (16x16 or 32 x32)
+            denseTensor = False
+            npixel = 16
+            npixel = 32
+            if npixel == 16:
+                dims = [16**2]
+                ratio = 1/4 # not converged
+                # ratio = 1/10 # not fully converged either...
+            elif npixel == 32:
+                dims = [32**2]
+                ratio = 1/8 # not converged
+                # ratio = 1/20 # not fully converged either...
+            else:
+                raise ValueError("Unknown npixel: {}".format(npixel))
+            localized = False
+            smoothing = 2
+            few_data = False
+            
+            useCheckpoint = True
+            num_steps_forward = int(num_steps_forward / ratio)
+            beta_max /= ratio # 20/ratio
+            beta_min /= ratio
+            t_eps /= ratio 
+            # # WARNING : TO REMOVE 
+            # beta_max_SGM=beta_max
+            # beta_min_SGM=beta_min
+            NNarchi = "Unet"
+            fair_comparison = False
+            iterationss = [ 100000]
+            batch_sizes = [128]
+            lr = 0.0001
+            num_stepss_backward = [2048,512,128,32,16]
 
-        # Small image case (4x4)
-        # dims = [2,4,8,16,32]
-        dims = [4**2]
-        few_data = True
-        localized = True
-        largeImage = False
-        smoothing = False
-        NNarchi = "MLP"
+        if few_data:
+            ntrain_maxs = [ 2**10 ]
+        else:
+            ntrain_maxs = [ np.inf ]
 
-        # # Larger image case (16x16)
-        # dims = [16**2]
-        # few_data = False
-        # localized = False
-        # largeImage = True
-        # smoothing = 2
-        # NNarchi = "Unet"
-        # fair_comparison = False
-        # iterationss = [ 100000]
-        # batch_sizes = [128]
-        # lr = 0.0001
-        # num_stepss_backward = [2048,512,128]
     case 'gaussian': # multi-dimesnional gaussian
         dims = [2,4,8,16,32]
     case 'gaussianCauchy': # multi-dimesnional gaussian
