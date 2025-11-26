@@ -211,6 +211,9 @@ match datatype:
             localized = True
             largeImage = False
             smoothing = False
+            beta_max /= ratio # 20/ratio
+            beta_min /= ratio
+            t_eps /= ratio 
             beta_max_SGM=beta_max
             beta_min_SGM=beta_min
 
