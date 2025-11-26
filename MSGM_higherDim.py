@@ -699,6 +699,9 @@ if __name__ == '__main__':
                             gen_sde = PluginReverseSDE(inf_sde, drift_q, T, vtype=vtype, debias=False, ssm_intT=ssm_intT, deviceReverseSDE=device).to(device)
 
                             print("data = " + sampler.name )
+                            print("few_data = " + str(few_data) )
+                            if few_data:
+                                print("ntrain_max = " + str(ntrain_max) )
                             print("name_SDE = " + str(inf_sde.name_SDE) )   
                             print("num_steps_forward = " + str(num_steps_forward))
                             print("beta_min_SGM = " + str(beta_min_SGM))
