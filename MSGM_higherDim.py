@@ -475,7 +475,8 @@ if __name__ == '__main__':
                                     val_hist *= 5
                                 else:
                                     val_hist *= 2
-                            offset_dimplot = dims[0]//2
+                            if largeImage:
+                                offset_dimplot = dims[0]//2
                         case 'gaussian':
                             # correlation = False
                             # normalized_data = False
