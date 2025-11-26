@@ -153,6 +153,7 @@ evalmmmd = False
 batch_sizes = [256]
 
 # Dataset
+datatype = 'swissroll'
 # datatype = 'lorenz63'
 # datatype = 'PIV'
 # datatype = 'gaussian'
@@ -216,7 +217,7 @@ match datatype:
         else:
             # Larger image case (16x16 or 32 x32)
             denseTensor = False
-            npixel = 16
+            # npixel = 16
             npixel = 32
             if npixel == 16:
                 dims = [16**2]
