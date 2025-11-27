@@ -491,7 +491,7 @@ def plots_vort(U,vmin=-2,vmax=2):
     axs.set_aspect('equal')
     fig.colorbar(pcm, ax=axs)
 
-def postprocessing(inds, i_dims, i_Res, i_num_stepss_backward, i_iterations, i_run, MSGM, sampler, \
+def postprocessing(inds, i_dims, i_complexitys, i_num_stepss_backward, i_iterations, i_run, MSGM, sampler, \
                    xs, xtest, std_norm, std_test_plot, datatype, name_simu, dimplot, offset_dimplot, \
                    crop_data_plot, plot_crop, plot_xlim, plot_ref_pdf, \
                    pdf_theor, log_scale_pdf, columns_plot, \
@@ -551,11 +551,11 @@ def postprocessing(inds, i_dims, i_Res, i_num_stepss_backward, i_iterations, i_r
             x_mmd1 = sampler.sample(xtest.shape[0]).to(device)
             dist_train_to_test = compute_mmd(std_norm * x_mmd1,std_norm * xtest)
             dist = compute_mmd(std_norm * xgen,std_norm * xtest)
-        mmd_ref[i_dims, i_Res, i_num_stepss_backward,i_iterations,i_run] = dist_train_to_test
+        mmd_ref[i_dims, i_complexitys, i_num_stepss_backward,i_iterations,i_run] = dist_train_to_test
         print("MMD train to test = " + str(dist_train_to_test.sqrt().item()))
         print("MSGM = " + str(MSGM))
         print("MMD gen. to test = " + str(dist.sqrt().item()))
         if MSGM:
-            mmd_MSGM[i_dims, i_Res, i_num_stepss_backward,i_iterations,i_run] = dist
+            mmd_MSGM[i_dims, i_complexitys, i_num_stepss_backward,i_iterations,i_run] = dist
         else:
-            mmd_SGM[i_dims, i_Res, i_num_stepss_backward,i_iterations,i_run] = dist
+            mmd_SGM[i_dims, i_complexitys, i_num_stepss_backward,i_iterations,i_run] = dist
