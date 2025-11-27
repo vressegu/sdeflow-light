@@ -949,6 +949,7 @@ if __name__ == '__main__':
                 q90mmd_ref = mmd_ref.sqrt().quantile(0.9,dim=4)
 
                 alpha_plot = 0.2
+                print("Plot MMD vs nb backward steps")
                 fig = plt.figure(figsize=(5*scale_fig*1.3,3*scale_fig))
                 range_num_stepss_backward = range(len(num_stepss_backward))
                 plt.loglog(num_stepss_backward,mmmd_SGM[i_dims,i_complexitys,range_num_stepss_backward,0].flatten(),label='SGM')
@@ -979,6 +980,7 @@ if __name__ == '__main__':
                 if plt_show:
                     plt.show(block=False)
                 name_fig = folder_results + "/" + name_simu_root + "_MMD_wBckWardSteps_" + str(nruns_mmd) + "runs.png" 
+                print("name_fig = " + name_fig)
                 plt.savefig(name_fig)
                 if plt_show:
                     plt.pause(1)
@@ -988,6 +990,7 @@ if __name__ == '__main__':
 
 
                 if mmd_SGM.shape[3]>1:
+                    print("Plot MMD vs ADAMS iterations")
                     range_iterations = range(len(iterationss))
                     fig = plt.figure(figsize=(5*scale_fig*1.3,3*scale_fig))
                     plt.loglog(iterationss,mmmd_SGM[i_dims,i_complexitys,0,range_iterations].flatten(),label='SGM')
@@ -1017,15 +1020,17 @@ if __name__ == '__main__':
                     if plt_show:
                         plt.show(block=False)
                     name_fig = folder_results + "/" + name_simu_root + "_MMD_wIte_" + str(nruns_mmd) + "runs.png" 
+                    print("name_fig = " + name_fig)
                     plt.savefig(name_fig)
                     if plt_show:
                         plt.pause(1)
                     plt.close(fig)
                     plt.close()
                     del fig
-
+        
         if evalmmmd:
             if mmd_SGM.shape[0]>1:
+                print("Plot MMD vs dimension")
                 range_dims = range(len(dims))
                 fig = plt.figure(figsize=(5*scale_fig*1.3,3*scale_fig))
                 plt.loglog(dims,mmmd_SGM[range_dims,i_complexitys,0,0].flatten(),label='SGM')
@@ -1059,6 +1064,7 @@ if __name__ == '__main__':
                 if plt_show:
                     plt.show(block=False)
                 name_fig = folder_results + "/" + name_simu_root + "_MMD_wDim_" + str(nruns_mmd) + "runs.png" 
+                print("name_fig = " + name_fig)
                 plt.savefig(name_fig)
                 if plt_show:
                     plt.pause(1)
@@ -1074,7 +1080,7 @@ if __name__ == '__main__':
             i_dims = -1
             for dim in dims:
                 i_dims +=1
-
+                print("Plot MMD vs complexity for dim = " + str(dim))
                 fig = plt.figure(figsize=(5,3))
                 plt.loglog(complexitys,mmmd_SGM[i_dims,range_complexitys,0,0].flatten(),label='SGM')
                 plt.fill_between(complexitys, q10mmd_SGM[i_dims,range_complexitys,0,0].flatten(), q90mmd_SGM[i_dims,range_complexitys,0,0].flatten(),
@@ -1098,6 +1104,7 @@ if __name__ == '__main__':
                 if plt_show:
                     plt.show(block=False)
                 name_fig = folder_results + "/" + name_simu_root + "_MMD_wNtrain_" + str(nruns_mmd) + "runs_d=" + str(dims[i_dims]) + ".png" 
+                print("name_fig = " + name_fig)
                 plt.savefig(name_fig)
                 if plt_show:
                     plt.pause(1)
