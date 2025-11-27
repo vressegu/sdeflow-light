@@ -432,7 +432,7 @@ def plot_signal(xs,inds, prefix_save,
     npixelx = np.int32( np.sqrt(dim) )
     factor_caxis = (std_norm * std_test_plot).max()
     if (dim > 4**2):
-        if (dim == npixelx**2): # can define an image
+        if (dim == npixelx**2) and (npixelx >= 16): # can define an image
             print("Plot noisy images")
             # print("inds = " + str(inds))
             for ind in inds:
@@ -468,7 +468,7 @@ def plot_signal(xs,inds, prefix_save,
                     ax.set_title("Noisy sample at step " + str(ind))
                     ax.set_xlabel("time")
                     ax.set_ylabel("Value")
-                    ax.set_ylim(-factor_caxis, factor_caxis)
+                    ax.set_ylim(-2*factor_caxis, 2*factor_caxis)
                     plt.tight_layout()
                     if plt_show:
                         plt.show(block=False)
