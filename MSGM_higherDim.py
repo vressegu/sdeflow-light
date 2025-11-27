@@ -353,14 +353,16 @@ match datatype:
     case _:
         raise ValueError("Unknown datatype: {}".format(datatype))
 
-# # # DEBUG set:
-# print('WARNING : DEBUG !!!!!!')
-# iterationss = [16,8]
-# num_stepss_backward = [10]
-# num_steps_forward = 10
-# num_samples = 10
-# batch_sizes = [2]
-# dbg = True
+if dbg:
+    # # DEBUG set:
+    print('WARNING : DEBUG !!!!!!')
+    iterationss = [16,8]
+    num_stepss_backward = [4,8]
+    num_steps_forward = 10
+    num_samples = 10
+    nruns_mmd = 1
+    ntrain_maxs = [ 2**2, 2**4 ]
+    batch_sizes = [2]
 
 # Plots
 scatter_plots = True
