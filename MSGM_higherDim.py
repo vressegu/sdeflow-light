@@ -27,6 +27,7 @@ import seaborn as sns
 
 from NN import MLP, evaluate, save_checkpoint, load_checkpoint
 from NNUnet import VorticityUNet
+from NNUnet1D import UNet1D
 from sde_scheme import euler_maruyama_sampler,heun_sampler,rk4_stratonovich_sampler
 from own_plotting import plot_selected_inds, def_pd, pairplots, pairplots_single, \
                          preprocessing, postprocessing
@@ -185,6 +186,8 @@ match datatype:
 
         # dims = [1000]
         # denseTensor = False
+        # ratio = 1 # for sparse tensor 
+        # NNarchi = "Unet1D"
         # fair_comparison = False
         # useCheckpoint = True
 
@@ -703,6 +706,15 @@ if __name__ == '__main__':
                                     in_space=npixelx,                # 16x16 images
                                     attention_resolutions=(2,4), # attention at 8x8 and 4x4
                                     flatten_order="F",   # <-- set to "C" or "F" to match pipeline
+                                ).to(device)
+                            elif NNarchi == "Unet1D":
+                                drift_q = UNet1D(
+                                    input_dim=sampler.dim,
+                                    base_channels=32,
+                                    channel_mults=(1, 2, 4),
+                                    num_res_blocks=2,
+                                    premodule=premodule,
+                                    emb_dim=128,
                                 ).to(device)
                             else:
                                 raise ValueError("Unknown NN archi: {}".format(NNarchi))
