@@ -165,7 +165,7 @@ datatype = 'swissroll'
 # datatype = 'era5vorttemp'
 normalized_data = True
 mixedTimes = False 
-Res=[None]
+complexitys=[None]
 dbg = False
 print("datatype", datatype)
 delayed = False
@@ -295,10 +295,10 @@ match datatype:
 
     case 'POD': # POD
         dims = [2,4,8,16]
-        Res=[300,3900]
+        complexitys=[300,3900]
 
         dims = [16]
-        Res=[300,3900]
+        complexitys=[300,3900]
 
         mixedTimes = True 
         
@@ -443,14 +443,15 @@ else:
 if __name__ == '__main__':
 
     for ntrain_max in ntrain_maxs:
-        mmd_SGM = torch.zeros((len(dims),len(Res),len(num_stepss_backward),len(iterationss),nruns_mmd))
-        mmd_MSGM = torch.zeros((len(dims),len(Res),len(num_stepss_backward),len(iterationss),nruns_mmd))
-        mmd_ref = torch.zeros((len(dims),len(Res),len(num_stepss_backward),len(iterationss),nruns_mmd))
+        mmd_SGM = torch.zeros((len(dims),len(complexitys),len(num_stepss_backward),len(iterationss),nruns_mmd))
+        mmd_MSGM = torch.zeros((len(dims),len(complexitys),len(num_stepss_backward),len(iterationss),nruns_mmd))
+        mmd_ref = torch.zeros((len(dims),len(complexitys),len(num_stepss_backward),len(iterationss),nruns_mmd))
 
-        i_Res = -1
-        for Re in Res:
-            i_Res +=1
-            
+        i_complexitys = -1
+        for complexity in complexitys:
+            i_complexitys +=1
+            if datatype == 'POD':
+                Re = complexity
             i_dims = -1
             for dim in dims:
                 i_dims +=1
@@ -568,7 +569,7 @@ if __name__ == '__main__':
                             val_hist = 2*plot_xlim
                             offset_dimplot = dims[0]//2
                         case 'lorenz96':
-                            sampler = Lorenz96(Re,dim, normalized=normalized_data)
+                            sampler = Lorenz96(complexity,dim, normalized=normalized_data)
                         case 'eof_pressure':
                             sampler = eof_pressure(dim)
                         case 'weather_station':
@@ -888,7 +889,7 @@ if __name__ == '__main__':
                                             del x_0
                                             if (save_results):
                                                 torch.save(xs, name_simu + ".pt")
-                                        postprocessing(inds, i_dims, i_Res, i_num_stepss_backward, i_iterations, i_run, MSGM, sampler, \
+                                        postprocessing(inds, i_dims, i_complexitys, i_num_stepss_backward, i_iterations, i_run, MSGM, sampler, \
                                                         xs, xtest, std_norm, std_test_plot, datatype, name_simu, dimplot, offset_dimplot, \
                                                         crop_data_plot, plot_crop, plot_xlim, plot_ref_pdf, \
                                                         pdf_theor, log_scale_pdf, columns_plot, \
@@ -931,17 +932,17 @@ if __name__ == '__main__':
                     alpha_plot = 0.2
                     fig = plt.figure(figsize=(5*scale_fig*1.3,3*scale_fig))
                     range_num_stepss_backward = range(len(num_stepss_backward))
-                    plt.loglog(num_stepss_backward,mmmd_SGM[i_dims,i_Res,range_num_stepss_backward,0].flatten(),label='SGM')
-                    plt.fill_between(num_stepss_backward, q10mmd_SGM[i_dims,i_Res,range_num_stepss_backward,0].flatten(), \
-                                                            q90mmd_SGM[i_dims,i_Res,range_num_stepss_backward,0].flatten(),
+                    plt.loglog(num_stepss_backward,mmmd_SGM[i_dims,i_complexitys,range_num_stepss_backward,0].flatten(),label='SGM')
+                    plt.fill_between(num_stepss_backward, q10mmd_SGM[i_dims,i_complexitys,range_num_stepss_backward,0].flatten(), \
+                                                            q90mmd_SGM[i_dims,i_complexitys,range_num_stepss_backward,0].flatten(),
                         alpha=alpha_plot)
-                    plt.loglog(num_stepss_backward,mmmd_MSGM[i_dims,i_Res,range_num_stepss_backward,0].flatten(),label='MSGM')
-                    plt.fill_between(num_stepss_backward, q10mmd_MSGM[i_dims,i_Res,range_num_stepss_backward,0].flatten(), \
-                                                            q90mmd_MSGM[i_dims,i_Res,range_num_stepss_backward,0].flatten(),
+                    plt.loglog(num_stepss_backward,mmmd_MSGM[i_dims,i_complexitys,range_num_stepss_backward,0].flatten(),label='MSGM')
+                    plt.fill_between(num_stepss_backward, q10mmd_MSGM[i_dims,i_complexitys,range_num_stepss_backward,0].flatten(), \
+                                                            q90mmd_MSGM[i_dims,i_complexitys,range_num_stepss_backward,0].flatten(),
                         alpha=alpha_plot)
-                    plt.loglog(num_stepss_backward,mmmd_ref[i_dims,i_Res,range_num_stepss_backward,0].flatten(),label='train data')
-                    plt.fill_between(num_stepss_backward, q10mmd_ref[i_dims,i_Res,range_num_stepss_backward,0].flatten(), 
-                                                            q90mmd_ref[i_dims,i_Res,range_num_stepss_backward,0].flatten(),
+                    plt.loglog(num_stepss_backward,mmmd_ref[i_dims,i_complexitys,range_num_stepss_backward,0].flatten(),label='train data')
+                    plt.fill_between(num_stepss_backward, q10mmd_ref[i_dims,i_complexitys,range_num_stepss_backward,0].flatten(), 
+                                                            q90mmd_ref[i_dims,i_complexitys,range_num_stepss_backward,0].flatten(),
                         alpha=alpha_plot)
                     plt.legend()
                     plt.xlabel('nb timesteps in backward SDE')
@@ -970,14 +971,14 @@ if __name__ == '__main__':
                     if mmd_SGM.shape[3]>1:
                         range_iterations = range(len(iterationss))
                         fig = plt.figure(figsize=(5*scale_fig*1.3,3*scale_fig))
-                        plt.loglog(iterationss,mmmd_SGM[i_dims,i_Res,0,range_iterations].flatten(),label='SGM')
-                        plt.fill_between(iterationss, q10mmd_SGM[i_dims,i_Res,0,range_iterations].flatten(), q90mmd_SGM[i_dims,i_Res,0,range_iterations].flatten(),
+                        plt.loglog(iterationss,mmmd_SGM[i_dims,i_complexitys,0,range_iterations].flatten(),label='SGM')
+                        plt.fill_between(iterationss, q10mmd_SGM[i_dims,i_complexitys,0,range_iterations].flatten(), q90mmd_SGM[i_dims,i_complexitys,0,range_iterations].flatten(),
                             alpha=alpha_plot)
-                        plt.loglog(iterationss,mmmd_MSGM[i_dims,i_Res,0,range_iterations].flatten(),label='MSGM')
-                        plt.fill_between(iterationss, q10mmd_MSGM[i_dims,i_Res,0,range_iterations].flatten(), q90mmd_MSGM[i_dims,i_Res,0,range_iterations].flatten(),
+                        plt.loglog(iterationss,mmmd_MSGM[i_dims,i_complexitys,0,range_iterations].flatten(),label='MSGM')
+                        plt.fill_between(iterationss, q10mmd_MSGM[i_dims,i_complexitys,0,range_iterations].flatten(), q90mmd_MSGM[i_dims,i_complexitys,0,range_iterations].flatten(),
                             alpha=alpha_plot)
-                        plt.loglog(iterationss,mmmd_ref[i_dims,i_Res,0,range_iterations].flatten(),label='train data')
-                        plt.fill_between(iterationss, q10mmd_ref[i_dims,i_Res,0,range_iterations].flatten(), q90mmd_ref[i_dims,i_Res,0,range_iterations].flatten(),
+                        plt.loglog(iterationss,mmmd_ref[i_dims,i_complexitys,0,range_iterations].flatten(),label='train data')
+                        plt.fill_between(iterationss, q10mmd_ref[i_dims,i_complexitys,0,range_iterations].flatten(), q90mmd_ref[i_dims,i_complexitys,0,range_iterations].flatten(),
                             alpha=alpha_plot)
                         plt.ylabel('MMD')
                         plt.xlabel('effective number of iterations')
@@ -1008,14 +1009,14 @@ if __name__ == '__main__':
                 if mmd_SGM.shape[0]>1:
                     range_dims = range(len(dims))
                     fig = plt.figure(figsize=(5*scale_fig*1.3,3*scale_fig))
-                    plt.loglog(dims,mmmd_SGM[range_dims,i_Res,0,0].flatten(),label='SGM')
-                    plt.fill_between(dims, q10mmd_SGM[range_dims,i_Res,0,0].flatten(), q90mmd_SGM[range_dims,i_Res,0,0].flatten(),
+                    plt.loglog(dims,mmmd_SGM[range_dims,i_complexitys,0,0].flatten(),label='SGM')
+                    plt.fill_between(dims, q10mmd_SGM[range_dims,i_complexitys,0,0].flatten(), q90mmd_SGM[range_dims,i_complexitys,0,0].flatten(),
                         alpha=alpha_plot)
-                    plt.loglog(dims,mmmd_MSGM[range_dims,i_Res,0,0].flatten(),label='MSGM')
-                    plt.fill_between(dims, q10mmd_MSGM[range_dims,i_Res,0,0].flatten(), q90mmd_MSGM[range_dims,i_Res,0,0].flatten(),
+                    plt.loglog(dims,mmmd_MSGM[range_dims,i_complexitys,0,0].flatten(),label='MSGM')
+                    plt.fill_between(dims, q10mmd_MSGM[range_dims,i_complexitys,0,0].flatten(), q90mmd_MSGM[range_dims,i_complexitys,0,0].flatten(),
                         alpha=alpha_plot)
-                    plt.loglog(dims,mmmd_ref[range_dims,i_Res,0,0].flatten(),label='train data')
-                    plt.fill_between(dims, q10mmd_ref[range_dims,i_Res,0,0].flatten(), q90mmd_ref[range_dims,i_Res,0,0].flatten(),
+                    plt.loglog(dims,mmmd_ref[range_dims,i_complexitys,0,0].flatten(),label='train data')
+                    plt.fill_between(dims, q10mmd_ref[range_dims,i_complexitys,0,0].flatten(), q90mmd_ref[range_dims,i_complexitys,0,0].flatten(),
                         alpha=alpha_plot)
                     plt.ylabel('MMD')
                     plt.xlabel('dimension')
