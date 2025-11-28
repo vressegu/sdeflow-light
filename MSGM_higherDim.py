@@ -166,7 +166,6 @@ datatype = 'swissroll'
 # datatype = 'era5vorttemp'
 normalized_data = True
 mixedTimes = False 
-complexitys=[None]
 dbg = False
 print("datatype", datatype)
 delayed = False
@@ -948,63 +947,206 @@ if __name__ == '__main__':
                 q10mmd_ref = mmd_ref.sqrt().quantile(0.1,dim=4)
                 q90mmd_ref = mmd_ref.sqrt().quantile(0.9,dim=4)
 
-                alpha_plot = 0.2
-                print("Plot MMD vs nb backward steps")
-                fig = plt.figure(figsize=(5*scale_fig*1.3,3*scale_fig))
-                range_num_stepss_backward = range(len(num_stepss_backward))
-                plt.loglog(num_stepss_backward,mmmd_SGM[i_dims,i_complexitys,range_num_stepss_backward,0].flatten(),label='SGM')
-                plt.fill_between(num_stepss_backward, q10mmd_SGM[i_dims,i_complexitys,range_num_stepss_backward,0].flatten(), \
-                                                        q90mmd_SGM[i_dims,i_complexitys,range_num_stepss_backward,0].flatten(),
-                    alpha=alpha_plot)
-                plt.loglog(num_stepss_backward,mmmd_MSGM[i_dims,i_complexitys,range_num_stepss_backward,0].flatten(),label='MSGM')
-                plt.fill_between(num_stepss_backward, q10mmd_MSGM[i_dims,i_complexitys,range_num_stepss_backward,0].flatten(), \
-                                                        q90mmd_MSGM[i_dims,i_complexitys,range_num_stepss_backward,0].flatten(),
-                    alpha=alpha_plot)
-                plt.loglog(num_stepss_backward,mmmd_ref[i_dims,i_complexitys,range_num_stepss_backward,0].flatten(),label='train data')
-                plt.fill_between(num_stepss_backward, q10mmd_ref[i_dims,i_complexitys,range_num_stepss_backward,0].flatten(), 
-                                                        q90mmd_ref[i_dims,i_complexitys,range_num_stepss_backward,0].flatten(),
-                    alpha=alpha_plot)
-                plt.legend()
-                plt.xlabel('nb timesteps in backward SDE')
-                xx = num_stepss_backward
-                labels = [f'$2^{{{int(np.log2(idx))}}}$' for idx in xx]
-                ax = plt.gca()
-                ax.set_xticks(xx)
-                ax.xaxis.set_major_locator(mticker.FixedLocator(xx))
-                ax.xaxis.set_major_formatter(mticker.FixedFormatter(labels))
-                plt.tight_layout()
-                # Shrink current axis by 20%
-                box = ax.get_position()
-                ax.set_position([box.x0, box.y0, box.width * 0.6, box.height])
-                ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
-                if plt_show:
-                    plt.show(block=False)
-                name_fig = folder_results + "/" + name_simu_root + "_MMD_wBckWardSteps_" + str(nruns_mmd) + "runs.png" 
-                print("name_fig = " + name_fig)
-                plt.savefig(name_fig)
+                i_num_stepss_backward = -1
+                for num_steps_backward in num_stepss_backward:
+                    i_num_stepss_backward +=1
+
+                    alpha_plot = 0.2
+                    print("Plot MMD vs nb backward steps")
+                    fig = plt.figure(figsize=(5*scale_fig*1.3,3*scale_fig))
+                    range_num_stepss_backward = range(len(num_stepss_backward))
+                    plt.loglog(num_stepss_backward,mmmd_SGM[i_dims,i_complexitys,range_num_stepss_backward,0].flatten(),label='SGM')
+                    plt.fill_between(num_stepss_backward, q10mmd_SGM[i_dims,i_complexitys,range_num_stepss_backward,0].flatten(), \
+                                                            q90mmd_SGM[i_dims,i_complexitys,range_num_stepss_backward,0].flatten(),
+                        alpha=alpha_plot)
+                    plt.loglog(num_stepss_backward,mmmd_MSGM[i_dims,i_complexitys,range_num_stepss_backward,0].flatten(),label='MSGM')
+                    plt.fill_between(num_stepss_backward, q10mmd_MSGM[i_dims,i_complexitys,range_num_stepss_backward,0].flatten(), \
+                                                            q90mmd_MSGM[i_dims,i_complexitys,range_num_stepss_backward,0].flatten(),
+                        alpha=alpha_plot)
+                    plt.loglog(num_stepss_backward,mmmd_ref[i_dims,i_complexitys,range_num_stepss_backward,0].flatten(),label='train data')
+                    plt.fill_between(num_stepss_backward, q10mmd_ref[i_dims,i_complexitys,range_num_stepss_backward,0].flatten(), 
+                                                            q90mmd_ref[i_dims,i_complexitys,range_num_stepss_backward,0].flatten(),
+                        alpha=alpha_plot)
+                    plt.legend()
+                    plt.xlabel('nb timesteps in backward SDE')
+                    xx = num_stepss_backward
+                    labels = [f'$2^{{{int(np.log2(idx))}}}$' for idx in xx]
+                    ax = plt.gca()
+                    ax.set_xticks(xx)
+                    ax.xaxis.set_major_locator(mticker.FixedLocator(xx))
+                    ax.xaxis.set_major_formatter(mticker.FixedFormatter(labels))
+                    plt.tight_layout()
+                    # Shrink current axis by 20%
+                    box = ax.get_position()
+                    ax.set_position([box.x0, box.y0, box.width * 0.6, box.height])
+                    ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+                    if plt_show:
+                        plt.show(block=False)
+                    name_fig = folder_results + "/" + name_simu_root + "_MMD_wBckWardSteps_" \
+                        + str(nruns_mmd) + "runs" \
+                        + "_d=" + str(dims[i_dims]) \
+                        + "_Ntrain=" + str(complexitys[i_complexitys]) \
+                        + ".png" 
+                    print("name_fig = " + name_fig)
+                    plt.savefig(name_fig)
+                    if plt_show:
+                        plt.pause(1)
+                    plt.close(fig)
+                    plt.close()
+                    del fig
+
+
+                    if mmd_SGM.shape[3]>1:
+                        print("Plot MMD vs ADAMS iterations")
+                        range_iterations = range(len(iterationss))
+                        fig = plt.figure(figsize=(5*scale_fig*1.3,3*scale_fig))
+                        plt.loglog(iterationss,mmmd_SGM[i_dims,i_complexitys,i_num_stepss_backward,range_iterations].flatten(),label='SGM')
+                        plt.fill_between(iterationss, 
+                                        q10mmd_SGM[i_dims,i_complexitys,i_num_stepss_backward,range_iterations].flatten(), 
+                                        q90mmd_SGM[i_dims,i_complexitys,i_num_stepss_backward,range_iterations].flatten(),
+                            alpha=alpha_plot)
+                        plt.loglog(iterationss,mmmd_MSGM[i_dims,i_complexitys,i_num_stepss_backward,range_iterations].flatten(),label='MSGM')
+                        plt.fill_between(iterationss, 
+                                        q10mmd_MSGM[i_dims,i_complexitys,i_num_stepss_backward,range_iterations].flatten(), 
+                                        q90mmd_MSGM[i_dims,i_complexitys,i_num_stepss_backward,range_iterations].flatten(),
+                            alpha=alpha_plot)
+                        plt.loglog(iterationss,mmmd_ref[i_dims,i_complexitys,i_num_stepss_backward,range_iterations].flatten(),label='train data')
+                        plt.fill_between(iterationss, 
+                                        q10mmd_ref[i_dims,i_complexitys,i_num_stepss_backward,range_iterations].flatten(), 
+                                        q90mmd_ref[i_dims,i_complexitys,i_num_stepss_backward,range_iterations].flatten(),
+                            alpha=alpha_plot)
+                        plt.ylabel('MMD')
+                        plt.xlabel('effective number of iterations')
+                        xx = iterationss
+                        labels = [f'$2^{{{int(np.log2(idx))}}}$' for idx in xx]
+                        ax = plt.gca()
+                        ax.set_xticks(xx)
+                        ax.xaxis.set_major_locator(mticker.FixedLocator(xx))
+                        ax.xaxis.set_major_formatter(mticker.FixedFormatter(labels))
+                        plt.tight_layout()
+                        # Shrink current axis by 20%
+                        box = ax.get_position()
+                        # ax.set_position([box.x0, box.y0, box.width * 0.8, box.height])
+                        ax.set_position([box.x0, box.y0, box.width * 0.6, box.height])
+                        # Put a legend to the right of the current axis
+                        ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+                        if plt_show:
+                            plt.show(block=False)
+                        name_fig = folder_results + "/" + name_simu_root + "_MMD_wIte_"\
+                            + str(nruns_mmd) + "runs" \
+                            + "_d=" + str(dims[i_dims]) \
+                            + "_Ntrain=" + str(complexitys[i_complexitys]) \
+                            + "_nStepBack=" + str(num_stepss_backward[i_num_stepss_backward]) \
+                            + ".png" 
+                        print("name_fig = " + name_fig)
+                        plt.savefig(name_fig)
+                        if plt_show:
+                            plt.pause(1)
+                        plt.close(fig)
+                        plt.close()
+                        del fig
+        
+        if evalmmmd:
+            if mmd_SGM.shape[0]>1:
+                print("Plot MMD vs dimension")
+
+                i_num_stepss_backward = -1
+                for num_steps_backward in num_stepss_backward:
+                    i_num_stepss_backward +=1
+                        
+                    range_dims = range(len(dims))
+                    fig, ax = plt.subplots(figsize=(5 * scale_fig * 1.3, 3 * scale_fig))
+                    # Plot lines and shaded intervals
+                    ax.loglog(dims, mmmd_SGM[range_dims, i_complexitys, i_num_stepss_backward, 0].flatten(), label='SGM')
+                    ax.fill_between(dims,
+                                    q10mmd_SGM[range_dims, i_complexitys, i_num_stepss_backward, 0].flatten(),
+                                    q90mmd_SGM[range_dims, i_complexitys, i_num_stepss_backward, 0].flatten(),
+                                    alpha=alpha_plot)
+                    ax.loglog(dims, mmmd_MSGM[range_dims, i_complexitys, i_num_stepss_backward, 0].flatten(), label='MSGM')
+                    ax.fill_between(dims,
+                                    q10mmd_MSGM[range_dims, i_complexitys, i_num_stepss_backward, 0].flatten(),
+                                    q90mmd_MSGM[range_dims, i_complexitys, i_num_stepss_backward, 0].flatten(),
+                                    alpha=alpha_plot)
+                    ax.loglog(dims, mmmd_ref[range_dims, i_complexitys, i_num_stepss_backward, 0].flatten(), label='train data')
+                    ax.fill_between(dims,
+                                    q10mmd_ref[range_dims, i_complexitys, i_num_stepss_backward, 0].flatten(),
+                                    q90mmd_ref[range_dims, i_complexitys, i_num_stepss_backward, 0].flatten(),
+                                    alpha=alpha_plot)
+                    ax.set_ylabel('MMD')
+                    ax.set_xlabel('dimension')
+                    # Use all dims as xticks
+                    # Ensure dims is a 1-D numeric array/list
+                    xticks = list(np.asarray(dims).flatten())
+                    ax.xaxis.set_major_locator(mticker.FixedLocator(xticks))
+                    # Format ticks as integers if possible
+                    def fmt_tick(x):
+                        try:
+                            xi = int(x)
+                            if abs(x - xi) < 1e-8:
+                                return str(xi)
+                        except Exception:
+                            pass
+                        return "{:.0g}".format(x)
+                    ax.xaxis.set_major_formatter(mticker.FixedFormatter([fmt_tick(x) for x in xticks]))
+                    # Remove minor ticks (they can clutter log axes)
+                    ax.xaxis.set_minor_locator(mticker.NullLocator())
+                    # Rotate and style xtick labels to avoid overlap on a small figure
+                    ax.tick_params(axis='x', which='major')
+                    # ax.tick_params(axis='x', which='major', labelrotation=45, labelsize=8)
+                    # Reserve space at the bottom for rotated labels and at right for the legend
+                    fig.subplots_adjust(bottom=0.28, right=0.75)
+                    # Optionally shrink axis width so legend fits on the right without overlapping the plot
+                    box = ax.get_position()
+                    ax.set_position([box.x0, box.y0, box.width * 0.62, box.height])
+                    # Place legend to the right
+                    ax.legend(loc='center left', bbox_to_anchor=(1.02, 0.5))
+                    # Show / save
+                    if plt_show:
+                        plt.show(block=False)
+                    name_fig = folder_results + "/" + name_simu_root + "_MMD_wDim_" \
+                            + str(nruns_mmd) + "runs" \
+                            + "_Ntrain=" + str(complexitys[i_complexitys]) \
+                            + "_nStepBack=" + str(num_stepss_backward[i_num_stepss_backward]) \
+                            + ".png" 
+                    print("Saving to:", name_fig)
+                    plt.savefig(name_fig, bbox_inches='tight', dpi=300)
+
                 if plt_show:
                     plt.pause(1)
                 plt.close(fig)
-                plt.close()
-                del fig
 
+    if evalmmmd:
+        if mmd_SGM.shape[1]>1:
+            range_complexitys = range(len(complexitys))
 
-                if mmd_SGM.shape[3]>1:
-                    print("Plot MMD vs ADAMS iterations")
-                    range_iterations = range(len(iterationss))
+            i_dims = -1
+            for dim in dims:
+                i_dims +=1
+
+                i_num_stepss_backward = -1
+                for num_steps_backward in num_stepss_backward:
+                    i_num_stepss_backward +=1
+                
+                    print("Plot MMD vs complexity for dim = " + str(dim))
                     fig = plt.figure(figsize=(5*scale_fig*1.3,3*scale_fig))
-                    plt.loglog(iterationss,mmmd_SGM[i_dims,i_complexitys,0,range_iterations].flatten(),label='SGM')
-                    plt.fill_between(iterationss, q10mmd_SGM[i_dims,i_complexitys,0,range_iterations].flatten(), q90mmd_SGM[i_dims,i_complexitys,0,range_iterations].flatten(),
+                    plt.loglog(complexitys,mmmd_SGM[i_dims,range_complexitys,i_num_stepss_backward,0].flatten(),label='SGM')
+                    plt.fill_between(complexitys, 
+                                    q10mmd_SGM[i_dims,range_complexitys,i_num_stepss_backward,0].flatten(), 
+                                    q90mmd_SGM[i_dims,range_complexitys,i_num_stepss_backward,0].flatten(),
                         alpha=alpha_plot)
-                    plt.loglog(iterationss,mmmd_MSGM[i_dims,i_complexitys,0,range_iterations].flatten(),label='MSGM')
-                    plt.fill_between(iterationss, q10mmd_MSGM[i_dims,i_complexitys,0,range_iterations].flatten(), q90mmd_MSGM[i_dims,i_complexitys,0,range_iterations].flatten(),
+                    plt.loglog(complexitys,mmmd_MSGM[i_dims,range_complexitys,i_num_stepss_backward,0].flatten(),label='MSGM')
+                    plt.fill_between(complexitys, 
+                                    q10mmd_MSGM[i_dims,range_complexitys,i_num_stepss_backward,0].flatten(), 
+                                    q90mmd_MSGM[i_dims,range_complexitys,i_num_stepss_backward,0].flatten(),
                         alpha=alpha_plot)
-                    plt.loglog(iterationss,mmmd_ref[i_dims,i_complexitys,0,range_iterations].flatten(),label='train data')
-                    plt.fill_between(iterationss, q10mmd_ref[i_dims,i_complexitys,0,range_iterations].flatten(), q90mmd_ref[i_dims,i_complexitys,0,range_iterations].flatten(),
+                    plt.loglog(complexitys,mmmd_ref[i_dims,range_complexitys,i_num_stepss_backward,0].flatten(),label='train data')
+                    plt.fill_between(complexitys, 
+                                    q10mmd_ref[i_dims,range_complexitys,i_num_stepss_backward,0].flatten(), 
+                                    q90mmd_ref[i_dims,range_complexitys,i_num_stepss_backward,0].flatten(),
                         alpha=alpha_plot)
                     plt.ylabel('MMD')
-                    plt.xlabel('effective number of iterations')
-                    xx = iterationss
+                    plt.xlabel('Training set size')
+                    xx = complexitys
                     labels = [f'$2^{{{int(np.log2(idx))}}}$' for idx in xx]
                     ax = plt.gca()
                     ax.set_xticks(xx)
@@ -1019,7 +1161,11 @@ if __name__ == '__main__':
                     ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
                     if plt_show:
                         plt.show(block=False)
-                    name_fig = folder_results + "/" + name_simu_root + "_MMD_wIte_" + str(nruns_mmd) + "runs.png" 
+                    name_fig = folder_results + "/" + name_simu_root + "_MMD_wNtrain_" \
+                            + str(nruns_mmd) + "runs" \
+                            + "_d=" + str(dims[i_dims]) \
+                            + "_nStepBack=" + str(num_stepss_backward[i_num_stepss_backward]) \
+                            + ".png" 
                     print("name_fig = " + name_fig)
                     plt.savefig(name_fig)
                     if plt_show:
@@ -1027,107 +1173,4 @@ if __name__ == '__main__':
                     plt.close(fig)
                     plt.close()
                     del fig
-        
-        if evalmmmd:
-            if mmd_SGM.shape[0]>1:
-                print("Plot MMD vs dimension")
-                range_dims = range(len(dims))
-                fig, ax = plt.subplots(figsize=(5 * scale_fig * 1.3, 3 * scale_fig))
-                # Plot lines and shaded intervals
-                ax.loglog(dims, mmmd_SGM[range_dims, i_complexitys, 0, 0].flatten(), label='SGM')
-                ax.fill_between(dims,
-                                q10mmd_SGM[range_dims, i_complexitys, 0, 0].flatten(),
-                                q90mmd_SGM[range_dims, i_complexitys, 0, 0].flatten(),
-                                alpha=alpha_plot)
-                ax.loglog(dims, mmmd_MSGM[range_dims, i_complexitys, 0, 0].flatten(), label='MSGM')
-                ax.fill_between(dims,
-                                q10mmd_MSGM[range_dims, i_complexitys, 0, 0].flatten(),
-                                q90mmd_MSGM[range_dims, i_complexitys, 0, 0].flatten(),
-                                alpha=alpha_plot)
-                ax.loglog(dims, mmmd_ref[range_dims, i_complexitys, 0, 0].flatten(), label='train data')
-                ax.fill_between(dims,
-                                q10mmd_ref[range_dims, i_complexitys, 0, 0].flatten(),
-                                q90mmd_ref[range_dims, i_complexitys, 0, 0].flatten(),
-                                alpha=alpha_plot)
-                ax.set_ylabel('MMD')
-                ax.set_xlabel('dimension')
-                # Use all dims as xticks
-                # Ensure dims is a 1-D numeric array/list
-                xticks = list(np.asarray(dims).flatten())
-                ax.xaxis.set_major_locator(mticker.FixedLocator(xticks))
-                # Format ticks as integers if possible
-                def fmt_tick(x):
-                    try:
-                        xi = int(x)
-                        if abs(x - xi) < 1e-8:
-                            return str(xi)
-                    except Exception:
-                        pass
-                    return "{:.0g}".format(x)
-                ax.xaxis.set_major_formatter(mticker.FixedFormatter([fmt_tick(x) for x in xticks]))
-                # Remove minor ticks (they can clutter log axes)
-                ax.xaxis.set_minor_locator(mticker.NullLocator())
-                # Rotate and style xtick labels to avoid overlap on a small figure
-                ax.tick_params(axis='x', which='major')
-                # ax.tick_params(axis='x', which='major', labelrotation=45, labelsize=8)
-                # Reserve space at the bottom for rotated labels and at right for the legend
-                fig.subplots_adjust(bottom=0.28, right=0.75)
-                # Optionally shrink axis width so legend fits on the right without overlapping the plot
-                box = ax.get_position()
-                ax.set_position([box.x0, box.y0, box.width * 0.62, box.height])
-                # Place legend to the right
-                ax.legend(loc='center left', bbox_to_anchor=(1.02, 0.5))
-                # Show / save
-                if plt_show:
-                    plt.show(block=False)
-                name_fig = folder_results + "/" + name_simu_root + "_MMD_wDim_" + str(nruns_mmd) + "runs.png"
-                print("Saving to:", name_fig)
-                plt.savefig(name_fig, bbox_inches='tight', dpi=300)
 
-                if plt_show:
-                    plt.pause(1)
-                plt.close(fig)
-
-    if evalmmmd:
-        if mmd_SGM.shape[1]>1:
-            range_complexitys = range(len(complexitys))
-
-            i_dims = -1
-            for dim in dims:
-                i_dims +=1
-                print("Plot MMD vs complexity for dim = " + str(dim))
-                fig = plt.figure(figsize=(5*scale_fig*1.3,3*scale_fig))
-                plt.loglog(complexitys,mmmd_SGM[i_dims,range_complexitys,0,0].flatten(),label='SGM')
-                plt.fill_between(complexitys, q10mmd_SGM[i_dims,range_complexitys,0,0].flatten(), q90mmd_SGM[i_dims,range_complexitys,0,0].flatten(),
-                    alpha=alpha_plot)
-                plt.loglog(complexitys,mmmd_MSGM[i_dims,range_complexitys,0,0].flatten(),label='MSGM')
-                plt.fill_between(complexitys, q10mmd_MSGM[i_dims,range_complexitys,0,0].flatten(), q90mmd_MSGM[i_dims,range_complexitys,0,0].flatten(),
-                    alpha=alpha_plot)
-                plt.loglog(complexitys,mmmd_ref[i_dims,range_complexitys,0,0].flatten(),label='train data')
-                plt.fill_between(complexitys, q10mmd_ref[i_dims,range_complexitys,0,0].flatten(), q90mmd_ref[i_dims,range_complexitys,0,0].flatten(),
-                    alpha=alpha_plot)
-                plt.ylabel('MMD')
-                plt.xlabel('Training set size')
-                xx = complexitys
-                labels = [f'$2^{{{int(np.log2(idx))}}}$' for idx in xx]
-                ax = plt.gca()
-                ax.set_xticks(xx)
-                ax.xaxis.set_major_locator(mticker.FixedLocator(xx))
-                ax.xaxis.set_major_formatter(mticker.FixedFormatter(labels))
-                plt.tight_layout()
-                # Shrink current axis by 20%
-                box = ax.get_position()
-                # ax.set_position([box.x0, box.y0, box.width * 0.8, box.height])
-                ax.set_position([box.x0, box.y0, box.width * 0.6, box.height])
-                # Put a legend to the right of the current axis
-                ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
-                if plt_show:
-                    plt.show(block=False)
-                name_fig = folder_results + "/" + name_simu_root + "_MMD_wNtrain_" + str(nruns_mmd) + "runs_d=" + str(dims[i_dims]) + ".png" 
-                print("name_fig = " + name_fig)
-                plt.savefig(name_fig)
-                if plt_show:
-                    plt.pause(1)
-                plt.close(fig)
-                plt.close()
-                del fig
