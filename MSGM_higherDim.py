@@ -19,7 +19,7 @@ import pandas as pd
 import random
 import matplotlib
 import matplotlib.pyplot as plt
-from matplotlib.ticker import FixedLocator, FixedFormatter
+import matplotlib.ticker as mticker
 from sklearn.datasets import make_swiss_roll
 from netCDF4 import Dataset
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -970,8 +970,8 @@ if __name__ == '__main__':
                 labels = [f'$2^{{{int(np.log2(idx))}}}$' for idx in xx]
                 ax = plt.gca()
                 ax.set_xticks(xx)
-                ax.xaxis.set_major_locator(FixedLocator(xx))
-                ax.xaxis.set_major_formatter(FixedFormatter(labels))
+                ax.xaxis.set_major_locator(mticker.FixedLocator(xx))
+                ax.xaxis.set_major_formatter(mticker.FixedFormatter(labels))
                 plt.tight_layout()
                 # Shrink current axis by 20%
                 box = ax.get_position()
@@ -1008,8 +1008,8 @@ if __name__ == '__main__':
                     labels = [f'$2^{{{int(np.log2(idx))}}}$' for idx in xx]
                     ax = plt.gca()
                     ax.set_xticks(xx)
-                    ax.xaxis.set_major_locator(FixedLocator(xx))
-                    ax.xaxis.set_major_formatter(FixedFormatter(labels))
+                    ax.xaxis.set_major_locator(mticker.FixedLocator(xx))
+                    ax.xaxis.set_major_formatter(mticker.FixedFormatter(labels))
                     plt.tight_layout()
                     # Shrink current axis by 20%
                     box = ax.get_position()
@@ -1032,46 +1032,61 @@ if __name__ == '__main__':
             if mmd_SGM.shape[0]>1:
                 print("Plot MMD vs dimension")
                 range_dims = range(len(dims))
-                fig = plt.figure(figsize=(5*scale_fig*1.3,3*scale_fig))
-                plt.loglog(dims,mmmd_SGM[range_dims,i_complexitys,0,0].flatten(),label='SGM')
-                plt.fill_between(dims, q10mmd_SGM[range_dims,i_complexitys,0,0].flatten(), q90mmd_SGM[range_dims,i_complexitys,0,0].flatten(),
-                    alpha=alpha_plot)
-                plt.loglog(dims,mmmd_MSGM[range_dims,i_complexitys,0,0].flatten(),label='MSGM')
-                plt.fill_between(dims, q10mmd_MSGM[range_dims,i_complexitys,0,0].flatten(), q90mmd_MSGM[range_dims,i_complexitys,0,0].flatten(),
-                    alpha=alpha_plot)
-                plt.loglog(dims,mmmd_ref[range_dims,i_complexitys,0,0].flatten(),label='train data')
-                plt.fill_between(dims, q10mmd_ref[range_dims,i_complexitys,0,0].flatten(), q90mmd_ref[range_dims,i_complexitys,0,0].flatten(),
-                    alpha=alpha_plot)
-                plt.ylabel('MMD')
-                plt.xlabel('dimension')
-                if datatype == 'era5':
-                    xx = dims
-                    plt.xticks(ticks=xx )
-                else:
-                    xx = dims
-                    labels = [f'$2^{{{int(np.log2(idx))}}}$' for idx in xx]
-                    ax = plt.gca()
-                    ax.set_xticks(xx)
-                    ax.xaxis.set_major_locator(FixedLocator(xx))
-                    ax.xaxis.set_major_formatter(FixedFormatter(labels))   
-                plt.tight_layout()
-                # Shrink current axis by 20%
+                fig, ax = plt.subplots(figsize=(5 * scale_fig * 1.3, 3 * scale_fig))
+                # Plot lines and shaded intervals
+                ax.loglog(dims, mmmd_SGM[range_dims, i_complexitys, 0, 0].flatten(), label='SGM')
+                ax.fill_between(dims,
+                                q10mmd_SGM[range_dims, i_complexitys, 0, 0].flatten(),
+                                q90mmd_SGM[range_dims, i_complexitys, 0, 0].flatten(),
+                                alpha=alpha_plot)
+                ax.loglog(dims, mmmd_MSGM[range_dims, i_complexitys, 0, 0].flatten(), label='MSGM')
+                ax.fill_between(dims,
+                                q10mmd_MSGM[range_dims, i_complexitys, 0, 0].flatten(),
+                                q90mmd_MSGM[range_dims, i_complexitys, 0, 0].flatten(),
+                                alpha=alpha_plot)
+                ax.loglog(dims, mmmd_ref[range_dims, i_complexitys, 0, 0].flatten(), label='train data')
+                ax.fill_between(dims,
+                                q10mmd_ref[range_dims, i_complexitys, 0, 0].flatten(),
+                                q90mmd_ref[range_dims, i_complexitys, 0, 0].flatten(),
+                                alpha=alpha_plot)
+                ax.set_ylabel('MMD')
+                ax.set_xlabel('dimension')
+                # Use all dims as xticks
+                # Ensure dims is a 1-D numeric array/list
+                xticks = list(np.asarray(dims).flatten())
+                ax.xaxis.set_major_locator(mticker.FixedLocator(xticks))
+                # Format ticks as integers if possible
+                def fmt_tick(x):
+                    try:
+                        xi = int(x)
+                        if abs(x - xi) < 1e-8:
+                            return str(xi)
+                    except Exception:
+                        pass
+                    return "{:.0g}".format(x)
+                ax.xaxis.set_major_formatter(mticker.FixedFormatter([fmt_tick(x) for x in xticks]))
+                # Remove minor ticks (they can clutter log axes)
+                ax.xaxis.set_minor_locator(mticker.NullLocator())
+                # Rotate and style xtick labels to avoid overlap on a small figure
+                ax.tick_params(axis='x', which='major')
+                # ax.tick_params(axis='x', which='major', labelrotation=45, labelsize=8)
+                # Reserve space at the bottom for rotated labels and at right for the legend
+                fig.subplots_adjust(bottom=0.28, right=0.75)
+                # Optionally shrink axis width so legend fits on the right without overlapping the plot
                 box = ax.get_position()
-                # ax.set_position([box.x0, box.y0, box.width * 0.8, box.height])
-                ax.set_position([box.x0, box.y0, box.width * 0.6, box.height])
-                # Put a legend to the right of the current axis
-                ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+                ax.set_position([box.x0, box.y0, box.width * 0.62, box.height])
+                # Place legend to the right
+                ax.legend(loc='center left', bbox_to_anchor=(1.02, 0.5))
+                # Show / save
                 if plt_show:
                     plt.show(block=False)
-                name_fig = folder_results + "/" + name_simu_root + "_MMD_wDim_" + str(nruns_mmd) + "runs.png" 
-                print("name_fig = " + name_fig)
-                plt.savefig(name_fig)
+                name_fig = folder_results + "/" + name_simu_root + "_MMD_wDim_" + str(nruns_mmd) + "runs.png"
+                print("Saving to:", name_fig)
+                plt.savefig(name_fig, bbox_inches='tight', dpi=300)
+
                 if plt_show:
                     plt.pause(1)
                 plt.close(fig)
-                plt.close()
-                del fig
-
 
     if evalmmmd:
         if mmd_SGM.shape[1]>1:
@@ -1081,7 +1096,7 @@ if __name__ == '__main__':
             for dim in dims:
                 i_dims +=1
                 print("Plot MMD vs complexity for dim = " + str(dim))
-                fig = plt.figure(figsize=(5,3))
+                fig = plt.figure(figsize=(5*scale_fig*1.3,3*scale_fig))
                 plt.loglog(complexitys,mmmd_SGM[i_dims,range_complexitys,0,0].flatten(),label='SGM')
                 plt.fill_between(complexitys, q10mmd_SGM[i_dims,range_complexitys,0,0].flatten(), q90mmd_SGM[i_dims,range_complexitys,0,0].flatten(),
                     alpha=alpha_plot)
@@ -1091,16 +1106,21 @@ if __name__ == '__main__':
                 plt.loglog(complexitys,mmmd_ref[i_dims,range_complexitys,0,0].flatten(),label='train data')
                 plt.fill_between(complexitys, q10mmd_ref[i_dims,range_complexitys,0,0].flatten(), q90mmd_ref[i_dims,range_complexitys,0,0].flatten(),
                     alpha=alpha_plot)
-                plt.legend()
                 plt.ylabel('MMD')
                 plt.xlabel('Training set size')
                 xx = complexitys
                 labels = [f'$2^{{{int(np.log2(idx))}}}$' for idx in xx]
                 ax = plt.gca()
                 ax.set_xticks(xx)
-                ax.xaxis.set_major_locator(FixedLocator(xx))
-                ax.xaxis.set_major_formatter(FixedFormatter(labels))
+                ax.xaxis.set_major_locator(mticker.FixedLocator(xx))
+                ax.xaxis.set_major_formatter(mticker.FixedFormatter(labels))
                 plt.tight_layout()
+                # Shrink current axis by 20%
+                box = ax.get_position()
+                # ax.set_position([box.x0, box.y0, box.width * 0.8, box.height])
+                ax.set_position([box.x0, box.y0, box.width * 0.6, box.height])
+                # Put a legend to the right of the current axis
+                ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
                 if plt_show:
                     plt.show(block=False)
                 name_fig = folder_results + "/" + name_simu_root + "_MMD_wNtrain_" + str(nruns_mmd) + "runs_d=" + str(dims[i_dims]) + ".png" 
