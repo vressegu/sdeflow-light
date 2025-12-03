@@ -19,7 +19,7 @@ import pandas as pd
 import random
 import matplotlib
 import matplotlib.pyplot as plt
-from matplotlib.ticker import FixedLocator, FixedFormatter
+import matplotlib.ticker as mticker
 from sklearn.datasets import make_swiss_roll
 from netCDF4 import Dataset
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -125,7 +125,6 @@ datatype = 'swissroll'
 # datatype = 'cauchy'
 normalized_data = True
 mixedTimes = False 
-Res=[None]
 dbg = False
 print("datatype", datatype)
 delayed = False
@@ -147,6 +146,9 @@ match datatype:
             localized = True
             largeImage = False
             smoothing = False
+            beta_max /= ratio # 20/ratio
+            beta_min /= ratio
+            t_eps /= ratio 
             beta_max_SGM=beta_max
             beta_min_SGM=beta_min
 
@@ -220,27 +222,30 @@ match datatype:
     case _:
         raise ValueError("Unknown datatype: {}".format(datatype))
 
-# # # DEBUG set:
-# print('WARNING : DEBUG !!!!!!')
-# iterationss = [16,8]
-# num_stepss_backward = [10]
-# num_steps_forward = 10
-# num_samples = 10
-# batch_sizes = [2]
-# dbg = True
+if dbg:
+    # # DEBUG set:
+    print('WARNING : DEBUG !!!!!!')
+    iterationss = [16,8]
+    num_stepss_backward = [4,8]
+    num_steps_forward = 10
+    num_samples = 10
+    nruns_mmd = 1
+    ntrain_maxs = [ 2**2, 2**4 ]
+    batch_sizes = [2]
 
 # Plots
 scatter_plots = True
 noising_plots = True
 denoising_plots = True
 save_results = True
+scale_fig = 0.7
 plot_xlim = 3.0
 height_seaborn_ref = 1
 height_seaborn = height_seaborn_ref
 ssize = height_seaborn
 dpi=200
 offset_dimplot = 0
-dimplot_max = 8
+dimplot_max = 4
 val_hist = plot_xlim
 crop_data_plot = False
 plot_crop = plot_xlim
@@ -311,80 +316,85 @@ else:
     print('use cpu\n')
 
 if __name__ == '__main__':
+    if datatype == 'POD':
+        complexitys = Res
+    else:
+        complexitys = ntrain_maxs
+    mmd_SGM = torch.zeros((len(dims),len(complexitys),len(num_stepss_backward),len(iterationss),nruns_mmd))
+    mmd_MSGM = torch.zeros((len(dims),len(complexitys),len(num_stepss_backward),len(iterationss),nruns_mmd))
+    mmd_ref = torch.zeros((len(dims),len(complexitys),len(num_stepss_backward),len(iterationss),nruns_mmd))
 
-    for ntrain_max in ntrain_maxs:
-        mmd_SGM = torch.zeros((len(dims),len(Res),len(num_stepss_backward),len(iterationss),nruns_mmd))
-        mmd_MSGM = torch.zeros((len(dims),len(Res),len(num_stepss_backward),len(iterationss),nruns_mmd))
-        mmd_ref = torch.zeros((len(dims),len(Res),len(num_stepss_backward),len(iterationss),nruns_mmd))
+    i_complexitys = -1
+    for complexity in complexitys:
+        i_complexitys +=1
+        if datatype == 'POD':
+            Re = complexity
+        else:
+            ntrain_max = complexity
+        i_dims = -1
+        for dim in dims:
+            i_dims +=1
 
-        i_Res = -1
-        for Re in Res:
-            i_Res +=1
-            
-            i_dims = -1
-            for dim in dims:
-                i_dims +=1
-
-                i_MGMM = -1
-                for MSGM in MSGMs:
-                    i_MGMM +=1
+            i_MGMM = -1
+            for MSGM in MSGMs:
+                i_MGMM +=1
 
 
-                    if not MSGM:
-                        normalized_data = True
-                        ssm_intT = False
-                        premodule = None # default
-                        # print('WARNING : SGM with sphericalNN !!!!!!')
-                        # premodule = "NormalizeLogRadius" 
-                    else:
+                if not MSGM:
+                    normalized_data = True
+                    ssm_intT = False
+                    premodule = None # default
+                    # print('WARNING : SGM with sphericalNN !!!!!!')
+                    # premodule = "NormalizeLogRadius" 
+                else:
+                    normalized_data = False
+                    ssm_intT = ssm_intT_ref
+                    premodule = "NormalizeLogRadius" # default
+                    # premodule = "PolarCoordinatesWithLogRadius" 
+
+                np.random.seed(0)
+                torch.manual_seed(0) 
+                random.seed(0)
+
+                num_samples_init = min(num_samples_init_max,iterationss[0]*batch_sizes[0])
+
+                directory = "images"
+                if not os.path.exists(directory):
+                    os.makedirs(directory)
+
+                ## 1. Initialize dataset
+                match datatype:
+                    case 'swissroll':
+                        sampler = SwissRoll()
                         normalized_data = False
-                        ssm_intT = ssm_intT_ref
-                        premodule = "NormalizeLogRadius" # default
-                        # premodule = "PolarCoordinatesWithLogRadius" 
-
-                    np.random.seed(0)
-                    torch.manual_seed(0) 
-                    random.seed(0)
-
-                    num_samples_init = min(num_samples_init_max,iterationss[0]*batch_sizes[0])
-
-                    directory = "images"
-                    if not os.path.exists(directory):
-                        os.makedirs(directory)
-
-                    ## 1. Initialize dataset
-                    match datatype:
-                        case 'swissroll':
-                            sampler = SwissRoll()
-                            normalized_data = False
-                        case 'PIV':
-                            sampler = PIV(dim, 
-                                          normalized=normalized_data, 
-                                          largeImage = largeImage,
-                                          smoothing = smoothing,
-                                          localized = localized, 
-                                          few_data=few_data, 
-                                          ntrain_max=ntrain_max)
-                            log_scale_pdf = True
-                            plot_xlim = 6
-                            val_hist = 2*plot_xlim
-                            if MSGM and dims[0]>16:
-                                if smoothing < 2:
-                                    val_hist *= 5
-                                else:
-                                    val_hist *= 2
-                            if largeImage:
-                                offset_dimplot = dims[0]//2
-                        case 'gaussian':
-                            # correlation = False
-                            # normalized_data = False
-                            correlation = True # default
-                            sampler = Gaussian(dim, normalized=normalized_data, correlation = correlation)
-                            if not correlation:
-                                plot_ref_pdf = True
-                                pdf_theor = torch.distributions.Normal(0.0, 1.0)
-                            plot_xlim = 4
-                            val_hist = 2*plot_xlim
+                    case 'PIV':
+                        sampler = PIV(dim, 
+                                        normalized=normalized_data, 
+                                        largeImage = largeImage,
+                                        smoothing = smoothing,
+                                        localized = localized, 
+                                        few_data=few_data, 
+                                        ntrain_max=ntrain_max)
+                        log_scale_pdf = True
+                        plot_xlim = 6
+                        val_hist = 2*plot_xlim
+                        if MSGM and dims[0]>16:
+                            if smoothing < 2:
+                                val_hist *= 5
+                            else:
+                                val_hist *= 2
+                        if largeImage:
+                            offset_dimplot = dims[0]//2
+                    case 'gaussian':
+                        # correlation = False
+                        # normalized_data = False
+                        correlation = True # default
+                        sampler = Gaussian(dim, normalized=normalized_data, correlation = correlation)
+                        if not correlation:
+                            plot_ref_pdf = True
+                            pdf_theor = torch.distributions.Normal(0.0, 1.0)
+                        plot_xlim = 4
+                        val_hist = 2*plot_xlim
 
                         case 'cauchy':
                             sampler = Cauchy(dim, normalized=normalized_data, correlation = correlation)
@@ -393,345 +403,350 @@ if __name__ == '__main__':
                             if dim == 2:
                                 height_seaborn = height_seaborn_ref * 2
 
-                            if not dbg:
-                                num_samples = 100000 # to have enough points in the tails for the plots
-                                evalmmmd = False
-                                nruns_mmd = 1
+                        if not dbg:
+                            num_samples = 100000 # to have enough points in the tails for the plots
+                            evalmmmd = False
+                            nruns_mmd = 1
 
-                            if not correlation:
-                                plot_xlim = 10 
-                                plot_ref_pdf = True
-                                scale = (1.0/50)
-                                pdf_theor = torch.distributions.Cauchy(0.0, scale)
+                        if not correlation:
+                            plot_xlim = 10 
+                            plot_ref_pdf = True
+                            scale = (1.0/50)
+                            pdf_theor = torch.distributions.Cauchy(0.0, scale)
+                        else:
+                            if dim == 2:
+                                plot_xlim = 5 # for d=2 / warning : should depend of d : overwise we remove all far points / or separate crop and plot_xlim
                             else:
-                                if dim == 2:
-                                    plot_xlim = 5 # for d=2 / warning : should depend of d : overwise we remove all far points / or separate crop and plot_xlim
-                                else:
-                                    plot_xlim = 10
-                            plot_crop = 3*plot_xlim
+                                plot_xlim = 10
+                        plot_crop = 3*plot_xlim
 
-                            if MSGM and dim == 2:
-                                val_hist = 0.3
-                            else:
-                                val_hist = plot_xlim
+                        if MSGM and dim == 2:
+                            val_hist = 0.3
+                        else:
+                            val_hist = plot_xlim
 
                         case _:
                             raise ValueError("Unknown datatype: {}".format(datatype))
 
-                    folder_results = "results"
-                    directory = folder_results + "/" + sampler.name
-                    if not os.path.exists(directory):
-                        os.makedirs(directory)
+                folder_results = "results"
+                directory = folder_results + "/" + sampler.name
+                if not os.path.exists(directory):
+                    os.makedirs(directory)
 
-                    with torch.no_grad():
-                        xtest = sampler.sampletest(num_samples)
-                        sampler.dim = xtest.shape[1]
-                        largeDim = (xtest.shape[1] > 16)
-                        std_test = xtest.std(axis=0)
-                        if normalized_data:
-                            std_norm = sampler.get_std()
+                with torch.no_grad():
+                    xtest = sampler.sampletest(num_samples)
+                    sampler.dim = xtest.shape[1]
+                    largeDim = (xtest.shape[1] > 16)
+                    std_test = xtest.std(axis=0)
+                    if normalized_data:
+                        std_norm = sampler.get_std()
+                    else:
+                        std_norm = torch.ones((xtest.shape[1]))
+                    if (datatype == 'cauchy') :
+                        std_test_plot = torch.ones_like(std_test) / std_norm
+                    else:
+                        std_test_plot = std_test
+
+                    plt.close('all')
+                    dimplot = np.min([dimplot_max,xtest.shape[1]])
+                    columns_plot=range(1+offset_dimplot,1+offset_dimplot+dimplot)
+
+                    pairplots_single(xtest, std_norm, std_test_plot, datatype, sampler.name , 
+                                        dimplot=dimplot, offset_dimplot=offset_dimplot, \
+                                crop_data_plot=crop_data_plot, plot_crop=plot_crop, plot_xlim=plot_xlim, plot_ref_pdf=plot_ref_pdf, \
+                                pdf_theor=pdf_theor, log_scale_pdf=log_scale_pdf, columns_plot=columns_plot, \
+                                plt_show=plt_show, dpi=dpi, height_seaborn=height_seaborn, ssize=ssize)
+                    pairplots_single(sampler.sample(num_samples).to('cpu'), std_norm, std_test_plot, datatype, sampler.name + "_train", 
+                                        dimplot=dimplot, offset_dimplot=offset_dimplot, \
+                                crop_data_plot=crop_data_plot, plot_crop=plot_crop, plot_xlim=plot_xlim, plot_ref_pdf=plot_ref_pdf, \
+                                pdf_theor=pdf_theor, log_scale_pdf=log_scale_pdf, columns_plot=columns_plot, \
+                                plt_show=plt_show, dpi=dpi, height_seaborn=height_seaborn, ssize=ssize)
+
+                ## 3. Train
+
+                i_iterations = -1
+                for iterations_ref in iterationss:
+                    i_iterations +=1
+
+                    xtest = xtest.to('cpu')             
+
+                    i_batch_size = -1
+                    for batch_size_ref in batch_sizes:
+                        i_batch_size +=1
+                        if (ssm_intT):# for a fair comparison
+                            batch_size = int(batch_size_ref/num_steps_forward) # for a fair comparison in term of RAM
+                        else:  
+                            batch_size = batch_size_ref
+                        if (fair_comparison and MSGM):# for a fair comparison
+                            ratio_ite = max([1, int(np.sqrt(sampler.dim) * num_steps_forward / 16)])
+                            print('ratio_ite = ' + str(ratio_ite))
+                            iterations = int(iterations_ref/ratio_ite) # for a fair comparison in term of learning time 
+                            iterations = max([1,iterations])
+                        else:  
+                            iterations = iterations_ref
+                        num_samples_init = min(num_samples_init_max,iterations*batch_size)
+                        print('num_samples_init = ' + str(num_samples_init))
+                    
+                        # init models
+                        if (NNarchi == "MLP"):
+                            drift_q = MLP(input_dim=sampler.dim, index_dim=1, hidden_dim=128, premodule = premodule).to(device)
+                        elif (NNarchi == "Unet"):
+                            npixelx = torch.sqrt(torch.tensor(sampler.dim, dtype=torch.float32)).to(torch.int32)
+                            print('npixelx = ' + str(npixelx.item()))
+                            if not (sampler.dim == npixelx**2):
+                                raise ValueError("Incorrect dim to define square image: {}".format(sampler.dim))
+                            drift_q = VorticityUNet(
+                                base_channels=32,
+                                channel_mults=(1,2,4),
+                                num_res_blocks=2,
+                                premodule=premodule,        # None or "NormalizeLogRadius"
+                                in_space=npixelx,                # 16x16 images
+                                attention_resolutions=(2,4), # attention at 8x8 and 4x4
+                                flatten_order="F",   # <-- set to "C" or "F" to match pipeline
+                            ).to(device)
                         else:
-                            std_norm = torch.ones((xtest.shape[1]))
-                        if (datatype == 'cauchy') :
-                            std_test_plot = torch.ones_like(std_test) / std_norm
-                        else:
-                            std_test_plot = std_test
+                            raise ValueError("Unknown NN archi: {}".format(NNarchi))
+                        T = torch.nn.Parameter(torch.FloatTensor([T0]), requires_grad=False)
 
-                        plt.close('all')
-                        dimplot = np.min([dimplot_max,xtest.shape[1]])
-                        columns_plot=range(1+offset_dimplot,1+offset_dimplot+dimplot)
 
-                        pairplots_single(xtest, std_norm, std_test_plot, datatype, sampler.name , 
-                                         dimplot=dimplot, offset_dimplot=offset_dimplot, \
-                                    crop_data_plot=crop_data_plot, plot_crop=plot_crop, plot_xlim=plot_xlim, plot_ref_pdf=plot_ref_pdf, \
-                                    pdf_theor=pdf_theor, log_scale_pdf=log_scale_pdf, columns_plot=columns_plot, \
-                                    plt_show=plt_show, dpi=dpi, height_seaborn=height_seaborn, ssize=ssize)
-                        pairplots_single(sampler.sample(num_samples).to('cpu'), std_norm, std_test_plot, datatype, sampler.name + "_train", 
-                                         dimplot=dimplot, offset_dimplot=offset_dimplot, \
-                                    crop_data_plot=crop_data_plot, plot_crop=plot_crop, plot_xlim=plot_xlim, plot_ref_pdf=plot_ref_pdf, \
-                                    pdf_theor=pdf_theor, log_scale_pdf=log_scale_pdf, columns_plot=columns_plot, \
-                                    plt_show=plt_show, dpi=dpi, height_seaborn=height_seaborn, ssize=ssize)
-
-                    ## 3. Train
-
-                    i_iterations = -1
-                    for iterations_ref in iterationss:
-                        i_iterations +=1
-
-                        xtest = xtest.to('cpu')             
-
-                        i_batch_size = -1
-                        for batch_size_ref in batch_sizes:
-                            i_batch_size +=1
-                            if (ssm_intT):# for a fair comparison
-                                batch_size = int(batch_size_ref/num_steps_forward) # for a fair comparison in term of RAM
-                            else:  
-                                batch_size = batch_size_ref
-                            if (fair_comparison and MSGM):# for a fair comparison
-                                ratio_ite = max([1, int(np.sqrt(sampler.dim) * num_steps_forward / 16)])
-                                print('ratio_ite = ' + str(ratio_ite))
-                                iterations = int(iterations_ref/ratio_ite) # for a fair comparison in term of learning time 
-                                iterations = max([1,iterations])
-                            else:  
-                                iterations = iterations_ref
-                            num_samples_init = min(num_samples_init_max,iterations*batch_size)
-                            print('num_samples_init = ' + str(num_samples_init))
-                        
-                            # init models
-                            if (NNarchi == "MLP"):
-                                drift_q = MLP(input_dim=sampler.dim, index_dim=1, hidden_dim=128, premodule = premodule).to(device)
-                            elif (NNarchi == "Unet"):
-                                npixelx = torch.sqrt(torch.tensor(sampler.dim, dtype=torch.float32)).to(torch.int32)
-                                print('npixelx = ' + str(npixelx.item()))
-                                if not (sampler.dim == npixelx**2):
-                                    raise ValueError("Incorrect dim to define square image: {}".format(sampler.dim))
-                                drift_q = VorticityUNet(
-                                    base_channels=32,
-                                    channel_mults=(1,2,4),
-                                    num_res_blocks=2,
-                                    premodule=premodule,        # None or "NormalizeLogRadius"
-                                    in_space=npixelx,                # 16x16 images
-                                    attention_resolutions=(2,4), # attention at 8x8 and 4x4
-                                    flatten_order="F",   # <-- set to "C" or "F" to match pipeline
-                                ).to(device)
+                        with torch.no_grad():
+                            if MSGM:
+                                x_init = sampler.sample(num_samples_init).to(device)
+                                inf_sde = MSGMsde(x_init,beta_min=beta_min, beta_max=beta_max, \
+                                                            t_epsilon=t_eps, T=T, num_steps_forward=num_steps_forward, \
+                                                            device=device, estim_cst_norm_dens_r_T = False, \
+                                                            norm_sampler = norm_sampler,
+                                                            norm_map = norm_map, \
+                                                            denseTensor=denseTensor, \
+                                                            plot_validate = plot_validate)
+                                del x_init
                             else:
-                                raise ValueError("Unknown NN archi: {}".format(NNarchi))
-                            T = torch.nn.Parameter(torch.FloatTensor([T0]), requires_grad=False)
-
-
-                            with torch.no_grad():
-                                if MSGM:
-                                    x_init = sampler.sample(num_samples_init).to(device)
-                                    inf_sde = MSGMsde(x_init,beta_min=beta_min, beta_max=beta_max, \
+                                inf_sde = SGMsde(beta_min=beta_min_SGM, beta_max=beta_max_SGM, \
                                                                 t_epsilon=t_eps, T=T, num_steps_forward=num_steps_forward, \
-                                                                device=device, estim_cst_norm_dens_r_T = False, \
-                                                                norm_sampler = norm_sampler,
-                                                                norm_map = norm_map, \
-                                                                denseTensor=denseTensor, \
-                                                                plot_validate = plot_validate)
-                                    del x_init
-                                else:
-                                    inf_sde = SGMsde(beta_min=beta_min_SGM, beta_max=beta_max_SGM, \
-                                                                    t_epsilon=t_eps, T=T, num_steps_forward=num_steps_forward, \
-                                                                    device=device)
-                            gen_sde = PluginReverseSDE(inf_sde, drift_q, T, vtype=vtype, debias=False, ssm_intT=ssm_intT, deviceReverseSDE=device).to(device)
+                                                                device=device)
+                        gen_sde = PluginReverseSDE(inf_sde, drift_q, T, vtype=vtype, debias=False, ssm_intT=ssm_intT, deviceReverseSDE=device).to(device)
 
-                            print("data = " + sampler.name )
-                            print("few_data = " + str(few_data) )
-                            if few_data:
-                                print("ntrain_max = " + str(ntrain_max) )
-                            print("name_SDE = " + str(inf_sde.name_SDE) )   
-                            print("num_steps_forward = " + str(num_steps_forward))
-                            print("beta_min_SGM = " + str(beta_min_SGM))
-                            print("beta_min = " + str(beta_min))
-                            print("beta_max_SGM = " + str(beta_max_SGM))
-                            print("beta_max = " + str(beta_max))
-                            print("t_eps = " + str(t_eps))     
-                            print("iterations = " + str(iterations) )
-                            print("iterations_ref = " + str(iterations_ref) )
-                            print("lr = " + str(lr) )
-                            print("batch_size = " + str(batch_size) ) 
-                            print("ssm_intT = " + str(ssm_intT) )  
-                            print("fair_comparison = " + str(fair_comparison) )  
-                            print("NNarchi = " + NNarchi )
-                            print("premodule = " + str(premodule) )
-                            print("ntrain_max = " + str(ntrain_max))
+                        print("data = " + sampler.name )
+                        print("few_data = " + str(few_data) )
+                        if few_data:
+                            print("ntrain_max = " + str(ntrain_max) )
+                        print("name_SDE = " + str(inf_sde.name_SDE) )   
+                        print("num_steps_forward = " + str(num_steps_forward))
+                        print("beta_min_SGM = " + str(beta_min_SGM))
+                        print("beta_min = " + str(beta_min))
+                        print("beta_max_SGM = " + str(beta_max_SGM))
+                        print("beta_max = " + str(beta_max))
+                        print("t_eps = " + str(t_eps))     
+                        print("iterations = " + str(iterations) )
+                        print("iterations_ref = " + str(iterations_ref) )
+                        print("lr = " + str(lr) )
+                        print("batch_size = " + str(batch_size) ) 
+                        print("ssm_intT = " + str(ssm_intT) )  
+                        print("fair_comparison = " + str(fair_comparison) )  
+                        print("NNarchi = " + NNarchi )
+                        print("premodule = " + str(premodule) )
+                        print("ntrain_max = " + str(ntrain_max))
 
-                            name_simu_root = m_name_simu_root(sampler.name, gen_sde.base_sde.name_SDE, \
-                                                                iterations_ref, batch_size, num_steps_forward, \
-                                                                beta_min, beta_max, ssm_intT, fair_comparison)
+                        name_simu_root = m_name_simu_root(sampler.name, gen_sde.base_sde.name_SDE, \
+                                                            iterations_ref, batch_size, num_steps_forward, \
+                                                            beta_min, beta_max, ssm_intT, fair_comparison)
+                        
+                        if delayed:
+                            print('delayed ...')
+                            time.sleep(1e4)
+                            # time.sleep(1e5)
+
+                        
+                        # Forward SDE
+                        with torch.no_grad():
+                            print('integrate forward SDE')
+                            for_sde = forward_SDE(inf_sde, T)
+                            xs_forward = rk4_stratonovich_sampler(for_sde, xtest.clone().to(device), num_steps_forward,  \
+                                                                lmbd=0., keep_all_samples=True, \
+                                                                include_t0=True, norm_correction = MSGM) # sample
                             
-                            if delayed:
-                                print('delayed ...')
-                                time.sleep(1e4)
-                                # time.sleep(1e5)
+                            preprocessing(xtest, xs_forward, num_steps_forward, name_simu_root, offset_dimplot,
+                                            noising_plots, plt_show, folder_results, val_hist, std_norm, std_test_plot, 'cpu')
 
-                            
-                            # Forward SDE
-                            with torch.no_grad():
-                                print('integrate forward SDE')
-                                for_sde = forward_SDE(inf_sde, T)
-                                xs_forward = rk4_stratonovich_sampler(for_sde, xtest.clone().to(device), num_steps_forward,  \
-                                                                    lmbd=0., keep_all_samples=True, \
-                                                                    include_t0=True, norm_correction = MSGM) # sample
-                                
-                                preprocessing(xtest, xs_forward, num_steps_forward, name_simu_root, offset_dimplot,
-                                                noising_plots, plt_show, folder_results, val_hist, std_norm, std_test_plot, 'cpu')
+                        if (not justLoad):
+                            # init optimizer
+                            optim = torch.optim.Adam(gen_sde.parameters(), lr=lr)
 
-                            if (not justLoad):
-                                # init optimizer
-                                optim = torch.optim.Adam(gen_sde.parameters(), lr=lr)
+                            checkpoint_path = folder_results + "/" + name_simu_root + "_checkpoint.pt"
+                            start_iter = 0
+                            if os.path.exists(checkpoint_path) and useCheckpoint:
+                                start_iter = load_checkpoint(checkpoint_path, gen_sde, optim, device)
+                                start_iter += 1  # next iteration
 
-                                checkpoint_path = folder_results + "/" + name_simu_root + "_checkpoint.pt"
-                                start_iter = 0
-                                if os.path.exists(checkpoint_path) and useCheckpoint:
-                                    start_iter = load_checkpoint(checkpoint_path, gen_sde, optim, device)
-                                    start_iter += 1  # next iteration
+                            # train
+                            start_time = time.time()
+                            try:
+                                for i in range(start_iter, iterations):
+                                    optim.zero_grad() # init optimizer
+                                    with torch.no_grad():
+                                        x = sampler.sample(batch_size).to(device) # sample data
+                                    loss = gen_sde.ssm(x).mean() # forward and compute loss
+                                    loss.backward() # backward
+                                    optim.step() # update
 
-                                # train
-                                start_time = time.time()
-                                try:
-                                    for i in range(start_iter, iterations):
-                                        optim.zero_grad() # init optimizer
-                                        with torch.no_grad():
-                                            x = sampler.sample(batch_size).to(device) # sample data
-                                        loss = gen_sde.ssm(x).mean() # forward and compute loss
-                                        loss.backward() # backward
-                                        optim.step() # update
+                                    # print
+                                    if (i == 0) or ((i+1) % print_every == 0):
+                                        # elbo
+                                        elbo, elbo_std = evaluate(gen_sde, x)
 
                                         # print
-                                        if (i == 0) or ((i+1) % print_every == 0):
-                                            # elbo
-                                            elbo, elbo_std = evaluate(gen_sde, x)
-
-                                            # print
-                                            elapsed = time.time() - start_time
-                                            print('| iter {:6d} | {:5.2f} ms/step | loss {:8.3f} | elbo {:8.3f} | elbo std {:8.3f} '
-                                                .format(i+1, elapsed*1000/print_every, loss.item(), elbo.item(), elbo_std.item()))
-                                            
-                                            # checkpoint
-                                            if useCheckpoint:
-                                                save_checkpoint(checkpoint_path, gen_sde, optim, i)
-                                                if ((i+1) % save_every == 0):
-                                                    checkpoint_save_path = folder_results + "/" + name_simu_root + "_checkpoint_" + str(i+1) + ".pt"
-                                                    save_checkpoint(checkpoint_save_path, gen_sde, optim, i)
-
-                                            start_time = time.time()
-                                            del elbo, elbo_std
-                                            gc.collect()
+                                        elapsed = time.time() - start_time
+                                        print('| iter {:6d} | {:5.2f} ms/step | loss {:8.3f} | elbo {:8.3f} | elbo std {:8.3f} '
+                                            .format(i+1, elapsed*1000/print_every, loss.item(), elbo.item(), elbo_std.item()))
                                         
-                                        del x
-                                        # torch.mps.empty_cache()  # does not do much on MPS, but still good practice
-                                        # gc.collect()
-                                    gc.collect()
+                                        # checkpoint
+                                        if useCheckpoint:
+                                            save_checkpoint(checkpoint_path, gen_sde, optim, i)
+                                            if ((i+1) % save_every == 0):
+                                                checkpoint_save_path = folder_results + "/" + name_simu_root + "_checkpoint_" + str(i+1) + ".pt"
+                                                save_checkpoint(checkpoint_save_path, gen_sde, optim, i)
 
-                                except Exception as e:
-                                    print("Training interrupted:", e)
-                                    print("Checkpoint kept for safety.")
-                                    raise e
-
-                                else:
-                                    if useCheckpoint:
-                                        # executes ONLY if the loop fully completes
-                                        if os.path.exists(checkpoint_path):
-                                            os.remove(checkpoint_path)
-                                        print("Training finished successfully, checkpoint removed.")
-
-                                checkpoint_path_final = folder_results + "/" + name_simu_root + "_checkpoint_final.pt"
-                                save_checkpoint(checkpoint_path_final, gen_sde, optim, iterations-1)
-
-                            ## 4. Visualize
-                            with torch.no_grad():
-
-                                ### 4.3. Simulate SDEs
-                                """
-                                Simulate the generative SDE by using RK4 method
-                                """
-                                i_num_stepss_backward = -1
-                                for num_steps_backward in num_stepss_backward:
-                                    i_num_stepss_backward +=1
-                                    print("Generation : num_steps_backward = " + str(num_steps_backward))
-                                    # init param
-                                    # num_samples = 100000
-
-                                    # indices to visualize
-                                    fig_step = int(num_steps_backward/8) #4
-                                    if fig_step < 1:
-                                        fig_step = 1
-                                    if include_t0_reverse:
-                                        inds = range(0, num_steps_backward+1, fig_step)
-                                    else:
-                                        inds = range(fig_step-1, num_steps_backward, fig_step)
-                                    # sample and plot
-                                    plt.close('all')
-                                    lmbd = 0.
-                                    name_simu = folder_results + "/" + name_simu_root \
-                                        + str(t_eps) + "t_eps" \
-                                        + str(num_steps_backward) + "stepsBack_" \
-                                        + str(include_t0_reverse) + "t0infer"
+                                        start_time = time.time()
+                                        del elbo, elbo_std
+                                        gc.collect()
                                     
-                                    for i_run in range(nruns_mmd):
-                                        print("Run number : " + str(i_run))
-                                        if i_run > 0 :
-                                            directory = "runs" + "/" + sampler.name
-                                            if not os.path.exists(directory):
-                                                os.makedirs(directory)
-                                            name_simu = "runs/" + name_simu_root \
-                                                + str(t_eps) + "t_eps" \
-                                                + str(num_steps_backward) + "stepsBack_" \
-                                                + str(include_t0_reverse) + "t0infer" \
-                                                + "_run"+ str(i_run)
-                                        
-                                        if (justLoad):
-                                            save_results = False
-                                            xs = torch.load(name_simu + ".pt", weights_only=True)
-                                            checkpoint_path_final = folder_results + "/" + name_simu_root + "_checkpoint_final.pt"
-                                            if os.path.exists(checkpoint_path_final) and useCheckpoint:
-                                                optim = torch.optim.Adam(gen_sde.parameters(), lr=lr)
-                                                load_checkpoint(checkpoint_path_final, gen_sde, optim, device)
-                                        else:
-                                            x_0 = gen_sde.latent_sample(num_samples, sampler.dim) # init from prior
-                                            xs = rk4_stratonovich_sampler(gen_sde, x_0, num_steps_backward, lmbd=lmbd,\
-                                                                        keep_all_samples=True, 
-                                                                        include_t0=include_t0_reverse, 
-                                                                        norm_correction = MSGM) # sample
-                                            del x_0
-                                            if (save_results):
-                                                torch.save(xs, name_simu + ".pt")
-                                        postprocessing(inds, i_dims, i_Res, i_num_stepss_backward, i_iterations, i_run, MSGM, sampler, \
-                                                        xs, xtest, std_norm, std_test_plot, datatype, name_simu, dimplot, offset_dimplot, \
-                                                        crop_data_plot, plot_crop, plot_xlim, plot_ref_pdf, \
-                                                        pdf_theor, log_scale_pdf, columns_plot, \
-                                                        scatter_plots, denoising_plots, include_t0_reverse, plt_show, dpi, height_seaborn, ssize, \
-                                                        evalmmmd, justLoadmmmd, justLoad, save_results, lmbd, val_hist, 'cpu', \
-                                                        mmd_ref, mmd_MSGM,mmd_SGM,max_num_samples_for_mmd)
+                                    del x
+                                    # torch.mps.empty_cache()  # does not do much on MPS, but still good practice
+                                    # gc.collect()
+                                gc.collect()
 
-                    ## Convergence plots (with MMD)
+                            except Exception as e:
+                                print("Training interrupted:", e)
+                                print("Checkpoint kept for safety.")
+                                raise e
 
-                    if evalmmmd:
-                        # if justLoadmmmd and (not MSGM):
-                        if justLoadmmmd:
-                            if not MSGM:
-                                print("filename = " + folder_results + "/" + name_simu_root + "_globalMMDfile_SGM_" + str(nruns_mmd) + "runs.pt")
-                                mmd_SGM = torch.load(folder_results + "/" + name_simu_root + "_globalMMDfile_SGM_" + str(nruns_mmd) + "runs.pt")
                             else:
-                                print("filename = " + folder_results + "/" + name_simu_root + "_globalMMDfile_MSGM_" + str(nruns_mmd) + "runs.pt")
-                                mmd_MSGM = torch.load(folder_results + "/" + name_simu_root + "_globalMMDfile_MSGM_" + str(nruns_mmd) + "runs.pt") 
-                                print("filename = " + folder_results + "/" + name_simu_root + "_globalMMDfile_ref_" + str(nruns_mmd) + "runs.pt")
-                                mmd_ref = torch.load(folder_results + "/" + name_simu_root + "_globalMMDfile_ref_" + str(nruns_mmd) + "runs.pt") 
-                        else:
-                            if not MSGM:
-                                torch.save(mmd_SGM, folder_results + "/" + name_simu_root + "_globalMMDfile_SGM_" + str(nruns_mmd) + "runs.pt")
-                            else:
-                                torch.save(mmd_MSGM, folder_results + "/" + name_simu_root + "_globalMMDfile_MSGM_" + str(nruns_mmd) + "runs.pt")
-                                torch.save(mmd_ref, folder_results + "/" + name_simu_root + "_globalMMDfile_ref_" + str(nruns_mmd) + "runs.pt")
+                                if useCheckpoint:
+                                    # executes ONLY if the loop fully completes
+                                    if os.path.exists(checkpoint_path):
+                                        os.remove(checkpoint_path)
+                                    print("Training finished successfully, checkpoint removed.")
+
+                            checkpoint_path_final = folder_results + "/" + name_simu_root + "_checkpoint_final.pt"
+                            save_checkpoint(checkpoint_path_final, gen_sde, optim, iterations-1)
+
+                        ## 4. Visualize
+                        with torch.no_grad():
+
+                            ### 4.3. Simulate SDEs
+                            """
+                            Simulate the generative SDE by using RK4 method
+                            """
+                            i_num_stepss_backward = -1
+                            for num_steps_backward in num_stepss_backward:
+                                i_num_stepss_backward +=1
+                                print("Generation : num_steps_backward = " + str(num_steps_backward))
+                                # init param
+                                # num_samples = 100000
+
+                                # indices to visualize
+                                fig_step = int(num_steps_backward/8) #4
+                                if fig_step < 1:
+                                    fig_step = 1
+                                if include_t0_reverse:
+                                    inds = range(0, num_steps_backward+1, fig_step)
+                                else:
+                                    inds = range(fig_step-1, num_steps_backward, fig_step)
+                                # sample and plot
+                                plt.close('all')
+                                lmbd = 0.
+                                name_simu = folder_results + "/" + name_simu_root \
+                                    + str(t_eps) + "t_eps" \
+                                    + str(num_steps_backward) + "stepsBack_" \
+                                    + str(include_t0_reverse) + "t0infer"
+                                
+                                for i_run in range(nruns_mmd):
+                                    print("Run number : " + str(i_run))
+                                    if i_run > 0 :
+                                        directory = "runs" + "/" + sampler.name
+                                        if not os.path.exists(directory):
+                                            os.makedirs(directory)
+                                        name_simu = "runs/" + name_simu_root \
+                                            + str(t_eps) + "t_eps" \
+                                            + str(num_steps_backward) + "stepsBack_" \
+                                            + str(include_t0_reverse) + "t0infer" \
+                                            + "_run"+ str(i_run)
+                                    
+                                    if (justLoad):
+                                        save_results = False
+                                        xs = torch.load(name_simu + ".pt", weights_only=True)
+                                        checkpoint_path_final = folder_results + "/" + name_simu_root + "_checkpoint_final.pt"
+                                        if os.path.exists(checkpoint_path_final) and useCheckpoint:
+                                            optim = torch.optim.Adam(gen_sde.parameters(), lr=lr)
+                                            load_checkpoint(checkpoint_path_final, gen_sde, optim, device)
+                                    else:
+                                        x_0 = gen_sde.latent_sample(num_samples, sampler.dim) # init from prior
+                                        xs = rk4_stratonovich_sampler(gen_sde, x_0, num_steps_backward, lmbd=lmbd,\
+                                                                    keep_all_samples=True, 
+                                                                    include_t0=include_t0_reverse, 
+                                                                    norm_correction = MSGM) # sample
+                                        del x_0
+                                        if (save_results):
+                                            torch.save(xs, name_simu + ".pt")
+                                    postprocessing(inds, i_dims, i_complexitys, i_num_stepss_backward, i_iterations, i_run, MSGM, sampler, \
+                                                    xs, xtest, std_norm, std_test_plot, datatype, name_simu, dimplot, offset_dimplot, \
+                                                    crop_data_plot, plot_crop, plot_xlim, plot_ref_pdf, \
+                                                    pdf_theor, log_scale_pdf, columns_plot, \
+                                                    scatter_plots, denoising_plots, include_t0_reverse, plt_show, dpi, height_seaborn, ssize, \
+                                                    evalmmmd, justLoadmmmd, justLoad, save_results, lmbd, val_hist, 'cpu', \
+                                                    mmd_ref, mmd_MSGM,mmd_SGM,max_num_samples_for_mmd)
+
+                ## Convergence plots (with MMD)
 
                 if evalmmmd:
-                    # Take square root and evaluate mean and quantiles
-                    mmmd_SGM = mmd_SGM.sqrt().mean(dim=4)
-                    q10mmd_SGM = mmd_SGM.sqrt().quantile(0.1,dim=4)
-                    q90mmd_SGM = mmd_SGM.sqrt().quantile(0.9,dim=4)
-                    mmmd_MSGM = mmd_MSGM.sqrt().mean(dim=4)
-                    q10mmd_MSGM = mmd_MSGM.sqrt().quantile(0.1,dim=4)
-                    q90mmd_MSGM = mmd_MSGM.sqrt().quantile(0.9,dim=4)
-                    mmmd_ref = mmd_ref.sqrt().mean(dim=4)
-                    q10mmd_ref = mmd_ref.sqrt().quantile(0.1,dim=4)
-                    q90mmd_ref = mmd_ref.sqrt().quantile(0.9,dim=4)
+                    # if justLoadmmmd and (not MSGM):
+                    if justLoadmmmd:
+                        if not MSGM:
+                            print("filename = " + folder_results + "/" + name_simu_root + "_globalMMDfile_SGM_" + str(nruns_mmd) + "runs.pt")
+                            mmd_SGM = torch.load(folder_results + "/" + name_simu_root + "_globalMMDfile_SGM_" + str(nruns_mmd) + "runs.pt")
+                        else:
+                            print("filename = " + folder_results + "/" + name_simu_root + "_globalMMDfile_MSGM_" + str(nruns_mmd) + "runs.pt")
+                            mmd_MSGM = torch.load(folder_results + "/" + name_simu_root + "_globalMMDfile_MSGM_" + str(nruns_mmd) + "runs.pt") 
+                            print("filename = " + folder_results + "/" + name_simu_root + "_globalMMDfile_ref_" + str(nruns_mmd) + "runs.pt")
+                            mmd_ref = torch.load(folder_results + "/" + name_simu_root + "_globalMMDfile_ref_" + str(nruns_mmd) + "runs.pt") 
+                    else:
+                        if not MSGM:
+                            torch.save(mmd_SGM, folder_results + "/" + name_simu_root + "_globalMMDfile_SGM_" + str(nruns_mmd) + "runs.pt")
+                        else:
+                            torch.save(mmd_MSGM, folder_results + "/" + name_simu_root + "_globalMMDfile_MSGM_" + str(nruns_mmd) + "runs.pt")
+                            torch.save(mmd_ref, folder_results + "/" + name_simu_root + "_globalMMDfile_ref_" + str(nruns_mmd) + "runs.pt")
+
+            if evalmmmd:
+                # Take square root and evaluate mean and quantiles
+                mmmd_SGM = mmd_SGM.sqrt().mean(dim=4)
+                q10mmd_SGM = mmd_SGM.sqrt().quantile(0.1,dim=4)
+                q90mmd_SGM = mmd_SGM.sqrt().quantile(0.9,dim=4)
+                mmmd_MSGM = mmd_MSGM.sqrt().mean(dim=4)
+                q10mmd_MSGM = mmd_MSGM.sqrt().quantile(0.1,dim=4)
+                q90mmd_MSGM = mmd_MSGM.sqrt().quantile(0.9,dim=4)
+                mmmd_ref = mmd_ref.sqrt().mean(dim=4)
+                q10mmd_ref = mmd_ref.sqrt().quantile(0.1,dim=4)
+                q90mmd_ref = mmd_ref.sqrt().quantile(0.9,dim=4)
+
+                i_num_stepss_backward = -1
+                for num_steps_backward in num_stepss_backward:
+                    i_num_stepss_backward +=1
 
                     alpha_plot = 0.2
+                    print("Plot MMD vs nb backward steps")
                     fig = plt.figure(figsize=(5*scale_fig*1.3,3*scale_fig))
                     range_num_stepss_backward = range(len(num_stepss_backward))
-                    plt.loglog(num_stepss_backward,mmmd_SGM[i_dims,i_Res,range_num_stepss_backward,0].flatten(),label='SGM')
-                    plt.fill_between(num_stepss_backward, q10mmd_SGM[i_dims,i_Res,range_num_stepss_backward,0].flatten(), \
-                                                            q90mmd_SGM[i_dims,i_Res,range_num_stepss_backward,0].flatten(),
+                    plt.loglog(num_stepss_backward,mmmd_SGM[i_dims,i_complexitys,range_num_stepss_backward,0].flatten(),label='SGM')
+                    plt.fill_between(num_stepss_backward, q10mmd_SGM[i_dims,i_complexitys,range_num_stepss_backward,0].flatten(), \
+                                                            q90mmd_SGM[i_dims,i_complexitys,range_num_stepss_backward,0].flatten(),
                         alpha=alpha_plot)
-                    plt.loglog(num_stepss_backward,mmmd_MSGM[i_dims,i_Res,range_num_stepss_backward,0].flatten(),label='MSGM')
-                    plt.fill_between(num_stepss_backward, q10mmd_MSGM[i_dims,i_Res,range_num_stepss_backward,0].flatten(), \
-                                                            q90mmd_MSGM[i_dims,i_Res,range_num_stepss_backward,0].flatten(),
+                    plt.loglog(num_stepss_backward,mmmd_MSGM[i_dims,i_complexitys,range_num_stepss_backward,0].flatten(),label='MSGM')
+                    plt.fill_between(num_stepss_backward, q10mmd_MSGM[i_dims,i_complexitys,range_num_stepss_backward,0].flatten(), \
+                                                            q90mmd_MSGM[i_dims,i_complexitys,range_num_stepss_backward,0].flatten(),
                         alpha=alpha_plot)
-                    plt.loglog(num_stepss_backward,mmmd_ref[i_dims,i_Res,range_num_stepss_backward,0].flatten(),label='train data')
-                    plt.fill_between(num_stepss_backward, q10mmd_ref[i_dims,i_Res,range_num_stepss_backward,0].flatten(), 
-                                                            q90mmd_ref[i_dims,i_Res,range_num_stepss_backward,0].flatten(),
+                    plt.loglog(num_stepss_backward,mmmd_ref[i_dims,i_complexitys,range_num_stepss_backward,0].flatten(),label='train data')
+                    plt.fill_between(num_stepss_backward, q10mmd_ref[i_dims,i_complexitys,range_num_stepss_backward,0].flatten(), 
+                                                            q90mmd_ref[i_dims,i_complexitys,range_num_stepss_backward,0].flatten(),
                         alpha=alpha_plot)
                     plt.legend()
                     plt.xlabel('nb timesteps in backward SDE')
@@ -739,8 +754,8 @@ if __name__ == '__main__':
                     labels = [f'$2^{{{int(np.log2(idx))}}}$' for idx in xx]
                     ax = plt.gca()
                     ax.set_xticks(xx)
-                    ax.xaxis.set_major_locator(FixedLocator(xx))
-                    ax.xaxis.set_major_formatter(FixedFormatter(labels))
+                    ax.xaxis.set_major_locator(mticker.FixedLocator(xx))
+                    ax.xaxis.set_major_formatter(mticker.FixedFormatter(labels))
                     plt.tight_layout()
                     # Shrink current axis by 20%
                     box = ax.get_position()
@@ -748,7 +763,12 @@ if __name__ == '__main__':
                     ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
                     if plt_show:
                         plt.show(block=False)
-                    name_fig = folder_results + "/" + name_simu_root + "_MMD_wBckWardSteps_" + str(nruns_mmd) + "runs.png" 
+                    name_fig = folder_results + "/" + name_simu_root + "_MMD_wBckWardSteps_" \
+                        + str(nruns_mmd) + "runs" \
+                        + "_d=" + str(dims[i_dims]) \
+                        + "_Ntrain=" + str(complexitys[i_complexitys]) \
+                        + ".png" 
+                    print("name_fig = " + name_fig)
                     plt.savefig(name_fig)
                     if plt_show:
                         plt.pause(1)
@@ -758,16 +778,23 @@ if __name__ == '__main__':
 
 
                     if mmd_SGM.shape[3]>1:
+                        print("Plot MMD vs ADAMS iterations")
                         range_iterations = range(len(iterationss))
                         fig = plt.figure(figsize=(5*scale_fig*1.3,3*scale_fig))
-                        plt.loglog(iterationss,mmmd_SGM[i_dims,i_Res,0,range_iterations].flatten(),label='SGM')
-                        plt.fill_between(iterationss, q10mmd_SGM[i_dims,i_Res,0,range_iterations].flatten(), q90mmd_SGM[i_dims,i_Res,0,range_iterations].flatten(),
+                        plt.loglog(iterationss,mmmd_SGM[i_dims,i_complexitys,i_num_stepss_backward,range_iterations].flatten(),label='SGM')
+                        plt.fill_between(iterationss, 
+                                        q10mmd_SGM[i_dims,i_complexitys,i_num_stepss_backward,range_iterations].flatten(), 
+                                        q90mmd_SGM[i_dims,i_complexitys,i_num_stepss_backward,range_iterations].flatten(),
                             alpha=alpha_plot)
-                        plt.loglog(iterationss,mmmd_MSGM[i_dims,i_Res,0,range_iterations].flatten(),label='MSGM')
-                        plt.fill_between(iterationss, q10mmd_MSGM[i_dims,i_Res,0,range_iterations].flatten(), q90mmd_MSGM[i_dims,i_Res,0,range_iterations].flatten(),
+                        plt.loglog(iterationss,mmmd_MSGM[i_dims,i_complexitys,i_num_stepss_backward,range_iterations].flatten(),label='MSGM')
+                        plt.fill_between(iterationss, 
+                                        q10mmd_MSGM[i_dims,i_complexitys,i_num_stepss_backward,range_iterations].flatten(), 
+                                        q90mmd_MSGM[i_dims,i_complexitys,i_num_stepss_backward,range_iterations].flatten(),
                             alpha=alpha_plot)
-                        plt.loglog(iterationss,mmmd_ref[i_dims,i_Res,0,range_iterations].flatten(),label='train data')
-                        plt.fill_between(iterationss, q10mmd_ref[i_dims,i_Res,0,range_iterations].flatten(), q90mmd_ref[i_dims,i_Res,0,range_iterations].flatten(),
+                        plt.loglog(iterationss,mmmd_ref[i_dims,i_complexitys,i_num_stepss_backward,range_iterations].flatten(),label='train data')
+                        plt.fill_between(iterationss, 
+                                        q10mmd_ref[i_dims,i_complexitys,i_num_stepss_backward,range_iterations].flatten(), 
+                                        q90mmd_ref[i_dims,i_complexitys,i_num_stepss_backward,range_iterations].flatten(),
                             alpha=alpha_plot)
                         plt.ylabel('MMD')
                         plt.xlabel('effective number of iterations')
@@ -775,8 +802,8 @@ if __name__ == '__main__':
                         labels = [f'$2^{{{int(np.log2(idx))}}}$' for idx in xx]
                         ax = plt.gca()
                         ax.set_xticks(xx)
-                        ax.xaxis.set_major_locator(FixedLocator(xx))
-                        ax.xaxis.set_major_formatter(FixedFormatter(labels))
+                        ax.xaxis.set_major_locator(mticker.FixedLocator(xx))
+                        ax.xaxis.set_major_formatter(mticker.FixedFormatter(labels))
                         plt.tight_layout()
                         # Shrink current axis by 20%
                         box = ax.get_position()
@@ -786,39 +813,126 @@ if __name__ == '__main__':
                         ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
                         if plt_show:
                             plt.show(block=False)
-                        name_fig = folder_results + "/" + name_simu_root + "_MMD_wIte_" + str(nruns_mmd) + "runs.png" 
+                        name_fig = folder_results + "/" + name_simu_root + "_MMD_wIte_"\
+                            + str(nruns_mmd) + "runs" \
+                            + "_d=" + str(dims[i_dims]) \
+                            + "_Ntrain=" + str(complexitys[i_complexitys]) \
+                            + "_nStepBack=" + str(num_stepss_backward[i_num_stepss_backward]) \
+                            + ".png" 
+                        print("name_fig = " + name_fig)
                         plt.savefig(name_fig)
                         if plt_show:
                             plt.pause(1)
                         plt.close(fig)
                         plt.close()
                         del fig
+        
+        if evalmmmd:
+            if mmd_SGM.shape[0]>1:
+                print("Plot MMD vs dimension")
 
-            if evalmmmd:
-                if mmd_SGM.shape[0]>1:
+                i_num_stepss_backward = -1
+                for num_steps_backward in num_stepss_backward:
+                    i_num_stepss_backward +=1
+                        
                     range_dims = range(len(dims))
+                    fig, ax = plt.subplots(figsize=(5 * scale_fig * 1.3, 3 * scale_fig))
+                    # Plot lines and shaded intervals
+                    ax.loglog(dims, mmmd_SGM[range_dims, i_complexitys, i_num_stepss_backward, 0].flatten(), label='SGM')
+                    ax.fill_between(dims,
+                                    q10mmd_SGM[range_dims, i_complexitys, i_num_stepss_backward, 0].flatten(),
+                                    q90mmd_SGM[range_dims, i_complexitys, i_num_stepss_backward, 0].flatten(),
+                                    alpha=alpha_plot)
+                    ax.loglog(dims, mmmd_MSGM[range_dims, i_complexitys, i_num_stepss_backward, 0].flatten(), label='MSGM')
+                    ax.fill_between(dims,
+                                    q10mmd_MSGM[range_dims, i_complexitys, i_num_stepss_backward, 0].flatten(),
+                                    q90mmd_MSGM[range_dims, i_complexitys, i_num_stepss_backward, 0].flatten(),
+                                    alpha=alpha_plot)
+                    ax.loglog(dims, mmmd_ref[range_dims, i_complexitys, i_num_stepss_backward, 0].flatten(), label='train data')
+                    ax.fill_between(dims,
+                                    q10mmd_ref[range_dims, i_complexitys, i_num_stepss_backward, 0].flatten(),
+                                    q90mmd_ref[range_dims, i_complexitys, i_num_stepss_backward, 0].flatten(),
+                                    alpha=alpha_plot)
+                    ax.set_ylabel('MMD')
+                    ax.set_xlabel('dimension')
+                    # Use all dims as xticks
+                    # Ensure dims is a 1-D numeric array/list
+                    xticks = list(np.asarray(dims).flatten())
+                    ax.xaxis.set_major_locator(mticker.FixedLocator(xticks))
+                    # Format ticks as integers if possible
+                    def fmt_tick(x):
+                        try:
+                            xi = int(x)
+                            if abs(x - xi) < 1e-8:
+                                return str(xi)
+                        except Exception:
+                            pass
+                        return "{:.0g}".format(x)
+                    ax.xaxis.set_major_formatter(mticker.FixedFormatter([fmt_tick(x) for x in xticks]))
+                    # Remove minor ticks (they can clutter log axes)
+                    ax.xaxis.set_minor_locator(mticker.NullLocator())
+                    # Rotate and style xtick labels to avoid overlap on a small figure
+                    ax.tick_params(axis='x', which='major')
+                    # ax.tick_params(axis='x', which='major', labelrotation=45, labelsize=8)
+                    # Reserve space at the bottom for rotated labels and at right for the legend
+                    fig.subplots_adjust(bottom=0.28, right=0.75)
+                    # Optionally shrink axis width so legend fits on the right without overlapping the plot
+                    box = ax.get_position()
+                    ax.set_position([box.x0, box.y0, box.width * 0.62, box.height])
+                    # Place legend to the right
+                    ax.legend(loc='center left', bbox_to_anchor=(1.02, 0.5))
+                    # Show / save
+                    if plt_show:
+                        plt.show(block=False)
+                    name_fig = folder_results + "/" + name_simu_root + "_MMD_wDim_" \
+                            + str(nruns_mmd) + "runs" \
+                            + "_Ntrain=" + str(complexitys[i_complexitys]) \
+                            + "_nStepBack=" + str(num_stepss_backward[i_num_stepss_backward]) \
+                            + ".png" 
+                    print("Saving to:", name_fig)
+                    plt.savefig(name_fig, bbox_inches='tight', dpi=300)
+
+                if plt_show:
+                    plt.pause(1)
+                plt.close(fig)
+
+    if evalmmmd:
+        if mmd_SGM.shape[1]>1:
+            range_complexitys = range(len(complexitys))
+
+            i_dims = -1
+            for dim in dims:
+                i_dims +=1
+
+                i_num_stepss_backward = -1
+                for num_steps_backward in num_stepss_backward:
+                    i_num_stepss_backward +=1
+                
+                    print("Plot MMD vs complexity for dim = " + str(dim))
                     fig = plt.figure(figsize=(5*scale_fig*1.3,3*scale_fig))
-                    plt.loglog(dims,mmmd_SGM[range_dims,i_Res,0,0].flatten(),label='SGM')
-                    plt.fill_between(dims, q10mmd_SGM[range_dims,i_Res,0,0].flatten(), q90mmd_SGM[range_dims,i_Res,0,0].flatten(),
+                    plt.loglog(complexitys,mmmd_SGM[i_dims,range_complexitys,i_num_stepss_backward,0].flatten(),label='SGM')
+                    plt.fill_between(complexitys, 
+                                    q10mmd_SGM[i_dims,range_complexitys,i_num_stepss_backward,0].flatten(), 
+                                    q90mmd_SGM[i_dims,range_complexitys,i_num_stepss_backward,0].flatten(),
                         alpha=alpha_plot)
-                    plt.loglog(dims,mmmd_MSGM[range_dims,i_Res,0,0].flatten(),label='MSGM')
-                    plt.fill_between(dims, q10mmd_MSGM[range_dims,i_Res,0,0].flatten(), q90mmd_MSGM[range_dims,i_Res,0,0].flatten(),
+                    plt.loglog(complexitys,mmmd_MSGM[i_dims,range_complexitys,i_num_stepss_backward,0].flatten(),label='MSGM')
+                    plt.fill_between(complexitys, 
+                                    q10mmd_MSGM[i_dims,range_complexitys,i_num_stepss_backward,0].flatten(), 
+                                    q90mmd_MSGM[i_dims,range_complexitys,i_num_stepss_backward,0].flatten(),
                         alpha=alpha_plot)
-                    plt.loglog(dims,mmmd_ref[range_dims,i_Res,0,0].flatten(),label='train data')
-                    plt.fill_between(dims, q10mmd_ref[range_dims,i_Res,0,0].flatten(), q90mmd_ref[range_dims,i_Res,0,0].flatten(),
+                    plt.loglog(complexitys,mmmd_ref[i_dims,range_complexitys,i_num_stepss_backward,0].flatten(),label='train data')
+                    plt.fill_between(complexitys, 
+                                    q10mmd_ref[i_dims,range_complexitys,i_num_stepss_backward,0].flatten(), 
+                                    q90mmd_ref[i_dims,range_complexitys,i_num_stepss_backward,0].flatten(),
                         alpha=alpha_plot)
                     plt.ylabel('MMD')
-                    plt.xlabel('dimension')
-                    if datatype == 'era5':
-                        xx = dims
-                        plt.xticks(ticks=xx )
-                    else:
-                        xx = dims
-                        labels = [f'$2^{{{int(np.log2(idx))}}}$' for idx in xx]
-                        ax = plt.gca()
-                        ax.set_xticks(xx)
-                        ax.xaxis.set_major_locator(FixedLocator(xx))
-                        ax.xaxis.set_major_formatter(FixedFormatter(labels))   
+                    plt.xlabel('Training set size')
+                    xx = complexitys
+                    labels = [f'$2^{{{int(np.log2(idx))}}}$' for idx in xx]
+                    ax = plt.gca()
+                    ax.set_xticks(xx)
+                    ax.xaxis.set_major_locator(mticker.FixedLocator(xx))
+                    ax.xaxis.set_major_formatter(mticker.FixedFormatter(labels))
                     plt.tight_layout()
                     # Shrink current axis by 20%
                     box = ax.get_position()
@@ -828,10 +942,16 @@ if __name__ == '__main__':
                     ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
                     if plt_show:
                         plt.show(block=False)
-                    name_fig = folder_results + "/" + name_simu_root + "_MMD_wDim_" + str(nruns_mmd) + "runs.png" 
+                    name_fig = folder_results + "/" + name_simu_root + "_MMD_wNtrain_" \
+                            + str(nruns_mmd) + "runs" \
+                            + "_d=" + str(dims[i_dims]) \
+                            + "_nStepBack=" + str(num_stepss_backward[i_num_stepss_backward]) \
+                            + ".png" 
+                    print("name_fig = " + name_fig)
                     plt.savefig(name_fig)
                     if plt_show:
                         plt.pause(1)
                     plt.close(fig)
                     plt.close()
                     del fig
+
