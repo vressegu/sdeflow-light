@@ -519,6 +519,11 @@ def postprocessing(inds, i_dims, i_complexitys, i_num_stepss_backward, i_iterati
                     crop_data_plot=crop_data_plot, plot_crop=plot_crop, plot_xlim=plot_xlim, plot_ref_pdf=plot_ref_pdf, \
                     pdf_theor=pdf_theor, log_scale_pdf=log_scale_pdf, columns_plot=columns_plot, \
                     plt_show=plt_show, dpi=dpi, height_seaborn=height_seaborn, ssize=ssize)
+        
+    # Survival function plot
+    fig, ax, surv = plot_survival_simple(x=xgen, x_ref=xtest, std_norm=None,
+                                        prefix_save=name_simu, plt_show=False,
+                                        figsize=(3, 2), tail_frac=0.05, return_survival=True)
 
     if (denoising_plots) and (i_run == 0):
         plot_selected_inds(xs, inds, True, False, lmbd, 
@@ -559,3 +564,313 @@ def postprocessing(inds, i_dims, i_complexitys, i_num_stepss_backward, i_iterati
             mmd_MSGM[i_dims, i_complexitys, i_num_stepss_backward,i_iterations,i_run] = dist
         else:
             mmd_SGM[i_dims, i_complexitys, i_num_stepss_backward,i_iterations,i_run] = dist
+
+"""
+survival_simple.py
+
+Simple empirical survival plot for two datasets (test and generated).
+
+Features:
+- Accepts torch tensors x (generated) and x_ref (test), shape (N, d).
+- Optional per-dimension or scalar scaling `std_norm` (applied before computing norms).
+- Computes empirical survival S(R) = P(||x|| > R) on a shared log-spaced R grid.
+- Simple log-log linear fit on the tail (ordinary least squares on log S vs log R).
+  Tail selection can be controlled with `tail_frac` (fraction of largest observations)
+  or explicitly by `tail_k` (number of top order statistics).
+- No confidence intervals, no Hill estimator complexity — minimal and fast.
+- Compact, paper-ready plotting defaults (suitable for small figures, e.g. figsize=(3,2)).
+
+Usage:
+    from survival_simple import plot_survival_simple
+    fig, ax, surv = plot_survival_simple(x_gen, x_test, std_norm=std_norm,
+                                         prefix_save="sim_surv",
+                                         figsize=(3,2),
+                                         tail_frac=0.05, tail_k=None,
+                                         plt_show=False, return_survival=True)
+
+Returns:
+    (fig, ax) or (fig, ax, survival_dict) if return_survival=True
+
+Author: Assistant (statistician)
+Date: 2025-12-01
+"""
+from typing import Optional, Tuple, Dict, Any
+
+import numpy as np
+import torch
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+
+def _compute_common_R_grid(norms_list, n_points: int = 200) -> np.ndarray:
+    # Build a shared log-spaced grid from available norms
+    mins = []
+    maxs = []
+    for arr in norms_list:
+        if arr is None or len(arr) == 0:
+            continue
+        pos = arr[arr > 0]
+        if pos.size > 0:
+            mins.append(pos.min())
+        maxs.append(arr.max())
+    if len(maxs) == 0:
+        raise ValueError("No data provided to build R grid.")
+    min_pos = min(mins) if len(mins) > 0 else 1e-12
+    max_val = max(maxs)
+    upper = max_val if max_val > min_pos else min_pos * 10.0
+    return np.logspace(np.log10(min_pos * 0.9), np.log10(upper), num=n_points)
+
+
+def _empirical_survival_from_norms(norms: np.ndarray, R_grid: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    norms_sorted = np.sort(norms)
+    idx = np.searchsorted(norms_sorted, R_grid, side='right')
+    counts = norms.size - idx
+    S = counts.astype(float) / float(norms.size) if norms.size > 0 else np.zeros_like(R_grid)
+    return S, counts
+
+
+def _apply_std_norm(t: torch.Tensor, std_norm: Optional[torch.Tensor]) -> torch.Tensor:
+    if std_norm is None:
+        return t
+    if not torch.is_tensor(std_norm):
+        std_t = torch.as_tensor(std_norm, dtype=t.dtype, device=t.device)
+    else:
+        std_t = std_norm.to(dtype=t.dtype, device=t.device)
+    return t * std_t
+
+
+def _tail_fit_loglog(R_grid: np.ndarray, S_vals: np.ndarray, norms: np.ndarray,
+                     tail_frac: float = 0.05, tail_k: Optional[int] = None) -> Tuple[Optional[float], Optional[int], Optional[np.ndarray]]:
+    """
+    Fit a line on log-log scale to the tail of the empirical survival.
+    Returns (alpha, k_used, S_fit) where alpha is the tail exponent (positive for Pareto: S ~ C R^{-alpha})
+    and k_used is the number of top order stats used. S_fit is the fitted survival evaluated on R_grid.
+    If fitting is not possible, returns (None, None, None).
+    """
+    n = norms.size
+    if n < 10:
+        return None, None, None
+
+    sorted_norms = np.sort(norms)
+    if tail_k is None:
+        k = max(10, int(np.clip(np.ceil(n * tail_frac), 10, n - 1)))
+    else:
+        k = int(min(max(1, tail_k), n - 1))
+
+    # threshold = value at which we take the tail (use (n-k)-th order stat)
+    threshold = sorted_norms[-k - 1]
+    # select R points in grid >= threshold:
+    mask = R_grid >= threshold
+    if not np.any(mask):
+        return None, k, None
+
+    R_tail = R_grid[mask]
+    S_tail = S_vals[mask]
+
+    # Only keep positive S_tail entries for log
+    positive_mask = S_tail > 0
+    if np.sum(positive_mask) < 3:
+        return None, k, None
+
+    R_tail = R_tail[positive_mask]
+    S_tail = S_tail[positive_mask]
+
+    # linear fit on (log R, log S): log S = a + b log R  => S = exp(a) * R^b
+    logR = np.log(R_tail)
+    logS = np.log(S_tail)
+    b, a = np.polyfit(logR, logS, 1)  # slope b, intercept a
+    # For Pareto-like tail S ~ C * R^{-alpha}, so alpha = -b
+    alpha = -b
+    S_fit = np.exp(a) * (R_grid ** b)
+    return float(alpha), int(k), S_fit
+
+
+def plot_survival_simple(x: Optional[torch.Tensor] = None,
+                         x_ref: Optional[torch.Tensor] = None,
+                         std_norm: Optional[torch.Tensor] = None,
+                         prefix_save: str = "surv",
+                         plt_show: bool = False,
+                        #  figsize: Tuple[float, float] = (6, 4),
+                         figsize: Tuple[float, float] = (3, 2),
+                         n_points: int = 200,
+                         tail_frac: float = 0.05,
+                         tail_k: Optional[int] = None,
+                         colors: Tuple[str, str] = ('#1f77b4', '#ff7f0e'),
+                        #  ylim: Tuple[float, float] = (1e-5, 1e1),
+                         ylim: Tuple[float, float] = (1e-3, 1.1),
+                         save_png: bool = True,
+                         return_survival: bool = False,
+                         dpi: int = 300) -> Tuple[Any, Any]:
+    """
+    Simple survival plot for one or two datasets.
+
+    - x_ref is the test/reference dataset (plotted in first color).
+    - x is generated dataset (plotted in second color).
+    - std_norm (optional) scales each dimension before computing norms (scalar or (d,) vector).
+    - tail_frac/tail_k control simple tail selection for the log-log fit.
+
+    Returns (fig, ax) or (fig, ax, survival_dict).
+    """
+    if x is None and x_ref is None:
+        raise ValueError("At least one of x or x_ref must be provided.")
+
+    sns.set_style("whitegrid")
+    plt.rcParams.update({
+        "font.size": 9,
+        "axes.titlesize": 9,
+        "axes.labelsize": 9,
+        "legend.fontsize": 8,
+        "figure.dpi": 150,
+    })
+
+    # compute (scaled) norms
+    norms_gen = None
+    norms_ref = None
+    if x_ref is not None:
+        assert x_ref.ndim == 2
+        xref_scaled = _apply_std_norm(x_ref, std_norm)
+        norms_ref = torch.norm(xref_scaled, dim=1).cpu().numpy()
+    if x is not None:
+        assert x.ndim == 2
+        x_scaled = _apply_std_norm(x, std_norm)
+        norms_gen = torch.norm(x_scaled, dim=1).cpu().numpy()
+
+    # shared R grid
+    R_grid = _compute_common_R_grid([norms_ref, norms_gen], n_points=n_points)
+
+    # empirical survivals
+    S_ref = counts_ref = S_gen = counts_gen = None
+    if norms_ref is not None:
+        S_ref, counts_ref = _empirical_survival_from_norms(norms_ref, R_grid)
+    if norms_gen is not None:
+        S_gen, counts_gen = _empirical_survival_from_norms(norms_gen, R_grid)
+
+    # simple tail fits
+    alpha_ref = k_ref = Sfit_ref = None
+    alpha_gen = k_gen = Sfit_gen = None
+    if norms_ref is not None:
+        alpha_ref, k_ref, Sfit_ref = _tail_fit_loglog(R_grid, S_ref, norms_ref, tail_frac=tail_frac, tail_k=tail_k)
+    if norms_gen is not None:
+        alpha_gen, k_gen, Sfit_gen = _tail_fit_loglog(R_grid, S_gen, norms_gen, tail_frac=tail_frac, tail_k=tail_k)
+
+    # plotting
+    fig, ax = plt.subplots(figsize=figsize)
+    ref_color, gen_color = colors
+
+    # plot main curves and create legend entries only for test and gen.
+    if S_ref is not None:
+        line_ref, = ax.plot(R_grid, S_ref, linestyle='-', color=ref_color, label='test')
+    else:
+        line_ref = None
+    if S_gen is not None:
+        # label 'gen.' per your request (with a dot)
+        line_gen, = ax.plot(R_grid, S_gen, linestyle='-', color=gen_color, label='gen.')
+    else:
+        line_gen = None
+
+    # # plot fits but DO NOT add them to the legend
+    # if Sfit_ref is not None:
+    #     ax.plot(R_grid, Sfit_ref, linestyle='--', color=ref_color, label='_nolegend_')
+    # if Sfit_gen is not None:
+    #     ax.plot(R_grid, Sfit_gen, linestyle='--', color=gen_color, label='_nolegend_')
+
+    ax.set_xscale('log')
+    ax.set_yscale('log')
+
+    # If test/reference provided, fix x limits to the range of the test norms so different
+    # generated datasets can be compared on the same horizontal scale.
+    if norms_ref is not None:
+        pos = norms_ref[norms_ref > 0]
+        if pos.size > 0:
+            xmin = pos.min() * 0.9
+        else:
+            xmin = R_grid.min()
+        xmax = norms_ref.max()
+        # ensure valid positive bounds and a tiny padding if identical
+        xmin = max(xmin, 1e-12)
+        if xmax <= xmin:
+            xmax = xmin * 1.1
+        xmax = min(xmax, 1e2)
+        ax.set_xlim(xmin, xmax)
+    # ax.set_xlim(1e-2, 1e2)
+
+    ax.set_xlabel('R')
+    ax.set_ylabel(r"$S(R)=\mathbb{P}\left(\|\mathbf{x}\|>R\right)$")
+    ax.grid(True, which='both', linestyle=':', linewidth=0.5, alpha=0.6)
+
+    ymin, ymax = ylim
+    ymin = max(ymin, 1e-300)
+    ax.set_ylim(ymin, ymax)
+
+
+    # compact legend inside bottom-left with only two items (test and gen.)
+    legend_handles = []
+    legend_labels = []
+    if line_ref is not None:
+        legend_handles.append(line_ref)
+        legend_labels.append("test")
+    if line_gen is not None:
+        legend_handles.append(line_gen)
+        legend_labels.append("gen.")
+    if len(legend_handles) > 0:
+        ax.legend(legend_handles, legend_labels, frameon=False, loc='lower left')
+
+
+    ax.set_xlabel('R')
+    ax.set_ylabel(r"$S(R)=\mathbb{P}\left(\|\mathbf{x}\|>R\right)$")
+    ax.grid(True, which='both', linestyle=':', linewidth=0.5, alpha=0.6)
+
+    ymin, ymax = ylim
+    ymin = max(ymin, 1e-300)
+    ax.set_ylim(ymin, ymax)
+
+    # compact legend inside top-right with only two items (test and gen.)
+    legend_handles = []
+    legend_labels = []
+    if line_ref is not None:
+        legend_handles.append(line_ref)
+        legend_labels.append("test")
+    if line_gen is not None:
+        legend_handles.append(line_gen)
+        legend_labels.append("gen.")
+    if len(legend_handles) > 0:
+        ax.legend(legend_handles, legend_labels, frameon=False, loc='lower left', fontsize=7)
+
+    ax.tick_params(axis='both', which='major', labelsize=8)
+    plt.tight_layout()
+
+    filename = f"{prefix_save}_survival.png"
+    if save_png:
+        fig.savefig(filename, bbox_inches='tight', dpi=dpi)
+
+    if plt_show:
+        plt.show(block=False)
+    else:
+        plt.close(fig)
+
+    if return_survival:
+        survival_dict = {
+            "R_grid": R_grid,
+            "reference": {"S": S_ref, "counts": counts_ref, "N": norms_ref.size if norms_ref is not None else 0},
+            "generated": {"S": S_gen, "counts": counts_gen, "N": norms_gen.size if norms_gen is not None else 0},
+            "fits": {"ref": {"alpha": alpha_ref, "k": k_ref}, "gen": {"alpha": alpha_gen, "k": k_gen}}
+        }
+        return fig, ax, survival_dict
+
+    return fig, ax
+
+
+if __name__ == "__main__":
+    # quick demo
+    torch.manual_seed(0)
+    np.random.seed(0)
+    N = 20000
+    d = 5
+
+    x_gen = torch.randn(N, d)
+    x_test = torch.from_numpy(np.random.standard_t(3.0, size=(N, d)).astype(np.float32))
+
+    fig, ax, surv = plot_survival_simple(x=x_gen, x_ref=x_test, std_norm=None,
+                                        prefix_save="demo_simple", plt_show=False,
+                                        figsize=(3, 2), tail_frac=0.05, return_survival=True)
+    print("Saved demo_simple_survival.png")
