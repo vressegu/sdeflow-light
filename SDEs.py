@@ -24,6 +24,7 @@ import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from sde_scheme import euler_maruyama_sampler,heun_sampler,rk4_stratonovich_sampler
 import gc
+from transportNoise import grid_k
 
 
 # class OU_SDE(torch.nn.Module): 
@@ -378,6 +379,50 @@ class MSGMsde(SDE):
             k_list.extend([k, k])
             coef = 0.5 * torch.sqrt(torch.tensor(2, dtype=torch.float32))
             v_list.extend([coef, -coef])
+
+        indices = torch.tensor([i_list, j_list, k_list])   # shape (3, 2n)
+        values  = torch.tensor(v_list, dtype=torch.float32)
+
+        # keep a CPU sparse object for debugging/IO if you want:
+        try:
+            self.G_sparse_cpu = torch.sparse_coo_tensor(indices, values, size=(n, n, n)).coalesce()
+        except Exception:
+            # if sparse COO creation on CPU fails for some reason, skip storing CPU sparse
+            self.G_sparse_cpu = None
+
+        # move raw arrays to the active device (MPS)
+        self.G_I = indices[0].to(self.device)   # (nnz,)
+        self.G_J = indices[1].to(self.device)
+        self.G_K = indices[2].to(self.device)
+        self.G_V = values.to(self.device)       # (nnz,)
+
+        # Optionally delete CPU copies to save RAM
+        del indices, values
+
+    def sparse_G_advection(self, n) : 
+        i_list = []
+        j_list = []
+        k_list = []
+        v_list = []
+
+        # N = torch.sqrt(n).to(torch.int32)
+        N = np.sqrt(n)
+        grid = grid_k(N=N)
+
+        for k1 in range(N):
+            for k2 in range(N):
+                for j1 in range(N):
+                    for j2 in range(N):
+                        i1 = (j1-k1)%N
+                        i2 = (j2-k2)%N
+                        K = k1 + k2*N
+                        J = j1 + j2*N
+                        I = i1 + i2*N
+                        i_list.extend([I])
+                        j_list.extend([J])
+                        k_list.extend([K])
+                        coef = grid.alpha2_K[k1,k2] * grid.f_Kk_Kq[k1,k2,j1,j2]
+                        v_list.extend([coef])
 
         indices = torch.tensor([i_list, j_list, k_list])   # shape (3, 2n)
         values  = torch.tensor(v_list, dtype=torch.float32)
