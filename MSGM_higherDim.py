@@ -24,12 +24,12 @@ from sklearn.datasets import make_swiss_roll
 from netCDF4 import Dataset
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 import seaborn as sns
+from types import SimpleNamespace
 
 from NN import MLP, evaluate, save_checkpoint, load_checkpoint
 from NNUnet import VorticityUNet
 from sde_scheme import euler_maruyama_sampler,heun_sampler,rk4_stratonovich_sampler
-from plots import plot_selected_inds, def_pd, pairplots, pairplots_single, \
-                         preprocessing, postprocessing
+from plots import pairplots_single, preprocessing, postprocessing
 from SDEs import forward_SDE,SDE,SGMsde,PluginReverseSDE,MSGMsde
 from data import SwissRoll,Cauchy,Gaussian,PIV
 import gc
@@ -64,7 +64,6 @@ print_every = 10000
 save_every = 100000
 
 # Inference
-include_t0_reverse = True # for plots
 num_samples = 10000
 max_num_samples_for_mmd = num_samples
 evalmmmd = False
@@ -235,21 +234,24 @@ if dbg:
     batch_sizes = [2]
 
 # Plots
-scatter_plots = True
-noising_plots = True
-denoising_plots = True
-save_results = True
-scale_fig = 0.7
-plot_xlim = 3.0
-height_seaborn_ref = 1
-height_seaborn = height_seaborn_ref
-ssize = height_seaborn
-dpi=200
-offset_dimplot = 0
-dimplot_max = 4
-val_hist = plot_xlim
-crop_data_plot = False
-plot_crop = plot_xlim
+plot_params = SimpleNamespace(
+    scatter_plots = True,\
+    noising_plots = True,\
+    denoising_plots = True,\
+    save_results = True,\
+    scale_fig = 0.7,\
+    plot_xlim = 3.0
+)
+plot_params.height_seaborn_ref = 1
+plot_params.height_seaborn = plot_params.height_seaborn_ref
+plot_params.ssize = plot_params.height_seaborn
+plot_params.dpi=200
+plot_params.offset_dimplot = 0
+plot_params.dimplot_max = 4
+plot_params.val_hist = plot_params.plot_xlim
+plot_params.crop_data_plot = False
+plot_params.plot_crop = plot_params.plot_xlim
+
 largeDim = (dims[0] > 16)
 if largeDim:
     num_samples = 1000
@@ -263,17 +265,18 @@ justLoadmmmd = False
 if not first_run:
     justLoad = True
     justLoadmmmd = False
-plt_show = False
-plot_validate = False
-print_RAM = False
-log_scale_pdf = True
-plot_ref_pdf = False
-pdf_theor = None
+plot_params.plt_show = False
+plot_params.plot_validate = False
+plot_params.print_RAM = False
+plot_params.log_scale_pdf = True
+plot_params.plot_ref_pdf = False
+plot_params.pdf_theor = None
+plot_params.include_t0_reverse = True
 
 if not justLoad:
     justLoadmmmd = False
 
-if not plt_show:
+if not plot_params.plt_show:
     matplotlib.use("Agg")
 
 
@@ -376,16 +379,16 @@ if __name__ == '__main__':
                                         localized = localized, 
                                         few_data=few_data, 
                                         ntrain_max=ntrain_max)
-                        log_scale_pdf = True
-                        plot_xlim = 6
-                        val_hist = 2*plot_xlim
+                        plot_params.log_scale_pdf = True
+                        plot_params.plot_xlim = 6
+                        plot_params.val_hist = 2*plot_params.plot_xlim
                         if MSGM and dims[0]>16:
                             if smoothing < 2:
-                                val_hist *= 5
+                                plot_params.val_hist *= 5
                             else:
-                                val_hist *= 2
+                                plot_params.val_hist *= 2
                         if largeImage:
-                            offset_dimplot = dims[0]//2
+                            plot_params.offset_dimplot = dims[0]//2
                     case 'gaussian':
                         # correlation = False
                         # normalized_data = False
@@ -394,15 +397,15 @@ if __name__ == '__main__':
                         if not correlation:
                             plot_ref_pdf = True
                             pdf_theor = torch.distributions.Normal(0.0, 1.0)
-                        plot_xlim = 4
-                        val_hist = 2*plot_xlim
+                        plot_params.plot_xlim = 4
+                        plot_params.val_hist = 2*plot_params.plot_xlim
 
                     case 'cauchy':
                         sampler = Cauchy(dim, normalized=normalized_data, correlation = correlation)
-                        crop_data_plot = True
-                        log_scale_pdf = True
+                        plot_params.crop_data_plot = True
+                        plot_params.log_scale_pdf = True
                         if dim == 2:
-                            height_seaborn = height_seaborn_ref * 2
+                            plot_params.height_seaborn = plot_params.height_seaborn_ref * 2
 
                         if not dbg:
                             num_samples = 100000 # to have enough points in the tails for the plots
@@ -410,21 +413,21 @@ if __name__ == '__main__':
                             nruns_mmd = 1
 
                         if not correlation:
-                            plot_xlim = 10 
-                            plot_ref_pdf = True
+                            plot_params.plot_xlim = 10
+                            plot_params.plot_ref_pdf = True
                             scale = (1.0/50)
                             pdf_theor = torch.distributions.Cauchy(0.0, scale)
                         else:
                             if dim == 2:
-                                plot_xlim = 5 # for d=2 / warning : should depend of d : overwise we remove all far points / or separate crop and plot_xlim
+                                plot_params.plot_xlim = 5 # for d=2 / warning : should depend of d : overwise we remove all far points / or separate crop and plot_xlim
                             else:
-                                plot_xlim = 10
-                        plot_crop = 3*plot_xlim
+                                plot_params.plot_xlim = 10
+                            plot_params.plot_crop = 3*plot_params.plot_xlim
 
                         if MSGM and dim == 2:
-                            val_hist = 0.3
+                            plot_params.val_hist = 0.3
                         else:
-                            val_hist = plot_xlim
+                            plot_params.val_hist = plot_params.plot_xlim
 
                     case _:
                         raise ValueError("Unknown datatype: {}".format(datatype))
@@ -444,24 +447,18 @@ if __name__ == '__main__':
                     else:
                         std_norm = torch.ones((xtest.shape[1]))
                     if (datatype == 'cauchy') :
-                        std_test_plot = torch.ones_like(std_test) / std_norm
+                        plot_params.std_test_plot = torch.ones_like(std_test) / std_norm
                     else:
-                        std_test_plot = std_test
+                        plot_params.std_test_plot = std_test
 
                     plt.close('all')
-                    dimplot = np.min([dimplot_max,xtest.shape[1]])
-                    columns_plot=range(1+offset_dimplot,1+offset_dimplot+dimplot)
+                    plot_params.dimplot = np.min([plot_params.dimplot_max,xtest.shape[1]])
+                    plot_params.columns_plot=range(1+plot_params.offset_dimplot,1+plot_params.offset_dimplot+plot_params.dimplot)
 
-                    pairplots_single(xtest, std_norm, std_test_plot, datatype, sampler.name , 
-                                        dimplot=dimplot, offset_dimplot=offset_dimplot, \
-                                crop_data_plot=crop_data_plot, plot_crop=plot_crop, plot_xlim=plot_xlim, plot_ref_pdf=plot_ref_pdf, \
-                                pdf_theor=pdf_theor, log_scale_pdf=log_scale_pdf, columns_plot=columns_plot, \
-                                plt_show=plt_show, dpi=dpi, height_seaborn=height_seaborn, ssize=ssize)
-                    pairplots_single(sampler.sample(num_samples).to('cpu'), std_norm, std_test_plot, datatype, sampler.name + "_train", 
-                                        dimplot=dimplot, offset_dimplot=offset_dimplot, \
-                                crop_data_plot=crop_data_plot, plot_crop=plot_crop, plot_xlim=plot_xlim, plot_ref_pdf=plot_ref_pdf, \
-                                pdf_theor=pdf_theor, log_scale_pdf=log_scale_pdf, columns_plot=columns_plot, \
-                                plt_show=plt_show, dpi=dpi, height_seaborn=height_seaborn, ssize=ssize)
+                    pairplots_single(xtest, std_norm, datatype, sampler.name , 
+                                     plot_params)
+                    pairplots_single(sampler.sample(num_samples).to('cpu'), std_norm, datatype, sampler.name + "_train", 
+                                     plot_params)
 
                 ## 3. Train
 
@@ -519,7 +516,7 @@ if __name__ == '__main__':
                                                             norm_sampler = norm_sampler,
                                                             norm_map = norm_map, \
                                                             denseTensor=denseTensor, \
-                                                            plot_validate = plot_validate)
+                                                            plot_validate = plot_params.plot_validate)
                                 del x_init
                             else:
                                 inf_sde = SGMsde(beta_min=beta_min_SGM, beta_max=beta_max_SGM, \
@@ -566,8 +563,8 @@ if __name__ == '__main__':
                                                                 lmbd=0., keep_all_samples=True, \
                                                                 include_t0=True, norm_correction = MSGM) # sample
                             
-                            preprocessing(xtest, xs_forward, num_steps_forward, name_simu_root, offset_dimplot,
-                                            noising_plots, plt_show, folder_results, val_hist, std_norm, std_test_plot, 'cpu')
+                            preprocessing(xtest, xs_forward, num_steps_forward, name_simu_root,
+                                            plot_params, folder_results, std_norm, 'cpu')
 
                         if (not justLoad):
                             # init optimizer
@@ -649,7 +646,7 @@ if __name__ == '__main__':
                                 fig_step = int(num_steps_backward/8) #4
                                 if fig_step < 1:
                                     fig_step = 1
-                                if include_t0_reverse:
+                                if plot_params.include_t0_reverse:
                                     inds = range(0, num_steps_backward+1, fig_step)
                                 else:
                                     inds = range(fig_step-1, num_steps_backward, fig_step)
@@ -659,7 +656,7 @@ if __name__ == '__main__':
                                 name_simu = folder_results + "/" + name_simu_root \
                                     + str(t_eps) + "t_eps" \
                                     + str(num_steps_backward) + "stepsBack_" \
-                                    + str(include_t0_reverse) + "t0infer"
+                                    + str(plot_params.include_t0_reverse) + "t0infer"
                                 
                                 for i_run in range(nruns_mmd):
                                     print("Run number : " + str(i_run))
@@ -670,11 +667,11 @@ if __name__ == '__main__':
                                         name_simu = "runs/" + name_simu_root \
                                             + str(t_eps) + "t_eps" \
                                             + str(num_steps_backward) + "stepsBack_" \
-                                            + str(include_t0_reverse) + "t0infer" \
+                                            + str(plot_params.include_t0_reverse) + "t0infer" \
                                             + "_run"+ str(i_run)
                                     
                                     if (justLoad):
-                                        save_results = False
+                                        plot_params.save_results = False
                                         xs = torch.load(name_simu + ".pt", weights_only=True)
                                         checkpoint_path_final = folder_results + "/" + name_simu_root + "_checkpoint_final.pt"
                                         if os.path.exists(checkpoint_path_final) and useCheckpoint:
@@ -684,17 +681,14 @@ if __name__ == '__main__':
                                         x_0 = gen_sde.latent_sample(num_samples, sampler.dim) # init from prior
                                         xs = rk4_stratonovich_sampler(gen_sde, x_0, num_steps_backward, lmbd=lmbd,\
                                                                     keep_all_samples=True, 
-                                                                    include_t0=include_t0_reverse, 
+                                                                    include_t0=plot_params.include_t0_reverse, 
                                                                     norm_correction = MSGM) # sample
                                         del x_0
-                                        if (save_results):
+                                        if (plot_params.save_results):
                                             torch.save(xs, name_simu + ".pt")
                                     postprocessing(inds, i_dims, i_complexitys, i_num_stepss_backward, i_iterations, i_run, MSGM, sampler, \
-                                                    xs, xtest, std_norm, std_test_plot, datatype, name_simu, dimplot, offset_dimplot, \
-                                                    crop_data_plot, plot_crop, plot_xlim, plot_ref_pdf, \
-                                                    pdf_theor, log_scale_pdf, columns_plot, \
-                                                    scatter_plots, denoising_plots, include_t0_reverse, plt_show, dpi, height_seaborn, ssize, \
-                                                    evalmmmd, justLoadmmmd, justLoad, save_results, lmbd, val_hist, 'cpu', \
+                                                    xs, xtest, std_norm, plot_params, datatype, name_simu, \
+                                                    evalmmmd, justLoadmmmd, justLoad, plot_params.save_results, lmbd, 'cpu', \
                                                     mmd_ref, mmd_MSGM,mmd_SGM,max_num_samples_for_mmd)
 
                 ## Convergence plots (with MMD)
@@ -762,7 +756,7 @@ if __name__ == '__main__':
                     box = ax.get_position()
                     ax.set_position([box.x0, box.y0, box.width * 0.6, box.height])
                     ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
-                    if plt_show:
+                    if plot_params.plt_show:
                         plt.show(block=False)
                     name_fig = folder_results + "/" + name_simu_root + "_MMD_wBckWardSteps_" \
                         + str(nruns_mmd) + "runs" \
@@ -771,7 +765,7 @@ if __name__ == '__main__':
                         + ".png" 
                     print("name_fig = " + name_fig)
                     plt.savefig(name_fig)
-                    if plt_show:
+                    if plot_params.plt_show:
                         plt.pause(1)
                     plt.close(fig)
                     plt.close()
@@ -812,7 +806,7 @@ if __name__ == '__main__':
                         ax.set_position([box.x0, box.y0, box.width * 0.6, box.height])
                         # Put a legend to the right of the current axis
                         ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
-                        if plt_show:
+                        if plot_params.plt_show:
                             plt.show(block=False)
                         name_fig = folder_results + "/" + name_simu_root + "_MMD_wIte_"\
                             + str(nruns_mmd) + "runs" \
@@ -822,7 +816,7 @@ if __name__ == '__main__':
                             + ".png" 
                         print("name_fig = " + name_fig)
                         plt.savefig(name_fig)
-                        if plt_show:
+                        if plot_params.plt_show:
                             plt.pause(1)
                         plt.close(fig)
                         plt.close()
@@ -883,7 +877,7 @@ if __name__ == '__main__':
                     # Place legend to the right
                     ax.legend(loc='center left', bbox_to_anchor=(1.02, 0.5))
                     # Show / save
-                    if plt_show:
+                    if plot_params.plt_show:
                         plt.show(block=False)
                     name_fig = folder_results + "/" + name_simu_root + "_MMD_wDim_" \
                             + str(nruns_mmd) + "runs" \
@@ -893,7 +887,7 @@ if __name__ == '__main__':
                     print("Saving to:", name_fig)
                     plt.savefig(name_fig, bbox_inches='tight', dpi=300)
 
-                if plt_show:
+                if plot_params.plt_show:
                     plt.pause(1)
                 plt.close(fig)
 
@@ -941,7 +935,7 @@ if __name__ == '__main__':
                     ax.set_position([box.x0, box.y0, box.width * 0.6, box.height])
                     # Put a legend to the right of the current axis
                     ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
-                    if plt_show:
+                    if plot_params.plt_show:
                         plt.show(block=False)
                     name_fig = folder_results + "/" + name_simu_root + "_MMD_wNtrain_" \
                             + str(nruns_mmd) + "runs" \
@@ -950,7 +944,7 @@ if __name__ == '__main__':
                             + ".png" 
                     print("name_fig = " + name_fig)
                     plt.savefig(name_fig)
-                    if plt_show:
+                    if plot_params.plt_show:
                         plt.pause(1)
                     plt.close(fig)
                     plt.close()

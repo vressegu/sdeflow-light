@@ -127,44 +127,35 @@ def plot_selected_inds(xs, inds, use_xticks=True, use_yticks=True, lmbd = 0.,
 
 
 @torch.no_grad()
-def def_pd(xgen, std_norm, std_test_plot, datatype, 
-           dimplot=2, offset_dimplot=0, \
-              crop_data_plot=False, plot_crop=3, columns_plot=None):
+def def_pd(xgen, std_norm, datatype, 
+           plot_params):
     
     xgen_plot = std_norm * xgen
-    if crop_data_plot:
-        boolean_mask = (xgen_plot.abs() < (plot_crop * std_norm * std_test_plot)).all(axis=1)
+    if plot_params.crop_data_plot:
+        boolean_mask = (xgen_plot.abs() < (plot_params.plot_crop * std_norm * plot_params.std_test_plot)).all(axis=1)
         print( str( (1 - boolean_mask.sum()/ len(boolean_mask)).item() * 100) + " % of samples outside plot limits")
         xgen_plot = xgen_plot[boolean_mask,:]
 
-    pddatagen = pd.DataFrame(xgen_plot[:,0:dimplot].to('cpu'), columns=columns_plot)
+    pddatagen = pd.DataFrame(xgen_plot[:,0:plot_params.dimplot].to('cpu'), columns=plot_params.columns_plot)
 
     return pddatagen
 
 
 @torch.no_grad()
-def pairplots(xgen, xtest, std_norm, std_test_plot, datatype, name_simu, 
-              dimplot=2, offset_dimplot=0, \
-              crop_data_plot=False, plot_crop=3, plot_xlim=3, plot_ref_pdf=False, \
-              pdf_theor=None, log_scale_pdf=False, columns_plot=None, \
-              plt_show=False, dpi=200, height_seaborn=2.5, ssize=10):
+def pairplots(xgen, xtest, std_norm, plot_params, datatype, name_simu):
 
-    pddatatest = def_pd(xtest, std_norm, std_test_plot, datatype, 
-                        dimplot=dimplot, offset_dimplot=offset_dimplot, \
-              crop_data_plot=crop_data_plot, plot_crop=plot_crop, columns_plot=columns_plot)
-    pddatagen = def_pd(xgen, std_norm, std_test_plot, datatype, 
-                       dimplot=dimplot, offset_dimplot=offset_dimplot, \
-              crop_data_plot=crop_data_plot, plot_crop=plot_crop, columns_plot=columns_plot)
+    pddatatest = def_pd(xtest, std_norm, datatype, plot_params)
+    pddatagen = def_pd(xgen, std_norm, datatype, plot_params)
 
     pddata = pd.concat([pddatatest.assign(samples="test"),
                         pddatagen.assign(samples="gen.")])
 
     palette = {"test": sns.color_palette()[0], "gen.": sns.color_palette()[1]}
-    plot_kws = {'alpha': 0.1, "s": ssize, "edgecolor": "none", "rasterized": True}
+    plot_kws = {'alpha': 0.1, "s": plot_params.ssize, "edgecolor": "none", "rasterized": True}
 
     # === Replace pairplot with PairGrid ===
     g = sns.PairGrid(pddata, hue="samples",
-                    corner=True, height=height_seaborn, aspect=1,
+                    corner=True, height=plot_params.height_seaborn, aspect=1,
                     palette=palette, diag_sharey=False)
 
     # lower triangle: scatter like before
@@ -188,7 +179,7 @@ def pairplots(xgen, xtest, std_norm, std_test_plot, datatype, name_simu,
             )
 
             # set Y limit for this diagonal axis only
-            if log_scale_pdf and (counts > 0).any():
+            if plot_params.log_scale_pdf and (counts > 0).any():
                 ymin = counts[counts > 0].min()  # use the minimum value from the heatmap
                 # ymin /=2
                 # ymin *=8 # for swiss roll
@@ -201,16 +192,16 @@ def pairplots(xgen, xtest, std_norm, std_test_plot, datatype, name_simu,
         elif label == "gen.":
             sns.kdeplot(x=x, color=palette["gen."], lw=1.5, **kws)
         
-        if plot_ref_pdf:
-            plot_xlim_col = plot_xlim * std_norm[offset_dimplot+0] * std_test_plot[offset_dimplot+0]
-            # plot_xlim_col = plot_xlim * std_norm[offset_dimplot+i] * std_test_plot[offset_dimplot+i]
+        if plot_params.plot_ref_pdf:
+            plot_xlim_col = plot_params.plot_xlim * std_norm[plot_params.offset_dimplot+0] * plot_params.std_test_plot[plot_params.offset_dimplot+0]
+            # plot_xlim_col = plot_params.plot_xlim * std_norm[plot_params.offset_dimplot+i] * plot_params.std_test_plot[plot_params.offset_dimplot+i]
             x_min, x_max = -plot_xlim_col, plot_xlim_col
             xx = torch.linspace(x_min, x_max, 2000)
             pdf_theo = pdf_theor.log_prob(xx).exp()
             pdf_theo /= (pdf_theo.sum() * (xx[1]-xx[0]))  # normalize like a density
             plt.plot(xx,pdf_theo, color=palette["test"], linestyle=':', lw=1.5)
 
-        if log_scale_pdf:
+        if plot_params.log_scale_pdf:
             ax.set_yscale('log')
 
     g.map_diag(diag_plot)
@@ -219,15 +210,15 @@ def pairplots(xgen, xtest, std_norm, std_test_plot, datatype, name_simu,
     handles = [plt.Line2D([], [], marker='o', linestyle='',
                         color=palette[k], markersize=8, alpha=0.6) for k in ["test", "gen."]]
     labels = ["test", "gen."]
-    g.figure.legend(handles=handles, labels=labels, loc='upper right', markerscale=ssize)
+    g.figure.legend(handles=handles, labels=labels, loc='upper right', markerscale=plot_params.ssize)
 
     # --- Pass 1: lower triangle only ---
     for i, row in enumerate(g.axes):
-        plot_ylim_row = plot_xlim * std_norm[offset_dimplot+i] * std_test_plot[offset_dimplot+i]
+        plot_ylim_row = plot_params.plot_xlim * std_norm[plot_params.offset_dimplot+i] * plot_params.std_test_plot[plot_params.offset_dimplot+i]
         for j, ax in enumerate(row):
             if ax is None:
                 continue
-            plot_xlim_col = plot_xlim * std_norm[offset_dimplot+j] * std_test_plot[offset_dimplot+j]
+            plot_xlim_col = plot_params.plot_xlim * std_norm[plot_params.offset_dimplot+j] * plot_params.std_test_plot[plot_params.offset_dimplot+j]
 
             if j < i:  # lower triangle
                 ax.set_xlim((-plot_xlim_col, plot_xlim_col))
@@ -239,7 +230,7 @@ def pairplots(xgen, xtest, std_norm, std_test_plot, datatype, name_simu,
         if ax is None:
             continue
         var = g.diag_vars[i]
-        plot_xlim_col = plot_xlim * std_norm[offset_dimplot+i] * std_test_plot[offset_dimplot+i]
+        plot_xlim_col = plot_params.plot_xlim * std_norm[plot_params.offset_dimplot+i] * plot_params.std_test_plot[plot_params.offset_dimplot+i]
 
         x_min, x_max = -plot_xlim_col, plot_xlim_col
         ax.set_xlim((x_min, x_max))
@@ -264,31 +255,27 @@ def pairplots(xgen, xtest, std_norm, std_test_plot, datatype, name_simu,
             ax.yaxis.set_major_formatter(mticker.FuncFormatter(fmt_tick))
 
     plt.tight_layout()
-    if plt_show:
+    if plot_params.plt_show:
         plt.show(block=False); plt.pause(1)
     name_fig = name_simu + "_multDim.png"
-    plt.savefig(name_fig, dpi=dpi)
-    if plt_show:
+    plt.savefig(name_fig, dpi=plot_params.dpi)
+    if plot_params.plt_show:
         plt.pause(1)
     plt.close()
 
 
 @torch.no_grad()
-def pairplots_single( xtest, std_norm, std_test_plot, datatype, name_simu, 
-                     dimplot=2, offset_dimplot=0, \
-            crop_data_plot=False, plot_crop=3, plot_xlim=3, plot_ref_pdf=False, \
-            pdf_theor=None, log_scale_pdf=False, columns_plot=None, \
-            plt_show=False, dpi=200, height_seaborn=2.5, ssize=10):
+def pairplots_single( xtest, std_norm, datatype, name_simu,
+                     plot_params):
 
-    pddatatest = def_pd(xtest, std_norm, std_test_plot, datatype, 
-                        dimplot=dimplot, offset_dimplot=offset_dimplot, \
-            crop_data_plot=crop_data_plot, plot_crop=plot_crop, columns_plot=columns_plot)
-    plot_kws={"s": ssize}
-    scatter = sns.pairplot(pddatatest, aspect=1, height=height_seaborn, corner=True,plot_kws=plot_kws)
+    pddatatest = def_pd(xtest, std_norm, datatype, 
+                        plot_params)
+    plot_kws={"s": plot_params.ssize}
+    scatter = sns.pairplot(pddatatest, aspect=1, height=plot_params.height_seaborn, corner=True,plot_kws=plot_kws)
     for i, row in enumerate(scatter.axes):
-        plot_ylim_row = plot_xlim * std_norm[offset_dimplot+i]* std_test_plot[offset_dimplot+i]
+        plot_ylim_row = plot_params.plot_xlim * std_norm[plot_params.offset_dimplot+i]* plot_params.std_test_plot[plot_params.offset_dimplot+i]
         for j, ax in enumerate(row):
-            plot_xlim_col = plot_xlim * std_norm[offset_dimplot+j]* std_test_plot[offset_dimplot+j]
+            plot_xlim_col = plot_params.plot_xlim * std_norm[plot_params.offset_dimplot+j]* plot_params.std_test_plot[plot_params.offset_dimplot+j]
             if ax is not None:
                 if i == j:  # Diagonal
                     ax.set_xlim((-plot_xlim_col,plot_xlim_col))
@@ -296,17 +283,17 @@ def pairplots_single( xtest, std_norm, std_test_plot, datatype, name_simu,
                     ax.set_xlim((-plot_xlim_col,plot_xlim_col))
                     ax.set_ylim((-plot_ylim_row,plot_ylim_row))
     plt.tight_layout()
-    if plt_show:
+    if plot_params.plt_show:
         plt.show(block=False)   
         plt.pause(0.1)
-    plt.savefig("results/" + name_simu + ".png", dpi=dpi)
+    plt.savefig("results/" + name_simu + ".png", dpi=plot_params.dpi)
     plt.close()
     plt.pause(0.1)
     plt.close('all')
 
 
-def preprocessing(xtest, xs_forward, num_steps_forward, name_simu_root, offset_dimplot,
-                  noising_plots, plt_show, folder_results, val_hist, std_norm, std_test_plot, device):
+def preprocessing(xtest, xs_forward, num_steps_forward, name_simu_root,
+                  plot_params, folder_results, std_norm, device):
     
     xgen_forward = xs_forward[-1,:,:].to(device)
 
@@ -352,11 +339,11 @@ def preprocessing(xtest, xs_forward, num_steps_forward, name_simu_root, offset_d
     cbar.set_label("Covariance value")
     plt.tight_layout()
     time.sleep(0.5)
-    if plt_show:
+    if plot_params.plt_show:
         plt.show(block=False)
     name_fig = folder_results + "/" + name_simu_root + "_cov.png" 
     plt.savefig(name_fig)
-    if plt_show:
+    if plot_params.plt_show:
         plt.pause(1)
     plt.close()
     plt.close('all')
@@ -373,19 +360,19 @@ def preprocessing(xtest, xs_forward, num_steps_forward, name_simu_root, offset_d
     if fig_step < 1:
         fig_step = 1
     inds_forward = range(0, num_steps_forward+1, fig_step)
-    if (noising_plots):
+    if (plot_params.noising_plots):
         plot_selected_inds(xs_forward, inds_forward, \
             use_xticks= True, use_yticks=False, lmbd = 0., \
-            offset_dimplot=offset_dimplot,
+            offset_dimplot=plot_params.offset_dimplot,
             include_t0=True, backward=False,
-            plt_show=plt_show,
-            val=val_hist* std_test_plot[offset_dimplot]) # plot
+            plt_show=plot_params.plt_show,
+            val=plot_params.val_hist* plot_params.std_test_plot[plot_params.offset_dimplot]) # plot
         time.sleep(0.5)
-        if plt_show:
+        if plot_params.plt_show:
             plt.show(block=False)
         name_fig = folder_results + "/" + name_simu_root + "_Forward.png" 
         plt.savefig(name_fig)
-        if plt_show:
+        if plot_params.plt_show:
             plt.pause(1)
         plt.close()
         plt.close('all')
@@ -393,8 +380,8 @@ def preprocessing(xtest, xs_forward, num_steps_forward, name_simu_root, offset_d
         # Signal and image plots
         prefix_save = folder_results + "/" + name_simu_root + "_Forward"
         plot_signal(xs_forward, inds_forward, prefix_save, 
-                    std_norm=std_norm , std_test_plot=std_test_plot,
-                    plt_show=plt_show, timeToDuplicate= 0)
+                    std_norm=std_norm , std_test_plot=plot_params.std_test_plot,
+                    plt_show=plot_params.plt_show, timeToDuplicate= 0)
         
     
 def plot_signal(xs,inds, prefix_save, 
@@ -467,11 +454,8 @@ def plots_vort(U,vmin=-2,vmax=2):
     fig.colorbar(pcm, ax=axs)
 
 def postprocessing(inds, i_dims, i_complexitys, i_num_stepss_backward, i_iterations, i_run, MSGM, sampler, \
-                   xs, xtest, std_norm, std_test_plot, datatype, name_simu, dimplot, offset_dimplot, \
-                   crop_data_plot, plot_crop, plot_xlim, plot_ref_pdf, \
-                   pdf_theor, log_scale_pdf, columns_plot, \
-                   scatter_plots, denoising_plots, include_t0_reverse, plt_show, dpi, height_seaborn, ssize, \
-                   evalmmmd, justLoadmmmd, justLoad, save_results, lmbd, val_hist, device, \
+                   xs, xtest, std_norm, plot_params, datatype, name_simu,
+                   evalmmmd, justLoadmmmd, justLoad, save_results, lmbd, device, \
                    mmd_ref, mmd_MSGM,mmd_SGM,max_num_samples_for_mmd):
 
     xgen = xs[-1,:,:].to(device)
@@ -489,29 +473,26 @@ def postprocessing(inds, i_dims, i_complexitys, i_num_stepss_backward, i_iterati
     xgen = xgen[~nan_mask,:]
     del nan_mask
 
-    if (scatter_plots) and (i_run == 0):
-        pairplots(xgen, xtest, std_norm, std_test_plot, datatype, name_simu, dimplot=dimplot, offset_dimplot=offset_dimplot, \
-                    crop_data_plot=crop_data_plot, plot_crop=plot_crop, plot_xlim=plot_xlim, plot_ref_pdf=plot_ref_pdf, \
-                    pdf_theor=pdf_theor, log_scale_pdf=log_scale_pdf, columns_plot=columns_plot, \
-                    plt_show=plt_show, dpi=dpi, height_seaborn=height_seaborn, ssize=ssize)
+    if (plot_params.scatter_plots) and (i_run == 0):
+        pairplots(xgen, xtest, std_norm, plot_params, datatype, name_simu)
         
     # Survival function plot
     fig, ax, surv = plot_survival_simple(x=xgen, x_ref=xtest, std_norm=None,
                                         prefix_save=name_simu, plt_show=False,
                                         figsize=(3, 2), tail_frac=0.05, return_survival=True)
 
-    if (denoising_plots) and (i_run == 0):
+    if (plot_params.denoising_plots) and (i_run == 0):
         plot_selected_inds(xs, inds, True, False, lmbd, 
-                            offset_dimplot=offset_dimplot,
-                            include_t0=include_t0_reverse, 
-                            plt_show=plt_show, 
-                            val=val_hist * std_test_plot[offset_dimplot]) # plot
+                            offset_dimplot=plot_params.offset_dimplot,
+                            include_t0=plot_params.include_t0_reverse, 
+                            plt_show=plot_params.plt_show, 
+                            val=plot_params.val_hist * plot_params.std_test_plot[plot_params.offset_dimplot]) # plot
         time.sleep(0.5)
-        if plt_show:
+        if plot_params.plt_show:
             plt.show(block=False)
         name_fig = name_simu + ".png" 
         plt.savefig(name_fig)
-        if plt_show:
+        if plot_params.plt_show:
             plt.pause(1)
         plt.close()
         plt.close('all')
@@ -519,8 +500,8 @@ def postprocessing(inds, i_dims, i_complexitys, i_num_stepss_backward, i_iterati
     # Signal and image plots
     prefix_save = name_simu + "_Gen"
     plot_signal(xs, inds, prefix_save, 
-                    std_norm=std_norm , std_test_plot=std_test_plot,
-                    plt_show=plt_show, timeToDuplicate= -1)
+                    std_norm=std_norm , std_test_plot=plot_params.std_test_plot,
+                    plt_show=plot_params.plt_show, timeToDuplicate= -1)
         
     # MMD
     if evalmmmd and not justLoadmmmd:
