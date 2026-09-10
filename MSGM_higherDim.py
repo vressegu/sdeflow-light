@@ -129,6 +129,7 @@ dbg = False
 print("datatype", datatype)
 delayed = False
 useCheckpoint = False
+few_data = False
 
 match datatype:
     case 'swissroll': # Swiss roll
@@ -396,12 +397,12 @@ if __name__ == '__main__':
                         plot_xlim = 4
                         val_hist = 2*plot_xlim
 
-                        case 'cauchy':
-                            sampler = Cauchy(dim, normalized=normalized_data, correlation = correlation)
-                            crop_data_plot = True
-                            log_scale_pdf = True
-                            if dim == 2:
-                                height_seaborn = height_seaborn_ref * 2
+                    case 'cauchy':
+                        sampler = Cauchy(dim, normalized=normalized_data, correlation = correlation)
+                        crop_data_plot = True
+                        log_scale_pdf = True
+                        if dim == 2:
+                            height_seaborn = height_seaborn_ref * 2
 
                         if not dbg:
                             num_samples = 100000 # to have enough points in the tails for the plots
@@ -425,8 +426,8 @@ if __name__ == '__main__':
                         else:
                             val_hist = plot_xlim
 
-                        case _:
-                            raise ValueError("Unknown datatype: {}".format(datatype))
+                    case _:
+                        raise ValueError("Unknown datatype: {}".format(datatype))
 
                 folder_results = "results"
                 directory = folder_results + "/" + sampler.name

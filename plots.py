@@ -628,7 +628,7 @@ def _tail_fit_loglog(R_grid: np.ndarray, S_vals: np.ndarray, norms: np.ndarray,
 
     sorted_norms = np.sort(norms)
     if tail_k is None:
-        k = max(10, int(np.clip(np.ceil(n * tail_frac), 10, n - 1)))
+        k = min(max(10, int(np.ceil(n * tail_frac))), n - 1)
     else:
         k = int(min(max(1, tail_k), n - 1))
 
