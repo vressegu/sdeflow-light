@@ -12,7 +12,7 @@ from netCDF4 import Dataset
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from pathlib import Path
 import random
-from own_plotting import plots_vort
+from plots import plots_vort
 
 pathData = '../MSGM-data/'
 

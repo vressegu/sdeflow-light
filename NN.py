@@ -6,7 +6,7 @@ import torch.nn as nn
 import numpy as np
 import random
 
-from own_plotting import plots_vort
+from plots import plots_vort
 import matplotlib.pyplot as plt
 plot_debug= False
 

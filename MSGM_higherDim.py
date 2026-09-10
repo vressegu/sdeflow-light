@@ -28,7 +28,7 @@ import seaborn as sns
 from NN import MLP, evaluate, save_checkpoint, load_checkpoint
 from NNUnet import VorticityUNet
 from sde_scheme import euler_maruyama_sampler,heun_sampler,rk4_stratonovich_sampler
-from own_plotting import plot_selected_inds, def_pd, pairplots, pairplots_single, \
+from plots import plot_selected_inds, def_pd, pairplots, pairplots_single, \
                          preprocessing, postprocessing
 from SDEs import forward_SDE,SDE,SGMsde,PluginReverseSDE,MSGMsde
 from data import SwissRoll,Cauchy,Gaussian,PIV

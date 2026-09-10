@@ -13,7 +13,7 @@ from model.nn_utils import conv_nd, linear, SiLU, timestep_embedding  # needed h
 from model.unet import UNetModel  # UNet class
 from NN import NormalizeLogRadius, evaluate
 
-from own_plotting import plots_vort
+from plots import plots_vort
 import matplotlib.pyplot as plt
 
 scale_image = 5
