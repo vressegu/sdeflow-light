@@ -56,75 +56,80 @@ class PIV:
             npixelx_max = 64
         else:
             npixelx_max = 4
-        dmax = 2*(npixelx_max**2)
-        npdata = np.empty((dmax, 0))   # if not already
 
-        print("Loading PIV data from folder:", folder)
-        # if largeImage:
-        #     file = folder_str + "/vortdivtot.npy"
-        #     npdata = np.load(file)  
-        # else:
-        for file in sorted(folder.glob(prefix + "*_vortdiv.npy")):
-            # print("Processing", file.name)
-            dataPt = np.load(folder / f"{file.stem}.npy")  
-            npdata = np.concatenate((npdata, dataPt.reshape(-1, 1)), axis=1)
-            if any(np.isnan(dataPt.flatten())):
-                print("Processing", file.name)
-                print("data shape:", npdata.shape)
-                print(dataPt)
-        npdata = npdata.transpose() /2.5
+        # Cache the fully-loaded/smoothed/subsampled npdata: reading and
+        # concatenating thousands of individual .npy files (and, for
+        # largeImage, gaussian-filtering every frame) is expensive and
+        # depends only on (folder, largeImage, dim, smoothing) -- not on
+        # few_data/ntrain_max/normalized/FFTfields, which only affect the
+        # train/test split and post-processing done below.
+        cache_path = folder / f"_cache_dim{dim}_smooth{smoothing}.npy"
+        if cache_path.exists():
+            print("Loading cached PIV data from:", cache_path)
+            npdata = np.load(cache_path)
+        else:
+            print("Loading PIV data from folder:", folder)
+            dataPts = []
+            for file in sorted(folder.glob(prefix + "*_vortdiv.npy")):
+                dataPt = np.load(folder / f"{file.stem}.npy")
+                dataPts.append(dataPt.reshape(-1))
+                if np.isnan(dataPt).any():
+                    print("Processing", file.name)
+                    print(dataPt)
+            npdata = np.stack(dataPts, axis=1)
+            del dataPts
+            npdata = npdata.transpose() /2.5
 
-        # center and mormalize data
-        npdata = npdata-npdata.mean(axis=0)
-        # keep only dim dimension
-        if largeImage :
-            if not (dim == npixelx**2):
-                raise ValueError("Incorrect dim to subsample: {}".format(dim))
-            npdata = npdata.reshape(([npdata.shape[0],npixelx_max,npixelx_max,2]),order='F')
+            # center and mormalize data
+            npdata = npdata-npdata.mean(axis=0)
+            # keep only dim dimension
+            if largeImage :
+                if not (dim == npixelx**2):
+                    raise ValueError("Incorrect dim to subsample: {}".format(dim))
+                npdata = npdata.reshape(([npdata.shape[0],npixelx_max,npixelx_max,2]),order='F')
 
-            time_id = 0
-            plots_vort(npdata[time_id,:,:,0])
-            name_fig = "images/originalimageAtt" + str(time_id) + ".png" 
-            plt.savefig(name_fig)
-            plt.close()
-            plt.close('all')
-
-            npdata = npdata[:,:,:,0] # keeping only vorticity
-            
-            if smoothing>0:
-                print("Filtered images")
-                from scipy.ndimage import gaussian_filter
-                if smoothing == 1:
-                    sigmax = npdata.shape[1]//(3*npixelx)
-                elif smoothing == 2:
-                    sigmax = npdata.shape[1]//(npixelx)
-                    npdata *= 4
-                # sigmay = npdata.shape[2]//npixelx
-                # print('npdata.shape = ', npdata.shape)
-                for i in range(npdata.shape[0]):
-                    npdata[i,:,:] = gaussian_filter(npdata[i,:,:], sigma=sigmax)
-                    # npdata[i,:,:] = gaussian_filter(npdata[i,:,1], sigma=sigmay)
-                    # print('npdata.shape = ', npdata.shape)
-                plots_vort(npdata[time_id,:,:])
-                name_fig = "images/smoothedimageAtt" + str(time_id) + ".png" 
+                time_id = 0
+                plots_vort(npdata[time_id,:,:,0])
+                name_fig = "images/originalimageAtt" + str(time_id) + ".png"
                 plt.savefig(name_fig)
                 plt.close()
                 plt.close('all')
-            # else:
-            print("Subsample images to match the required dimension")
-            ix = np.linspace(0,npdata.shape[1]-1,npixelx,dtype=int)
-            iy = np.linspace(0,npdata.shape[2]-1,npixelx,dtype=int)
-            npdata = npdata[:,ix,:] # subsampling 
-            npdata = npdata[:,:,iy] # subsampling 
-            plots_vort(npdata[time_id,:,:])
-            name_fig = "images/subsampleimageAtt" + str(time_id) + ".png" 
-            plt.savefig(name_fig)
-            plt.close()
-            plt.close('all')
 
-            npdata = npdata.reshape(([npdata.shape[0],dim]),order='F')
-        else:
-            npdata = npdata[:,0:self.dim]
+                npdata = npdata[:,:,:,0] # keeping only vorticity
+
+                if smoothing>0:
+                    print("Filtered images")
+                    from scipy.ndimage import gaussian_filter
+                    if smoothing == 1:
+                        sigmax = npdata.shape[1]//(3*npixelx)
+                    elif smoothing == 2:
+                        sigmax = npdata.shape[1]//(npixelx)
+                        npdata *= 4
+                    # filter every frame at once (axis 0 = samples, left unfiltered)
+                    npdata = gaussian_filter(npdata, sigma=(0, sigmax, sigmax))
+                    plots_vort(npdata[time_id,:,:])
+                    name_fig = "images/smoothedimageAtt" + str(time_id) + ".png"
+                    plt.savefig(name_fig)
+                    plt.close()
+                    plt.close('all')
+                # else:
+                print("Subsample images to match the required dimension")
+                ix = np.linspace(0,npdata.shape[1]-1,npixelx,dtype=int)
+                iy = np.linspace(0,npdata.shape[2]-1,npixelx,dtype=int)
+                npdata = npdata[:,ix,:] # subsampling
+                npdata = npdata[:,:,iy] # subsampling
+                plots_vort(npdata[time_id,:,:])
+                name_fig = "images/subsampleimageAtt" + str(time_id) + ".png"
+                plt.savefig(name_fig)
+                plt.close()
+                plt.close('all')
+
+                npdata = npdata.reshape(([npdata.shape[0],dim]),order='F')
+            else:
+                npdata = npdata[:,0:self.dim]
+
+            np.save(cache_path, npdata)
+            print("Cached processed PIV data to:", cache_path)
 
         if few_data:
             n_train= min([2*npdata.shape[0]// 3, ntrain_max])
