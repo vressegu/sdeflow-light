@@ -81,6 +81,7 @@ def euler_maruyama_sampler(sde, x_0, num_steps=1000, lmbd=0.,
             t.fill_(ts[i].item())
             mu = sde.mu(t, x_t, lmbd=lmbd)
             sigma = sde.sigma(t, x_t, lmbd=lmbd, sparse=sparseG)
+            dW = delta**0.5 * torch.randn_like(x_t)  # Wiener increment
             x_t = x_t + EMstep(mu, delta , sigma , delta ** 0.5 * torch.randn_like(x_t), sparse=sparseG, I=I, K=K)
             if norm_correction:
                 x_t = x_t * (norm_x_0/torch.norm(x_t,dim=1))[:,None]
