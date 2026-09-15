@@ -644,7 +644,7 @@ class PluginReverseSDE(torch.nn.Module):
     g <- g
     (time is inverted)
     """
-    def __init__(self, base_sde, drift_a, T, vtype='rademacher', debias=False, ssm_intT=False, deviceReverseSDE='cpu'):
+    def __init__(self, base_sde, drift_a, T, vtype='rademacher', debias=False, ssm_intT=False, deviceReverseSDE='cpu', n_slices=1):
         super().__init__()
         self.base_sde = base_sde.to(deviceReverseSDE)
         self.a = drift_a
@@ -653,6 +653,12 @@ class PluginReverseSDE(torch.nn.Module):
         self.ssm_intT = ssm_intT
         self.debias = debias
         self.deviceReverseSDE = deviceReverseSDE
+        # number of independent Hutchinson projections averaged per SSM loss
+        # evaluation: reduces the trace estimator's variance ~1/n_slices at
+        # the cost of n_slices extra vector-Jacobian products. Since the
+        # SPDE's own time integration (num_steps_forward RK4 steps) dominates
+        # cost, a larger n_slices (e.g. sqrt(d) = npixel) is cheap relatively.
+        self.n_slices = n_slices
 
     # Drift
     def mu(self, t, y, lmbd=0.):
@@ -759,6 +765,22 @@ class PluginReverseSDE(torch.nn.Module):
         y.requires_grad_()
         return self.ssm_loss(t_,x,y)
 
+    def _hutchinson_trace(self, mu_to_div, y, batch_size):
+        """
+        Averages self.n_slices independent Hutchinson projections of
+        mu_to_div's divergence w.r.t. y, reducing the (unbiased) trace
+        estimator's variance by ~1/n_slices. All calls share the same
+        mu_to_div/y computation graph (retain_graph=True throughout, since
+        it must survive n_slices vector-Jacobian products, not just one).
+        """
+        mMu_slices = []
+        for i in range(self.n_slices):
+            with torch.no_grad():
+                v = sample_v(y.shape, vtype=self.vtype, device=self.deviceReverseSDE).to(y)
+            retain = self.training or (i < self.n_slices - 1)
+            grad_i = torch.autograd.grad(mu_to_div, y, v, create_graph=self.training, retain_graph=retain)[0]
+            mMu_slices.append((grad_i * v).reshape(batch_size, -1).sum(1, keepdim=False))
+        return torch.stack(mMu_slices, dim=0).mean(0)
 
     def _mu_to_div_and_a(self, t_, y):
         """
@@ -787,12 +809,7 @@ class PluginReverseSDE(torch.nn.Module):
         estimating the SSM loss of the plug-in reverse SDE by estimating div(mu) using the Hutchinson trace estimator
         """
         mu_to_div, a = self._mu_to_div_and_a(t_, y)
-        with torch.no_grad():
-            v = sample_v(x.shape, vtype=self.vtype, device=self.deviceReverseSDE).to(y)
-
-        mMu = (
-            torch.autograd.grad(mu_to_div, y, v, create_graph=self.training)[0] * v
-        ).view(x.size(0), -1).sum(1, keepdim=False)
+        mMu = self._hutchinson_trace(mu_to_div, y, x.size(0))
         mNu = (a ** 2).reshape(x.size(0), -1).sum(1, keepdim=False) / 2
         return mMu + mNu
 

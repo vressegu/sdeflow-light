@@ -546,7 +546,15 @@ if __name__ == '__main__':
                                 inf_sde = SGMsde(beta_min=beta_min_SGM, beta_max=beta_max_SGM, \
                                                                 t_epsilon=t_eps, T=T, num_steps_forward=num_steps_forward, \
                                                                 device=device)
-                        gen_sde = PluginReverseSDE(inf_sde, drift_q, T, vtype=vtype, debias=False, ssm_intT=ssm_intT, deviceReverseSDE=device).to(device)
+                        # SSM's Hutchinson trace estimator variance drops ~1/n_slices for
+                        # n_slices independent random projections, but each slice needs its
+                        # own create_graph=True autograd.grad call, and loss.backward() then
+                        # differentiates through all of them at once -- a suspected trigger
+                        # for an MPS crash observed with n_slices=sqrt(d)=16 on real data
+                        # (crashed in backward(), not in the forward ssm() call itself).
+                        # Capped low until confirmed safe; raise cautiously.
+                        n_slices = min(int(round(sampler.dim ** 0.5)), 4) if AMSGM else 1
+                        gen_sde = PluginReverseSDE(inf_sde, drift_q, T, vtype=vtype, debias=False, ssm_intT=ssm_intT, deviceReverseSDE=device, n_slices=n_slices).to(device)
 
                         print("data = " + sampler.name )
                         print("few_data = " + str(few_data) )
