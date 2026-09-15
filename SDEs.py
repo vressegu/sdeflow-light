@@ -24,7 +24,7 @@ import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from sde_scheme import euler_maruyama_sampler,heun_sampler,rk4_stratonovich_sampler
 import gc
-from transportNoise import grid_k
+from transportNoise import grid_k, fourier_flat_to_spatial, spatial_flat_to_fourier
 
 
 # class OU_SDE(torch.nn.Module): 
@@ -63,6 +63,7 @@ class SDE(torch.nn.Module):
         self.num_steps_forward = num_steps_forward
         self.norm_correction = False
         self.sparseTensor = False
+        self.FFTfields = False
 
     def to(self, device):
         new = super().to(device)
@@ -225,13 +226,14 @@ class MSGMsde(SDE):
     """
     # This class need to be changed since the forward SDE cannot be solved analitically
     def __init__(self, y0, beta_min=0.1, beta_max=20.0, T=1.0, t_epsilon=0.001, \
-                 denseTensor = True, \
+                 denseTensor = True, AMSGM = False, \
                  norm_sampler = "ecdf", norm_map = None, kernel = 'gaussian', plot_validate = False, \
                  num_steps_forward = 100, device='cpu', estim_cst_norm_dens_r_T = True):
-        super().__init__(beta_min=beta_min, beta_max=beta_max, T=T, t_epsilon=t_epsilon, num_steps_forward=num_steps_forward, device=device)
+        super().__init__(beta_min=beta_min, beta_max=beta_max, T=T, t_epsilon=t_epsilon, 
+                         num_steps_forward=num_steps_forward, device=device)
         self.sparseTensor = not denseTensor
         self.norm_correction = True
-        self.r_T = torch.linalg.norm(y0, dim= 1)
+        self.r_T = torch.linalg.norm(y0.reshape(y0.shape[0], -1), dim= 1)
         self.norm_map = norm_map
         if norm_map == "log":
             self.r_T = torch.log(self.r_T + 1e-6)
@@ -242,14 +244,25 @@ class MSGMsde(SDE):
         self.r_T = self.r_T.to(self.device)  # if you use it later in device ops
         self.dim = y0.shape[1]
         self.name_SDE = "MSGM"
+        self.D_hyper = None
+        self.AMSGM = AMSGM
+        self.FFTfields = AMSGM
         if denseTensor:
+            if AMSGM:
+                raise NotImplemented("A-MSGM relies on sparse tensor")
             self.new_G(self.dim)
             self.L_G = 0.5*torch.einsum('ijk, jmk -> im', self.G, self.G)   # ito correction tensor
         else:
-            self.name_SDE += "_sparseTens"
-            # self.sparse_G_full(self.dim) # FOR DEBUG ONLY
-            self.sparse_G(self.dim)
-            self.L_G = 0.5*torch.eye(self.dim, device=self.device)   # ito correction tensor
+            if AMSGM:
+                self.name_SDE += "_AMSGM"
+                self.beta_min = 1
+                self.beta_max = 1
+                self.sparse_G_advection(self.dim)   # also sets self.L_G to the exact Ito correction
+            else:
+                self.name_SDE += "_sparseTens"
+                # self.sparse_G_full(self.dim) # FOR DEBUG ONLY
+                self.sparse_G(self.dim)
+                self.L_G = 0.5*torch.eye(self.dim, device=self.device)   # ito correction tensor
         if not (norm_sampler=="ecdf"):
             self.name_SDE += norm_sampler + kernel
         if norm_map == "log":
@@ -304,6 +317,8 @@ class MSGMsde(SDE):
     def to(self, device):
         new = super().to(device)
         new.r_T = self.r_T.to(device)
+        if self.D_hyper is not None:
+            new.D_hyper = self.D_hyper.to(device)
         if self.sparseTensor:
             new.G_I = self.G_I.to(device)
             new.G_J = self.G_J.to(device)
@@ -380,7 +395,7 @@ class MSGMsde(SDE):
             coef = 0.5 * torch.sqrt(torch.tensor(2, dtype=torch.float32))
             v_list.extend([coef, -coef])
 
-        indices = torch.tensor([i_list, j_list, k_list])   # shape (3, 2n)
+        indices = torch.tensor([i_list, j_list, k_list], dtype=torch.int64)   # shape (3, 2n); scatter_add_ requires int64
         values  = torch.tensor(v_list, dtype=torch.float32)
 
         # keep a CPU sparse object for debugging/IO if you want:
@@ -399,32 +414,39 @@ class MSGMsde(SDE):
         # Optionally delete CPU copies to save RAM
         del indices, values
 
-    def sparse_G_advection(self, n) : 
-        i_list = []
-        j_list = []
-        k_list = []
-        v_list = []
+    def sparse_G_advection(self, n) :
+        # Physics/SPDE-specific construction (spectrum, CFL, hyperdiffusion,
+        # the sparse advection tensor itself) lives in transportNoise.grid_k;
+        # this method just wires the result into the SDE's tensor state.
+        N = int(round(np.sqrt(n)))  # plain Python int: numpy int types here would make
+        grid = grid_k(N=N)          # the resulting index tensors int32, but scatter_add_ needs int64
 
-        # N = torch.sqrt(n).to(torch.int32)
-        N = np.sqrt(n)
-        grid = grid_k(N=N)
+        T_val = self.T.item() if torch.is_tensor(self.T) else self.T
+        dt = T_val / self.num_steps_forward
+        rescale, a0_before, dt_max = grid.rescale_for_cfl(self.beta_max, dt)
+        if rescale is not None:
+            print(f"Rescaling G amplitude by {rescale:.3g} (a0: {a0_before:.3g} -> {grid.a0():.3g}) "
+                  f"to meet the diffusive CFL condition (dt={dt:.3g} > dt_max={dt_max:.3g} otherwise).")
 
-        for k1 in range(N):
-            for k2 in range(N):
-                for j1 in range(N):
-                    for j2 in range(N):
-                        i1 = (j1-k1)%N
-                        i2 = (j2-k2)%N
-                        K = k1 + k2*N
-                        J = j1 + j2*N
-                        I = i1 + i2*N
-                        i_list.extend([I])
-                        j_list.extend([J])
-                        k_list.extend([K])
-                        coef = grid.alpha2_K[k1,k2] * grid.f_Kk_Kq[k1,k2,j1,j2]
-                        v_list.extend([coef])
+        print(f"A-MSGM SPDE info: dx={grid.dx:.3g}, L={grid.Lx:.3g}, T={T_val:.3g}, "
+              f"num_steps_forward={self.num_steps_forward}, dt={dt:.3g}, beta={self.beta_max:.3g}, "
+              f"a0={grid.a0():.3g}, dt_max={dt_max:.3g}")
 
-        indices = torch.tensor([i_list, j_list, k_list])   # shape (3, 2n)
+        if self.D_hyper is not None:
+            z_hyper = 1  # less stiff; the integrating-factor treatment (sde_scheme) is stable for any z anyway
+            D_hyper, gamma0 = grid.build_hyperdiffusion(z=z_hyper)
+            self.D_hyper = torch.from_numpy(D_hyper).float().to(self.device)
+            if gamma0 > 0:
+                hyperdiff_dt_max = 1 / gamma0
+                print(f"Hyperdiffusion: z={z_hyper}, gamma0={gamma0:.3g} (1/gamma0={hyperdiff_dt_max:.3g} s), "
+                      f"max D_hyper={D_hyper.max():.3g} (at Nyquist), dt={dt:.3g}"
+                      + (f" -- WARNING: dt > 1/gamma0={hyperdiff_dt_max:.3g}, hyperdiffusion may over-damp high-k content per step"
+                         if dt > hyperdiff_dt_max else ""))
+        else:
+            print("Hyperdiffusion: disabled (gamma0=0)")
+
+        i_list, j_list, k_list, v_list = grid.build_sparse_G()
+        indices = torch.tensor([i_list, j_list, k_list], dtype=torch.int64)   # shape (3, nnz); scatter_add_ requires int64
         values  = torch.tensor(v_list, dtype=torch.float32)
 
         # keep a CPU sparse object for debugging/IO if you want:
@@ -440,7 +462,24 @@ class MSGMsde(SDE):
         self.G_K = indices[2].to(self.device)
         self.G_V = values.to(self.device)       # (nnz,)
 
-        # Optionally delete CPU copies to save RAM
+        # Ito correction tensor L_G[i,m] = 0.5 * sum_{j,k} G[i,j,k] * G[j,m,k].
+        # Computed directly from the sparse data rather than via a roll-based
+        # shortcut: each G_k slice has up to 2 nonzero entries per row (the
+        # {k,-k} fold in grid.build_sparse_G), so a single-shift assumption
+        # doesn't hold. Cheap per mode regardless of N (~3s total at N=32,
+        # a one-time setup cost).
+        L_G = torch.zeros(n, n)
+        for k in range(n):
+            mask = (indices[2] == k)
+            Ik, Jk, Vk = indices[0][mask], indices[1][mask], values[mask]
+            Mk = torch.zeros(n, n)
+            Mk.index_put_((Ik, Jk), Vk, accumulate=True)
+            L_G += 0.5 * (Mk @ Mk)
+        self.L_G = L_G.to(self.device)
+
+        print(f"trace(L_G) = {torch.trace(self.L_G).item():.3g} "
+              f"(was -0.5*dim = {-0.5*n:.3g} for the placeholder -0.5*I used elsewhere)")
+
         del indices, values
 
     def IJK(self):
@@ -453,26 +492,48 @@ class MSGMsde(SDE):
             return None, None, None
 
     def f(self, t, y): # ito drift
+        # self.L_G is always the (exact or placeholder, see __init__) Ito
+        # correction matrix now, for dense, sparse ring-lattice, and sparse
+        # advection (AMSGM) alike, so a single matvec form covers all cases.
         beta_t = self.beta(t)
-        if self.sparseTensor:
-            return 0.5*(beta_t) * y
+        beta_t_b = beta_t.reshape(beta_t.shape[0], *([1] * (y.dim() - 1)))  # broadcast over any trailing channel dim
+        scaled_y = beta_t_b * y
+        if y.dim() > 2:
+            fy = torch.einsum('ij, bjc -> bic', self.L_G, scaled_y)
         else:
-            return torch.einsum('ij, bj -> bi', self.L_G, (beta_t) * y)
+            fy = torch.einsum('ij, bj -> bi', self.L_G, scaled_y)
+        return fy + self.f_strato(t, y)  # add any extra Stratonovich drift (e.g. hyperdiffusion)
 
-    def f_strato(self, t, y):  # stratonovich drift
-        return torch.zeros_like(y)
+    def f_strato(self, t, y):  # stratonovich drift, i.e. the RATE f (dt applied later by the scheme, see sde_scheme)
+        # Hyperdiffusion rate -D_hyper*y, stepped explicitly like any other
+        # drift term here. Note this is a stiff term: dt*D_hyper must stay
+        # within the explicit RK4 stability region (~2.7 for a real negative
+        # eigenvalue) or the highest wavenumbers blow up instead of damping
+        # -- check dt against grid.gamma0()-based diagnostics printed in
+        # sparse_G_advection before trusting a run.
+        if self.AMSGM and self.D_hyper is not None:
+            beta_t = self.beta(t)
+            beta_t_b = beta_t.reshape(beta_t.shape[0], *([1] * (y.dim() - 1)))  # broadcast over any trailing channel dim
+            scaled_y = beta_t_b * y
+            rate = self.D_hyper.reshape(1, -1, *([1] * (scaled_y.dim() - 2)))
+            return - rate * y
+        else:
+            return torch.zeros_like(y)
 
     def div_Sigma(self, t, y):
         return 2*self.f(t,y)
 
     def g(self, t, y, sparse = False):
         beta_t = self.beta(t)
+        # broadcast beta_t (B,1) against y, which may carry a trailing
+        # real/imag channel dim (B,n,2) when FFTfields, not just (B,n)
+        beta_t = beta_t.reshape(beta_t.shape[0], *([1] * (y.dim() - 1)))
         if sparse:
             # extract sparse G indices
             I, J, K = self.IJK()
-            V = self.G_V
-            yJ = (beta_t**0.5) * y[:, J]              # (B,2n)
-            return V.unsqueeze(0) * yJ                # (B,2n)
+            V = self.G_V.reshape(1, -1, *([1] * (y.dim() - 2)))
+            yJ = (beta_t**0.5) * y[:, J]              # (B,2n) or (B,2n,2)
+            return V * yJ                              # (B,2n) or (B,2n,2)
         else:
             return torch.einsum('ijk, bj -> bik', self.G, (beta_t**0.5) * y  )         # diffusion part 
     
@@ -509,46 +570,42 @@ class MSGMsde(SDE):
 
         return r_gen
 
+    def _radius_and_direction_to_native(self, r, s):
+        """
+        r*s is a real vector of the pointwise pixel count (self.dim), drawn
+        as a radius times a uniform direction on the sphere -- the natural
+        parametrization for MSGMsde's energy-conserving latent distribution
+        (see latent_sample). For FFTfields, the SDE's own state is the
+        Fourier-domain representation, so r*s (a real, physical-space-shaped
+        vector) is treated as that physical-space image and FFT'd: by
+        Parseval's exact identity ||fft2(v)|| = N*||v|| for ANY real image v
+        (not just on average -- same identity grid.a0() relies on), scaling
+        by r/N before the FFT gives exactly ||result|| = r with no need to
+        compute the FFT's actual norm and rescale.
+        """
+        if self.FFTfields:
+            N = int(round(self.dim ** 0.5))
+            return spatial_flat_to_fourier((r / N) * s)
+        return r * s
+
     def latent_sample(self,num_samples, n):
         # init from prior
         r = self.gen_radial_distribution(num_samples)
-        s = randu_on_sphere((num_samples, self.dim),device = self.device) 
-        x0 = r * s 
+        s = randu_on_sphere((num_samples, self.dim),device = self.device)
+        return self._radius_and_direction_to_native(r, s)
 
-        validate = False
-        if validate:
-            x0_plot = x0.clone().detach().cpu()
-            if self.dim == 2: 
-                plt.plot(x0_plot[:,0], x0_plot[:,1], 'or', markersize = 1, alpha = 0.5)
-                plt.gca().set_aspect('equal', 'box')
-            elif self.dim == 3: 
-                #ax = plt.figure().add_subplot(projection='3d')
-                ax = plt.axes(projection='3d')
-                x_gen_plot = np.array(x0_plot)
-                ax.plot3D(x_gen_plot[:,0], x_gen_plot[:,1], x_gen_plot[:,2], 'or', markersize = 1, alpha = 0.5)
-                plt.gca().set_aspect('equal', 'box')
-            else: 
-                raise NotImplemented("dim = 2 and 3 supported")
-            plt.show()
-            plt.savefig("latent_sample_multNoise.png")
-            plt.close()
-
-        del r, s
-
-        return x0
-        
     def cond_latent_sample(self,t_, T, x):
         # conditionnal latent sample of yT knowing x=y0
-        r_x = torch.linalg.norm(x.clone().detach().to(self.device), dim= 1).reshape(x.shape[0],1)
-        s = randu_on_sphere((x.shape[0], self.dim),device = self.device) 
-        yT =  r_x * s
-        del r_x, s
-        return yT
+        x_det = x.clone().detach().to(self.device)
+        r_x = torch.linalg.norm(x_det.reshape(x_det.shape[0], -1), dim= 1).reshape(x.shape[0],1)
+        s = randu_on_sphere((x.shape[0], self.dim),device = self.device)
+        return self._radius_and_direction_to_native(r_x, s)
     
     def log_latent_pdf(self,yT):
         # WARNING : the nomalizing constant is not correct here
         # WARNING : miss || x ||^{d-1} / S_{d-1}
-        r_yT = torch.linalg.norm(yT.clone().detach(), dim= 1)
+        yT_det = yT.clone().detach()
+        r_yT = torch.linalg.norm(yT_det.reshape(yT_det.shape[0], -1), dim= 1)
         del yT
         r_yT = r_yT.reshape(len(r_yT),1)
         return torch.tensor(self.kde.score_samples(r_yT.cpu())).to(torch.float32).to(self.device) - self.cst_log_dens
@@ -604,24 +661,66 @@ class PluginReverseSDE(torch.nn.Module):
     # Drift of reserve generative SDE
     def ga_m_drift(self, s, y, lmbd=0.):
         return (1. - 0.5 * lmbd) * self.ga(s, y) - self.base_sde.f(s, y) + (1. - lmbd) * self.base_sde.div_Sigma(s, y)
-    
-    def ga(self, s, y):
-        g = self.base_sde.g(s, y, self.base_sde.sparseTensor)
+
+    def _eval_a(self, y, s):
+        """
+        Evaluate the score network a(). a(x_t) plays the same structural
+        role as the SDE's noise dBt: real, one scalar per mode, regardless
+        of whether y itself is real (dense/non-FFT case) or the complex
+        Fourier state (FFTfields, y: (B,n,2)). For FFTfields, a()'s own
+        FFTfield=True handles the ifft2 conversion of y to the spatial image
+        the network natively operates on, but always returns a real (B,n)
+        result (never re-FFT'd -- see VorticityUNet.forward's docstring),
+        matching how ga() must combine a with g: by scaling g's own (re,im)
+        channels with the real aK, never by treating a itself as complex.
+        """
+        if y.dim() == 3 and y.shape[-1] == 2:
+            return self.a(y, s, FFTfield=True)
+        return self.a(y, s)
+
+    def ga(self, s, y, return_a=False):
+        """
+        Computes g(y)*a(y). y may be Fourier-domain flat (B,n,2) -- the
+        representation ga_m_drift/mu (the reverse-SDE sampling path) use --
+        or spatial-domain flat (B,n) -- what ssm_loss passes for FFTfields
+        (see ssm()); the result is returned in that same representation,
+        and a is also returned when return_a=True (ssm_loss needs it for
+        mNu).
+
+        a(x_t) plays the same structural role as the noise dBt in the
+        forward SDE (dx_t = G(x_t) o dBt): both real, one scalar per mode,
+        combined with G(x_t) (complex, since x_t is complex and G's
+        coefficients are real) by scaling its real and imaginary parts
+        equally -- never by converting a itself to Fourier/complex (that
+        would introduce spurious re*im cross terms). This mirrors exactly
+        how EMstep (sde_scheme.py) broadcasts the real dW across sigma's two
+        channels.
+        """
+        is_fourier = (y.dim() == 3 and y.shape[-1] == 2)
+        y_fft = y if is_fourier else spatial_flat_to_fourier(y)
+        g = self.base_sde.g(s, y_fft, self.base_sde.sparseTensor)
+        a = self._eval_a(y, s.squeeze())                # (B,n) always real
         if self.base_sde.sparseTensor:
-            # --- Sparse case --------------------------------------------------
-            # extract sparse G indices
             I, J, K = self.base_sde.IJK()
-            a = self.a(y, s.squeeze())                     # (B,n)
-            aK = a[:, K]                                   # (B,2n)
-            prod = g * aK                # (B,2n)
-            dx = torch.zeros(y.shape[0], y.shape[1], device=y.device)
-            dx.scatter_add_(1, I.unsqueeze(0).expand(y.shape[0], -1), prod)
+            aK = a[:, K]                                    # (B,nnz) real
+            if g.dim() > aK.dim():
+                aK = aK.unsqueeze(-1)      # broadcast the real scalar across g's (re,im) channels
+            prod = g * aK                # (B,nnz) or (B,nnz,2)
+            dx_fft = torch.zeros(y_fft.shape[0], y_fft.shape[1], *y_fft.shape[2:], device=y_fft.device, dtype=prod.dtype)
+            index = I.unsqueeze(0).expand(y_fft.shape[0], -1)
+            if prod.dim() > 2:
+                index = index.unsqueeze(-1).expand(-1, -1, prod.shape[-1])
+            dx_fft.scatter_add_(1, index, prod)
         else:
-            if g.dim()>2 :
-                dx = torch.einsum('bij, bj -> bi', self.base_sde.g(s, y), self.a(y, s.squeeze()))
-            else :
-                dx = g * self.a(y, s.squeeze())
-        return dx
+            # g is either a dense (B,n,n) diffusion matrix (needs a matvec via
+            # einsum), or an elementwise/diagonal diffusion coefficient the
+            # same shape as `a` (just multiply).
+            if g.shape == a.shape:
+                dx_fft = g * a
+            else:
+                dx_fft = torch.einsum('bij, bj -> bi', g, a)
+        dx = dx_fft if is_fourier else fourier_flat_to_spatial(dx_fft)
+        return (dx, a) if return_a else dx
 
 
     # Stratonovich Drift
@@ -655,39 +754,46 @@ class PluginReverseSDE(torch.nn.Module):
         estimating the SSM loss of the plug-in reverse SDE
         """
         t_,x,y = self.sample_txy(x)
+        if self.base_sde.FFTfields and y.dim() == 3 and y.shape[-1] == 2:
+            y = fourier_flat_to_spatial(y)   # differentiate w.r.t. the spatial state, see ga()
         y.requires_grad_()
         return self.ssm_loss(t_,x,y)
+
+
+    def _mu_to_div_and_a(self, t_, y):
+        """
+        Computes (mu_to_div, a) for the SSM loss.
+        mu_to_div = ga(t,y) - f(t,y) + 0.5*div_Sigma(t,y) always (this is
+        ga_m_drift(t,y,0.) - 0.5*div_Sigma(t,y) simplified -- see ga_m_drift).
+        y may be spatial (B,n, FFTfields) or Fourier (B,n,2, otherwise);
+        ga() handles both directly. f/div_Sigma are Fourier-domain-only
+        operators, so for spatial y they're evaluated on its Fourier
+        conversion and brought back to spatial to match.
+        """
+        ga_val, a = self.ga(t_, y, return_a=True)
+        if y.dim() == 2:
+            y_fft = spatial_flat_to_fourier(y)
+            f = fourier_flat_to_spatial(self.base_sde.f(t_, y_fft))
+            div_sigma = fourier_flat_to_spatial(self.base_sde.div_Sigma(t_, y_fft))
+        else:
+            f = self.base_sde.f(t_, y)
+            div_sigma = self.base_sde.div_Sigma(t_, y)
+        mu_to_div = ga_val - f + 0.5 * div_sigma
+        return mu_to_div, a
 
     @torch.enable_grad()
     def ssm_loss(self, t_, x, y):
         """
         estimating the SSM loss of the plug-in reverse SDE by estimating div(mu) using the Hutchinson trace estimator
         """
-        # WARNING : is x dependency needed here? maybe shape is needed to be independent of y for autograd?
-        qt = 1 / self.T
-
-        a = self.a(y, t_.squeeze())
-
-        # OU case
-        # mu = self.base_sde.g(t_, y) * a - self.base_sde.f(t_, y)
-        # mu_to_div = mu
-
-        # General case
-        mu = self.ga_m_drift(t_, y, 0.)
-        mu_to_div = mu - 0.5 * self.base_sde.div_Sigma(t_, y)
-
-        # Simpler and faster way for MSGM
-        #mu_to_div = self.ga(t_, y)
-
+        mu_to_div, a = self._mu_to_div_and_a(t_, y)
         with torch.no_grad():
             v = sample_v(x.shape, vtype=self.vtype, device=self.deviceReverseSDE).to(y)
 
         mMu = (
             torch.autograd.grad(mu_to_div, y, v, create_graph=self.training)[0] * v
         ).view(x.size(0), -1).sum(1, keepdim=False)
-
-        mNu = (a ** 2).view(x.size(0), -1).sum(1, keepdim=False) / 2
-
+        mNu = (a ** 2).reshape(x.size(0), -1).sum(1, keepdim=False) / 2
         return mMu + mNu
 
     def sample_txy(self, x):
@@ -761,7 +867,7 @@ class PluginReverseSDE(torch.nn.Module):
 
         t_,x,y = self.sample_txy(x)
         yT = self.cond_latent_sample(t_, self.base_sde.T, x)
-        lp = self.base_sde.log_latent_pdf(yT).view(x.size(0), -1).sum(1)
+        lp = self.base_sde.log_latent_pdf(yT).reshape(x.size(0), -1).sum(1)
 
         return lp - loss_ssm
     

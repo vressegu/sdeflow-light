@@ -89,7 +89,10 @@ def plot_selected_inds(xs, inds, use_xticks=True, use_yticks=True, lmbd = 0.,
     if backward:
         inds = reversed(inds)
     for ind in inds:
-        imgs_ += [get_2d_histogram_plot(xs[ind].to('cpu').numpy(), val,  offset_dimplot=offset_dimplot)]
+        # flatten any trailing real/imag channel dim (FFTfields: (B,n,2)) into
+        # plain real features (B,n*2); a no-op reshape for the (B,n) real case.
+        xs_ind = xs[ind].reshape(xs.shape[1], -1)
+        imgs_ += [get_2d_histogram_plot(xs_ind.to('cpu').numpy(), val,  offset_dimplot=offset_dimplot)]
     img_ = np.concatenate(imgs_, axis=1)
 
     height, width, _ = img_.shape
@@ -297,6 +300,11 @@ def preprocessing(xtest, xs_forward, num_steps_forward, name_simu_root,
     
     xgen_forward = xs_forward[-1,:,:].to(device)
 
+    # flatten any trailing real/imag channel dim (FFTfields: (B,n,2)) into
+    # plain real features (B,n*2); a no-op reshape for the (B,n) real case.
+    xtest = xtest.reshape(xtest.shape[0], -1)
+    xgen_forward = xgen_forward.reshape(xgen_forward.shape[0], -1)
+
     # metrics of convergence for the forward SDE
     cov_xtest = torch.cov(xtest.T)
     cov_xgen_forward = torch.cov(xgen_forward.T)
@@ -366,7 +374,7 @@ def preprocessing(xtest, xs_forward, num_steps_forward, name_simu_root,
             offset_dimplot=plot_params.offset_dimplot,
             include_t0=True, backward=False,
             plt_show=plot_params.plt_show,
-            val=plot_params.val_hist* plot_params.std_test_plot[plot_params.offset_dimplot]) # plot
+            val=plot_params.val_hist* plot_params.std_test_plot[plot_params.offset_dimplot].reshape(-1).norm()) # plot
         time.sleep(0.5)
         if plot_params.plt_show:
             plt.show(block=False)
@@ -379,20 +387,25 @@ def preprocessing(xtest, xs_forward, num_steps_forward, name_simu_root,
         
         # Signal and image plots
         prefix_save = folder_results + "/" + name_simu_root + "_Forward"
-        plot_signal(xs_forward, inds_forward, prefix_save, 
+        plot_signal(xs_forward, inds_forward, prefix_save,
                     std_norm=std_norm , std_test_plot=plot_params.std_test_plot,
-                    plt_show=plot_params.plt_show, timeToDuplicate= 0)
+                    plt_show=plot_params.plt_show, timeToDuplicate= 0,
+                    FFTfields=plot_params.FFTfields)
         
     
-def plot_signal(xs,inds, prefix_save, 
-                std_norm , std_test_plot, plt_show=False, timeToDuplicate = None):
+def plot_signal(xs,inds, prefix_save,
+                std_norm , std_test_plot, plt_show=False, timeToDuplicate = None,
+                FFTfields=False):
     dim = xs[-1,:,:].shape[1]
     nb_samples = 10 if timeToDuplicate is not None else 1
     nb_samples = min((nb_samples, xs.shape[1]))
     if timeToDuplicate == -1:
         timeToDuplicate = xs.shape[0] - 1
     npixelx = np.int32( np.sqrt(dim) )
-    factor_caxis = (std_norm * std_test_plot).max()
+    # std_norm is per-pixel (n,); std_test_plot may carry a trailing real/imag
+    # channel dim (n,2) when FFTfields -- broadcast std_norm over it.
+    std_norm_b = std_norm.reshape(std_norm.shape[0], *([1] * (std_test_plot.dim() - 1)))
+    factor_caxis = (std_norm_b * std_test_plot).max()
     if (dim > 4**2):
         if (dim == npixelx**2) and (npixelx >= 16): # can define an image
             print("Plot noisy images")
@@ -403,7 +416,15 @@ def plot_signal(xs,inds, prefix_save,
                 else:
                     nb_samples_loc = 1
                 for id_sample in range(nb_samples_loc):
-                    xtt_image = (std_norm * xs[ind,id_sample,:].squeeze()).numpy()
+                    xtt = xs[ind,id_sample,:]  # (n,) real, or (n,2) [real,imag] when FFTfields
+                    if FFTfields:
+                        xtt = torch.complex(xtt[..., 0], xtt[..., 1])  # (n,) complex
+                        xtt_image = xtt.numpy().reshape(([npixelx,npixelx]),order='F')
+                        xtt_image = np.fft.ifft2(xtt_image, axes=(0, 1)).real
+                        xtt = xtt_image.reshape(([npixelx*npixelx,1]),order='F')
+                        # scale for FFT normalization
+                        factor_caxis = (std_norm_b * std_test_plot).max() / npixelx  
+                    xtt_image = (std_norm * xtt.squeeze()).numpy()
                     xtt_image = xtt_image.reshape(([npixelx,npixelx]),order='F')
                     plots_vort(xtt_image, -factor_caxis, factor_caxis)
                     if plt_show:
@@ -448,7 +469,7 @@ def plots_vort(U,vmin=-2,vmax=2):
     fig, axs = plt.subplots(1, 1, figsize=(6, 5), constrained_layout=True)
 
     # U component
-    pcm = axs.pcolormesh(U[-1:0:-1,:], shading='auto', vmin=vmin,vmax=vmax)
+    pcm = axs.pcolormesh(U[-1:0:-1,:], shading='auto', vmin=vmin,vmax=vmax, cmap='viridis')
     axs.set_title("vorticity (1/s)")
     axs.set_aspect('equal')
     fig.colorbar(pcm, ax=axs)
@@ -463,8 +484,10 @@ def postprocessing(inds, i_dims, i_complexitys, i_num_stepss_backward, i_iterati
     if save_results and not justLoad:
         np.save(name_simu + ".pt", xgen.clone().detach().cpu().numpy())
 
-    # Identify rows with NaN values
-    nan_mask = (torch.isnan(xgen) | (torch.abs(xgen) > 1e3 )).any(dim=1)
+    # Identify rows with NaN values (reduce over all non-batch dims: xgen may
+    # carry a trailing real/imag channel dim, (B,n,2), when FFTfields)
+    reduce_dims = tuple(range(1, xgen.dim()))
+    nan_mask = (torch.isnan(xgen) | (torch.abs(xgen) > 1e3 )).any(dim=reduce_dims)
     # Count rows with NaN values
     nan_count = nan_mask.sum().item()
     if nan_count > 0:
@@ -472,8 +495,19 @@ def postprocessing(inds, i_dims, i_complexitys, i_num_stepss_backward, i_iterati
     # Remove rows with NaN values
     xgen = xgen[~nan_mask,:]
     del nan_mask
+    if xgen.shape[0] == 0:
+        print("All generated samples were NaN or diverged -- skipping postprocessing for this run.")
+        return
 
-    if (plot_params.scatter_plots) and (i_run == 0):
+    # flatten any trailing real/imag channel dim into plain real features,
+    # matching preprocessing() -- downstream plotting (pairplots, survival,
+    # selected-inds) expects plain (B, features) / (steps, B, features).
+    xgen = xgen.reshape(xgen.shape[0], -1)
+    xtest = xtest.reshape(xtest.shape[0], -1)
+
+    if (plot_params.scatter_plots) and (i_run == 0) and not plot_params.FFTfields:
+        # std_norm is a physical-space per-pixel std; not meaningful for
+        # Fourier-domain (FFTfields) coefficients -- skip this diagnostic there.
         pairplots(xgen, xtest, std_norm, plot_params, datatype, name_simu)
         
     # Survival function plot
@@ -486,7 +520,7 @@ def postprocessing(inds, i_dims, i_complexitys, i_num_stepss_backward, i_iterati
                             offset_dimplot=plot_params.offset_dimplot,
                             include_t0=plot_params.include_t0_reverse, 
                             plt_show=plot_params.plt_show, 
-                            val=plot_params.val_hist * plot_params.std_test_plot[plot_params.offset_dimplot]) # plot
+                            val=plot_params.val_hist * plot_params.std_test_plot[plot_params.offset_dimplot].reshape(-1).norm()) # plot
         time.sleep(0.5)
         if plot_params.plt_show:
             plt.show(block=False)
@@ -499,9 +533,10 @@ def postprocessing(inds, i_dims, i_complexitys, i_num_stepss_backward, i_iterati
 
     # Signal and image plots
     prefix_save = name_simu + "_Gen"
-    plot_signal(xs, inds, prefix_save, 
+    plot_signal(xs, inds, prefix_save,
                     std_norm=std_norm , std_test_plot=plot_params.std_test_plot,
-                    plt_show=plot_params.plt_show, timeToDuplicate= -1)
+                    plt_show=plot_params.plt_show, timeToDuplicate= -1,
+                    FFTfields=plot_params.FFTfields)
         
     # MMD
     if evalmmmd and not justLoadmmmd:

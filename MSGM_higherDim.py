@@ -55,6 +55,7 @@ norm_map = "log"
 beta_min_SGM = 0.1 # default
 beta_max_SGM = 20 # default
 denseTensor = True
+AMSGM = False
 
 NNarchi = "MLP"
 num_samples_init_max = int(1e5)
@@ -345,6 +346,7 @@ if __name__ == '__main__':
 
 
                 if not MSGM:
+                    AMSGM = False
                     normalized_data = True
                     ssm_intT = False
                     premodule = None # default
@@ -378,6 +380,7 @@ if __name__ == '__main__':
                                         smoothing = smoothing,
                                         localized = localized, 
                                         few_data=few_data, 
+                                        FFTfields = AMSGM,
                                         ntrain_max=ntrain_max)
                         plot_params.log_scale_pdf = True
                         plot_params.plot_xlim = 6
@@ -446,19 +449,27 @@ if __name__ == '__main__':
                         std_norm = sampler.get_std()
                     else:
                         std_norm = torch.ones((xtest.shape[1]))
+                    if AMSGM:
+                        std_norm *= sampler.get_norm_fft()
                     if (datatype == 'cauchy') :
                         plot_params.std_test_plot = torch.ones_like(std_test) / std_norm
                     else:
                         plot_params.std_test_plot = std_test
 
                     plt.close('all')
+                    plot_params.FFTfields = AMSGM
                     plot_params.dimplot = np.min([plot_params.dimplot_max,xtest.shape[1]])
                     plot_params.columns_plot=range(1+plot_params.offset_dimplot,1+plot_params.offset_dimplot+plot_params.dimplot)
 
-                    pairplots_single(xtest, std_norm, datatype, sampler.name , 
-                                     plot_params)
-                    pairplots_single(sampler.sample(num_samples).to('cpu'), std_norm, datatype, sampler.name + "_train", 
-                                     plot_params)
+                    if not AMSGM:
+                        # std_norm is a physical-space per-pixel std (data.py's
+                        # PIV.get_std()); it doesn't correspond to Fourier-domain
+                        # coefficient scale, so this diagnostic isn't meaningful
+                        # for FFTfields (Fourier-domain) data -- skip it there.
+                        pairplots_single(xtest, std_norm, datatype, sampler.name ,
+                                         plot_params)
+                        pairplots_single(sampler.sample(num_samples).to('cpu'), std_norm, datatype, sampler.name + "_train",
+                                         plot_params)
 
                 ## 3. Train
 
@@ -501,6 +512,8 @@ if __name__ == '__main__':
                                 in_space=npixelx,                # 16x16 images
                                 attention_resolutions=(2,4), # attention at 8x8 and 4x4
                                 flatten_order="F",   # <-- set to "C" or "F" to match pipeline
+                                # score network a() is always spatial/1-channel; callers pass
+                                # FFTfield=True per-call (forward()) for Fourier-domain state
                             ).to(device)
                         else:
                             raise ValueError("Unknown NN archi: {}".format(NNarchi))
@@ -510,12 +523,23 @@ if __name__ == '__main__':
                         with torch.no_grad():
                             if MSGM:
                                 x_init = sampler.sample(num_samples_init).to(device)
+                                if AMSGM:
+                                    # A-MSGM's forward SDE is integrated numerically (RK4), unlike
+                                    # SGM's analytic solution, so it's subject to a CFL-like stability
+                                    # condition (dt < dx^2/a0) tying beta to num_steps_forward -- a
+                                    # beta_min->beta_max schedule ramping up to a large beta_max
+                                    # partway through the trajectory can push past that limit even
+                                    # when a constant beta_max throughout would be stable. Use a
+                                    # constant beta instead of a schedule for A-MSGM.
+                                    beta_max = 1
+                                    beta_min = beta_max
                                 inf_sde = MSGMsde(x_init,beta_min=beta_min, beta_max=beta_max, \
                                                             t_epsilon=t_eps, T=T, num_steps_forward=num_steps_forward, \
                                                             device=device, estim_cst_norm_dens_r_T = False, \
                                                             norm_sampler = norm_sampler,
                                                             norm_map = norm_map, \
                                                             denseTensor=denseTensor, \
+                                                            AMSGM=AMSGM, \
                                                             plot_validate = plot_params.plot_validate)
                                 del x_init
                             else:
@@ -529,6 +553,10 @@ if __name__ == '__main__':
                         if few_data:
                             print("ntrain_max = " + str(ntrain_max) )
                         print("name_SDE = " + str(inf_sde.name_SDE) )   
+                        if MSGM:
+                            print("denseTensor = " + str(denseTensor) )   
+                            print("A-MSGM = " + str(AMSGM) )   
+                        print("FFT field = " + str(AMSGM) )   
                         print("num_steps_forward = " + str(num_steps_forward))
                         print("beta_min_SGM = " + str(beta_min_SGM))
                         print("beta_min = " + str(beta_min))

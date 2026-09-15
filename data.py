@@ -22,12 +22,16 @@ class PIV:
                  largeImage = False, 
                  smoothing = 0,
                  few_data = False, 
+                 FFTfields = False,
                  ntrain_max = np.inf):
         self.dim = dim
         self.name='PIV'
+        self.FFTfields = FFTfields
         self.name += str(self.dim)
         if largeImage:
             self.name += 'largeIm'
+            if FFTfields:
+                self.name += 'FFT'
             if smoothing == 1:
                 self.name += 'smooth'
             if smoothing == 2:
@@ -147,17 +151,41 @@ class PIV:
         if normalized:
             self.npdata = self.npdata/self.std
             self.npdatatest = self.npdatatest/self.std
+        if self.FFTfields:
+            sample = torch.from_numpy(self.npdata).to(torch.float32)
+            sample_c = torch.fft.fft2(sample.reshape(-1, int(np.sqrt(self.dim)), int(np.sqrt(self.dim)))).reshape(-1, self.dim)
+            # remove spatial mean
+            sample_c[:,0] = 0
+            sample = torch.stack([sample_c.real, sample_c.imag], dim=-1)  # (B, dim, 2)
+            self.norm_fft = torch.mean(torch.abs(sample.flatten())**2)**0.5
+            self.npdata = self.npdata/self.norm_fft.numpy()
+            self.npdatatest = self.npdatatest/self.norm_fft.numpy()
 
     def sample(self, n):               
         idx = np.random.randint(0,self.npdata.shape[0], size = n) #% self.max_nsamples
-        return torch.from_numpy(self.npdata[idx,:]).to(torch.float32)
+        sample = torch.from_numpy(self.npdata[idx,:]).to(torch.float32)
+        if self.FFTfields:
+            sample_c = torch.fft.fft2(sample.reshape(-1, int(np.sqrt(self.dim)), int(np.sqrt(self.dim)))).reshape(-1, self.dim)
+            # remove spatial mean
+            sample_c[:,0] = 0
+            sample = torch.stack([sample_c.real, sample_c.imag], dim=-1)  # (B, dim, 2)
+        return sample
 
     def sampletest(self, n):               
         idx = np.random.randint(0,self.npdatatest.shape[0], size = n) #% self.max_nsamples
-        return torch.from_numpy(self.npdatatest[idx,:]).to(torch.float32)
-    
+        sample = torch.from_numpy(self.npdatatest[idx,:]).to(torch.float32)
+        if self.FFTfields:
+            sample_c = torch.fft.fft2(sample.reshape(-1, int(np.sqrt(self.dim)), int(np.sqrt(self.dim)))).reshape(-1, self.dim)
+            # remove spatial mean
+            sample_c[:,0] = 0
+            sample = torch.stack([sample_c.real, sample_c.imag], dim=-1)  # (B, dim, 2)
+        return sample
+
     def get_std(self):
         return torch.from_numpy(self.std).to(torch.float32)
+
+    def get_norm_fft(self):
+        return self.norm_fft
 
 
 class SwissRoll:

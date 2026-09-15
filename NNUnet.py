@@ -23,18 +23,34 @@ plot_debug= False
 # 0) Flat <-> Image helpers (support C or F ordering)
 # ============================================================
 
-def flat_to_img(x: torch.Tensor, H: int, W: int, order: Literal["C","F"]="C") -> torch.Tensor:
+def flat_to_img(x: torch.Tensor, H: int, W: int,
+                order: Literal["C","F"]="C", FFTfields: bool = False) -> torch.Tensor:
     """
-    x: (B, d) with d = H*W  ->  (B, 1, H, W)
+    x: (B, d) real with d = H*W, or (B, d, 2) [real, imag] flat Fourier
+    vector when FFTfields -> (B, 1, H, W) real.
+
+    If FFTfields, x is ifft2'd to the physical-space image the convolutions
+    actually operate on, keeping only the real part -- the (generally
+    nonzero but uninformative) imaginary residual from a non-Hermitian
+    state is dropped rather than kept as a 2nd channel, since the network
+    is always spatial/real/1-channel (see VorticityUNet.forward).
     """
-    B, d = x.shape
     x = x/scale_image  # rescale to (0,1) for NN
+    if FFTfields:
+        B, d, two = x.shape
+        assert two == 2, f"Expected (B,d,2) real/imag flat vector, got {tuple(x.shape)}"
+        x = torch.complex(x[..., 0], x[..., 1])  # (B, d) complex
+    else:
+        B, d = x.shape
     assert d == H*W, f"Expected d={H*W}, got {d}"
     if order == "C":
         x = x.view(B, 1, H, W)
     else:  # "F"
         x = x.view(B, 1, W, H).transpose(2, 3).contiguous()
-    
+
+    if FFTfields:
+        x = torch.fft.ifft2(x, dim=(2, 3)).real  # Fourier-domain -> physical-space, real part only
+
     if plot_debug:
         xcopy = x.clone()
         with torch.no_grad():
@@ -52,9 +68,13 @@ def flat_to_img(x: torch.Tensor, H: int, W: int, order: Literal["C","F"]="C") ->
 
 def img_to_flat(y: torch.Tensor, order: Literal["C","F"]="C") -> torch.Tensor:
     """
-    y: (B, 1, H, W)  ->  (B, H*W)
+    y: (B, 1, H, W) real -> (B, H*W) real. The UNet's own output is always
+    real, spatial, 1-channel (see VorticityUNet.forward's docstring for why
+    -- a() must match dBt's dimensionality regardless of its input), so no
+    FFT step is needed here.
     """
     B, C, H, W = y.shape
+    assert C == 1
 
     if plot_debug:
         xcopy = y.clone()
@@ -70,7 +90,6 @@ def img_to_flat(y: torch.Tensor, order: Literal["C","F"]="C") -> torch.Tensor:
             plt.close('all')
 
     y = scale_image*y  # scale from (0,1) for NN
-    assert C == 1, f"Expected 1 channel, got {C}"
     if order == "C":
         return y.reshape(B, H*W)
     else:  # "F"
@@ -172,11 +191,16 @@ class VorticityUNet(nn.Module):
         self.in_space = in_space
         assert flatten_order in ("C","F")
         self.flatten_order = flatten_order
+        # Always a spatial, real, 1-channel network: it plays the role of a
+        # bias on the (real, one-scalar-per-mode) noise, so its output should
+        # match that dimensionality regardless of whether callers pass it a
+        # spatial or Fourier-domain state (see forward()'s FFTfield arg).
+        n_channels = 1
 
         self.core = UNetModelWithLogNorm(
-            in_channels     = 1,
+            in_channels     = n_channels,
             model_channels  = base_channels,
-            out_channels    = 1,
+            out_channels    = n_channels,
             in_space        = in_space,
             num_res_blocks  = num_res_blocks,
             attention_resolutions = attention_resolutions,
@@ -192,25 +216,36 @@ class VorticityUNet(nn.Module):
             use_log_norm    = (premodule == "NormalizeLogRadius"),
         )
 
-    def forward(self, x: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, t: torch.Tensor, FFTfield: bool = False) -> torch.Tensor:
         """
-        x: (B, d=H*W) or (B,1,H,W)
+        x: (B, d=H*W) real (FFTfield=False), (B, d, 2) [real,imag] flat
+           Fourier vector (FFTfield=True), or (B,1,H,W) real image.
         t: (B,) or (B,1)
+        FFTfield: controls only how x is interpreted, never the output --
+            the return value is always real and spatial (B,d), since a()
+            must stay real like the SDE's noise dBt regardless of which
+            representation its input came in (see SDEs.py's ga()).
         """
         t = t.view(-1)  # (B,)
         need_flat = False
 
         if self.pre is not None:
-            x, log_norm = self.pre(x)  # (batch, learnable_network_input_dim)
-            x = x * torch.sqrt(torch.tensor(x.shape[-1], dtype=log_norm.dtype, device=log_norm.device))  # scale to keep std consistent
+            x, log_norm = self.pre(x)  # (batch, learnable_network_input_dim[, 2])
+            n_normalized = x[0].numel()  # total elements normalized over per sample (matches NormalizeLogRadius's reduce_dims)
+            x = x * torch.sqrt(torch.tensor(n_normalized, dtype=log_norm.dtype, device=log_norm.device))  # scale to keep std consistent
 
-        if x.dim() == 2:
-            B, d = x.shape
+        if x.dim() == 2 or (x.dim() == 3 and FFTfield):
+            # (B,d) real, or (B,d,2) [real,imag] flat Fourier vector when FFTfield
             H = W = self.in_space
+            d = x.shape[1]
             assert d == H*W, f"Flat dim {d} != {H}*{W}"
-            x_img = flat_to_img(x, H, W, order=self.flatten_order)
+            x_img = flat_to_img(x, H, W, order=self.flatten_order, FFTfields=FFTfield)
             need_flat = True
         elif x.dim() == 4:
+            # already a spatial, real, 1-channel image (the UNet core's own
+            # native representation) -- FFTfield is meaningless here, since
+            # the ifft2/fft2 conversion only applies to the flat<->image
+            # reshaping above.
             assert x.size(1) == 1, f"Expected (B,1,H,W), got {tuple(x.shape)}"
             x_img = x
         else:
@@ -240,7 +275,7 @@ class VorticityUNet(nn.Module):
             y_img = self.core(x_img, timesteps=t, log_norm=log_norm)
         
         if need_flat:
-            return img_to_flat(y_img, order=self.flatten_order)  # (B, d)
+            return img_to_flat(y_img, order=self.flatten_order)  # (B, d), always real (see docstring)
         else:
             return y_img
 

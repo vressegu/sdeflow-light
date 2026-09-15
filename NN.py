@@ -62,8 +62,9 @@ class NormalizeLogRadius(nn.Module):
         self.eps = eps
 
     def forward(self, x):
-        # x: (batch, d)
-        norm = torch.norm(x, dim=-1, keepdim=True)
+        # x: (batch, d), or (batch, d, 2) for a real/imag flat Fourier vector
+        reduce_dims = tuple(range(1, x.dim()))
+        norm = torch.norm(x, dim=reduce_dims, keepdim=True)
         norm = norm + self.eps
         x_normalized = x / norm
         log_norm = torch.log(norm)

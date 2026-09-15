@@ -15,27 +15,58 @@ import torch.nn as nn
 import sys
 import os
 
+def _field_norm(x):
+    """
+    L2 "energy" norm of the field per batch element, used by norm_correction.
+    For FFTfields (x: (B,n,2) real/imag flat vector), this is the norm of
+    the complex modulus per mode, sqrt(real^2+imag^2), combining both
+    channels -- mathematically identical to flattening both channels
+    together and taking a single L2 norm (sum|z_k|^2 = sum(re_k^2+im_k^2)),
+    but written explicitly so the combination across channels is
+    unambiguous rather than relying on that identity implicitly.
+    """
+    if x.dim() == 3 and x.shape[-1] == 2:
+        modulus = torch.sqrt(x[..., 0] ** 2 + x[..., 1] ** 2)   # (B,n)
+        return torch.norm(modulus, dim=1)
+    return torch.norm(x.reshape(x.shape[0], -1), dim=1)
+
 @torch.no_grad()
 def EMstep(mu, delta, sigma, dW, sparse=False, I=None, K=None):
     """
-    sigma: 
+    sigma:
        dense case  -> (B,n,n)
-       sparse case -> (B,2n)  (same indexing as G_sparse.values())
+       sparse case -> (B,nnz) or (B,nnz,2) with a trailing real/imag channel
+                       (FFTfields), same indexing as G_sparse.values()
+    dW: (B,n), one real scalar Wiener increment per mode (not per channel)
     I,K: sparse indices
     """
 
     if sparse:
-        # sigma[b,e] multiplies dW[b, K[e]]
-        prod = sigma * dW[:, K]   # (B, 2n)
+        # sigma[b,e] multiplies dW[b, K[e]], broadcasting the single
+        # per-mode real dW across any trailing real/imag channel dim sigma
+        # carries (FFTfields: (B,nnz,2)) -- see transportNoise.py for why a
+        # single real dW per mode is correct here.
+        dW_K = dW[:, K]              # (B, nnz)
+        if sigma.dim() > dW_K.dim():
+            dW_K = dW_K.unsqueeze(-1)
+        prod = sigma * dW_K          # (B, nnz) or (B, nnz, 2)
 
-        dx = torch.zeros_like(dW)     # (B,n)
-        dx.scatter_add_(1, I.unsqueeze(0).expand(dW.size(0), -1), prod)
+        dx = torch.zeros_like(mu)    # (B,n) or (B,n,2) -- matches the state, not dW
+        index = I.unsqueeze(0).expand(dW.size(0), -1)
+        if prod.dim() > 2:
+            index = index.unsqueeze(-1).expand(-1, -1, prod.shape[-1])
+        dx.scatter_add_(1, index, prod)
 
     else:
-        if sigma.dim() > 2:
-            dx = torch.einsum('bij, bj -> bi', sigma, dW)
-        else:
+        # sigma is either a dense (B,n,n) diffusion matrix (needs a matvec via
+        # einsum), or an elementwise/diagonal diffusion coefficient the same
+        # shape as dW (just multiply) -- sigma.dim() alone can't distinguish
+        # these once dW/sigma may carry a trailing real/imag channel dim
+        # (FFTfields: (B,n,2)), since an elementwise sigma is then 3D too.
+        if sigma.shape == dW.shape:
             dx = sigma * dW
+        else:
+            dx = torch.einsum('bij, bj -> bi', sigma, dW)
 
     return mu * delta + dx
 
@@ -63,17 +94,17 @@ def euler_maruyama_sampler(sde, x_0, num_steps=1000, lmbd=0.,
     # sample
     x_t = x_0.detach().clone().to(device)
     if norm_correction:
-        norm_x_0 = torch.norm(x_t,dim=1)
+        norm_x_0 = _field_norm(x_t)
     if keep_all_samples :
         if (not include_t0) :
-            xs = torch.zeros((x_0.shape[0],x_0.shape[1],num_steps),device='cpu')
+            xs = torch.zeros((*x_0.shape,num_steps),device='cpu',dtype=x_0.dtype)
         else :
-            xs = torch.zeros((x_0.shape[0],x_0.shape[1],num_steps+1),device='cpu')
-            xs[:,:,0]=x_t.clone().to('cpu')
+            xs = torch.zeros((*x_0.shape,num_steps+1),device='cpu',dtype=x_0.dtype)
+            xs[...,0]=x_t.clone().to('cpu')
     elif samplesToKeep is not None:
         if not (len(samplesToKeep) == batch_size):
             raise ValueError('Error: len(samplesToKeep) must correspond to batch size.')
-        xs = torch.zeros((x_0.shape[0],x_0.shape[1]),device='cpu')
+        xs = torch.zeros_like(x_0, device='cpu')
 
     t = torch.zeros(batch_size, *([1]*ndim), device=device)
     with torch.no_grad():
@@ -81,19 +112,20 @@ def euler_maruyama_sampler(sde, x_0, num_steps=1000, lmbd=0.,
             t.fill_(ts[i].item())
             mu = sde.mu(t, x_t, lmbd=lmbd)
             sigma = sde.sigma(t, x_t, lmbd=lmbd, sparse=sparseG)
-            dW = delta**0.5 * torch.randn_like(x_t)  # Wiener increment
-            x_t = x_t + EMstep(mu, delta , sigma , delta ** 0.5 * torch.randn_like(x_t), sparse=sparseG, I=I, K=K)
+            dW = delta ** 0.5 * torch.randn(x_t.shape[:2], device=x_t.device)  # one real scalar per mode, not per channel
+            x_t = x_t + EMstep(mu, delta , sigma , dW, sparse=sparseG, I=I, K=K)
             if norm_correction:
-                x_t = x_t * (norm_x_0/torch.norm(x_t,dim=1))[:,None]
+                ratio = (norm_x_0 / _field_norm(x_t))
+                x_t = x_t * ratio.reshape(x_t.shape[0], *([1] * (x_t.dim() - 1)))
             if keep_all_samples:
-                xs[:,:,i+include_t0]=x_t.clone().to('cpu')
+                xs[...,i+include_t0]=x_t.clone().to('cpu')
             elif samplesToKeep is not None:
                 if (i+include_t0) in samplesToKeep:
                     idx_samplesToKeep = (samplesToKeep == (i+include_t0)).flatten()
                     xs[idx_samplesToKeep,:]=x_t[idx_samplesToKeep,:].clone().to('cpu')
-                
+
     if keep_all_samples:
-        xs = torch.permute(xs, (2, 0, 1))
+        xs = torch.permute(xs, (xs.dim() - 1,) + tuple(range(xs.dim() - 1)))  # move time axis (last) to front
     elif samplesToKeep is None:
         xs=x_t.clone().to('cpu')
     
@@ -122,18 +154,18 @@ def heun_sampler(sde, x_0, num_steps=1000, lmbd=0.,
     # Sampling
     x_t = x_0.detach().clone().to(device)
     if norm_correction:
-        norm_x_0 = torch.norm(x_t,dim=1)
+        norm_x_0 = _field_norm(x_t)
     t = torch.zeros(batch_size, *([1] * ndim), device=device)
     if keep_all_samples :
         if (not include_t0) :
-            xs = torch.zeros((x_0.shape[0],x_0.shape[1],num_steps),device='cpu')
+            xs = torch.zeros((*x_0.shape,num_steps),device='cpu',dtype=x_0.dtype)
         else :
-            xs = torch.zeros((x_0.shape[0],x_0.shape[1],num_steps+1),device='cpu')
-            xs[:,:,0]=x_t.clone().to('cpu')
+            xs = torch.zeros((*x_0.shape,num_steps+1),device='cpu',dtype=x_0.dtype)
+            xs[...,0]=x_t.clone().to('cpu')
     elif samplesToKeep is not None:
         if not (len(samplesToKeep) == batch_size):
             raise ValueError('Error: len(samplesToKeep) must correspond to batch size.')
-        xs = torch.zeros((x_0.shape[0],x_0.shape[1]),device='cpu')
+        xs = torch.zeros_like(x_0, device='cpu')
         
     with torch.no_grad():
         for i in range(num_steps):
@@ -142,7 +174,7 @@ def heun_sampler(sde, x_0, num_steps=1000, lmbd=0.,
             # Compute mu and sigma at the start of the interval
             mu_1 = sde.mu_Strato(t, x_t, lmbd=lmbd)
             sigma_1 = sde.sigma(t, x_t, lmbd=lmbd, sparse=sparseG)
-            dW = delta**0.5 * torch.randn_like(x_t)  # Wiener increment
+            dW = delta**0.5 * torch.randn(x_t.shape[:2], device=x_t.device)  # one real scalar per mode, not per channel
 
             # Predictor step (Euler)
             x_predict = x_t + EMstep(mu_1, delta , sigma_1 , dW, sparse=sparseG, I=I, K=K)
@@ -156,17 +188,18 @@ def heun_sampler(sde, x_0, num_steps=1000, lmbd=0.,
             # x_t = x_t + (delta / 2) * (mu_1 + mu_2) + (sigma_1 + sigma_2) * (dW / 2)
             x_t = x_t + EMstep(mu_1 + mu_2, delta / 2 , sigma_1 + sigma_2 , dW / 2, sparse=sparseG, I=I, K=K)
             if norm_correction:
-                x_t = x_t * (norm_x_0/torch.norm(x_t,dim=1))[:,None]
+                ratio = (norm_x_0 / _field_norm(x_t))
+                x_t = x_t * ratio.reshape(x_t.shape[0], *([1] * (x_t.dim() - 1)))
 
             if keep_all_samples:
-                xs[:,:,i+include_t0]=x_t.clone().to('cpu')
+                xs[...,i+include_t0]=x_t.clone().to('cpu')
             elif samplesToKeep is not None:
                 if (i+include_t0) in samplesToKeep:
                     idx_samplesToKeep = (samplesToKeep == (i+include_t0)).flatten()
                     xs[idx_samplesToKeep,:]=x_t[idx_samplesToKeep,:].clone().to('cpu')
 
     if keep_all_samples:
-        xs = torch.permute(xs, (2, 0, 1))
+        xs = torch.permute(xs, (xs.dim() - 1,) + tuple(range(xs.dim() - 1)))  # move time axis (last) to front
     elif samplesToKeep is None:
         xs=x_t.clone().to('cpu')
     
@@ -203,18 +236,18 @@ def rk4_stratonovich_sampler(sde, x_0, num_steps=1000, lmbd=0.,
 
     x_t = x_0.detach().clone().to(device)
     if norm_correction:
-        norm_x_0 = torch.norm(x_t,dim=1)
+        norm_x_0 = _field_norm(x_t)
     t = torch.zeros(batch_size, *([1] * ndim), device=device)
     if keep_all_samples :
         if (not include_t0) :
-            xs = torch.zeros((x_0.shape[0],x_0.shape[1],num_steps),device='cpu')
+            xs = torch.zeros((*x_0.shape,num_steps),device='cpu',dtype=x_0.dtype)
         else :
-            xs = torch.zeros((x_0.shape[0],x_0.shape[1],num_steps+1),device='cpu')
-            xs[:,:,0]=x_t.clone().to('cpu')
+            xs = torch.zeros((*x_0.shape,num_steps+1),device='cpu',dtype=x_0.dtype)
+            xs[...,0]=x_t.clone().to('cpu')
     elif samplesToKeep is not None:
         if not (len(samplesToKeep) == batch_size):
             raise ValueError('Error: len(samplesToKeep) must correspond to batch size.')
-        xs = torch.zeros((x_0.shape[0],x_0.shape[1]),device='cpu')
+        xs = torch.zeros_like(x_0, device='cpu')
     
     sqrt_delta = delta**0.5
     sparseG = sde.base_sde.sparseTensor
@@ -224,8 +257,7 @@ def rk4_stratonovich_sampler(sde, x_0, num_steps=1000, lmbd=0.,
         for i in range(num_steps):
             t.fill_(ts[i].item())
 
-            # Compute Wiener increments
-            dW = sqrt_delta * torch.randn_like(x_t)
+            dW = sqrt_delta * torch.randn(x_t.shape[:2], device=x_t.device)  # one real scalar per mode, see EMstep
             
             # Stage 1
             mu_Strato_1 = sde.mu_Strato(t, x_t, lmbd=lmbd)
@@ -253,17 +285,18 @@ def rk4_stratonovich_sampler(sde, x_0, num_steps=1000, lmbd=0.,
             # Combine stages (weighted sum)
             x_t = x_t + (K1 + 2 * K2 + 2 * K3 + K4) / 6
             if norm_correction:
-                x_t = x_t * (norm_x_0/torch.norm(x_t,dim=1))[:,None]
+                ratio = (norm_x_0 / _field_norm(x_t))
+                x_t = x_t * ratio.reshape(x_t.shape[0], *([1] * (x_t.dim() - 1)))
 
             if keep_all_samples:
-                xs[:,:,i+include_t0]=x_t.clone().to('cpu')
+                xs[...,i+include_t0]=x_t.clone().to('cpu')
             elif samplesToKeep is not None:
                 if (i+include_t0) in samplesToKeep:
                     idx_samplesToKeep = (samplesToKeep == (i+include_t0)).flatten()
                     xs[idx_samplesToKeep,:]=x_t[idx_samplesToKeep,:].clone().to('cpu')
 
     if keep_all_samples:
-        xs = torch.permute(xs, (2, 0, 1))
+        xs = torch.permute(xs, (xs.dim() - 1,) + tuple(range(xs.dim() - 1)))  # move time axis (last) to front
     elif samplesToKeep is None:
         xs=x_t.clone().to('cpu')
     
