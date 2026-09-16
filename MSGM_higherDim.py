@@ -595,10 +595,26 @@ if __name__ == '__main__':
                         with torch.no_grad():
                             print('integrate forward SDE')
                             for_sde = forward_SDE(inf_sde, T)
-                            xs_forward = rk4_stratonovich_sampler(for_sde, xtest.clone().to(device), num_steps_forward,  \
-                                                                lmbd=0., keep_all_samples=True, \
-                                                                include_t0=True, norm_correction = MSGM) # sample
-                            
+                            # Large batches OOM/crash here (both MPS and CPU) -- chunk to stay safe.
+                            safe_chunk = max(32, 65536 // sampler.dim)
+                            xtest_dev = xtest.clone().to(device)
+                            if xtest_dev.shape[0] > safe_chunk:
+                                chunks = []
+                                for start in range(0, xtest_dev.shape[0], safe_chunk):
+                                    chunk = xtest_dev[start:start + safe_chunk]
+                                    xs_chunk = rk4_stratonovich_sampler(for_sde, chunk, num_steps_forward,
+                                                                        lmbd=0., keep_all_samples=True,
+                                                                        include_t0=True, norm_correction=MSGM)
+                                    chunks.append(xs_chunk.to('cpu'))
+                                    if device == 'mps':
+                                        torch.mps.empty_cache()
+                                xs_forward = torch.cat(chunks, dim=1)  # (time, batch, n, [2]) -- batch is dim 1
+                                del chunks
+                            else:
+                                xs_forward = rk4_stratonovich_sampler(for_sde, xtest_dev, num_steps_forward,  \
+                                                                    lmbd=0., keep_all_samples=True, \
+                                                                    include_t0=True, norm_correction = MSGM) # sample
+
                             preprocessing(xtest, xs_forward, num_steps_forward, name_simu_root,
                                             plot_params, folder_results, std_norm, 'cpu')
 

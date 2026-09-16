@@ -14,6 +14,7 @@ import torch
 import torch.nn as nn
 import sys
 import os
+from transportNoise import mps_safe_gather, mps_safe_scatter_add_
 
 def _field_norm(x):
     """
@@ -30,9 +31,34 @@ def _field_norm(x):
         return torch.norm(modulus, dim=1)
     return torch.norm(x.reshape(x.shape[0], -1), dim=1)
 
+def _mps_cache_clear(device):
+    """Frees unused MPS memory; without this, long step loops slowly OOM. No-op elsewhere."""
+    if isinstance(device, torch.device) and device.type == 'mps':
+        torch.mps.empty_cache()
+
+def _sample_dW(x_t, delta, two_noise):
+    """
+    One real scalar Wiener increment per mode (not per channel). For AMSGM,
+    the noise is 2-dimensional per mode (dB^R_t(k), dB^I_t(k) -- see
+    transportNoise.grid_k.build_sparse_G), so two independent draws are
+    returned as a tuple, matching sigma's own (sigma_R, sigma_I) tuple from
+    MSGMsde.g/PluginReverseSDE.sigma (see EMstep).
+    """
+    if two_noise:
+        return (delta ** 0.5 * torch.randn(x_t.shape[:2], device=x_t.device),
+                delta ** 0.5 * torch.randn(x_t.shape[:2], device=x_t.device))
+    return delta ** 0.5 * torch.randn(x_t.shape[:2], device=x_t.device)
+
 @torch.no_grad()
 def EMstep(mu, delta, sigma, dW, sparse=False, I=None, K=None):
     """
+    sigma, dW: either a single tensor each (one-noise case), or a
+    (sigma_R, sigma_I)/(dW_R, dW_I) pair -- the two independent real noises
+    dB^R_t(k), dB^I_t(k) driving A-MSGM's 2-dimensional-per-mode advection
+    tensor (G^R skew/per-channel, G^I symmetric/cross-channel; see
+    transportNoise.py). Each pair's diffusion contribution is computed
+    identically to the one-noise case and the two are summed.
+
     sigma:
        dense case  -> (B,n,n)
        sparse case -> (B,nnz) or (B,nnz,2) with a trailing real/imag channel
@@ -41,32 +67,38 @@ def EMstep(mu, delta, sigma, dW, sparse=False, I=None, K=None):
     I,K: sparse indices
     """
 
-    if sparse:
-        # sigma[b,e] multiplies dW[b, K[e]], broadcasting the single
-        # per-mode real dW across any trailing real/imag channel dim sigma
-        # carries (FFTfields: (B,nnz,2)) -- see transportNoise.py for why a
-        # single real dW per mode is correct here.
-        dW_K = dW[:, K]              # (B, nnz)
-        if sigma.dim() > dW_K.dim():
-            dW_K = dW_K.unsqueeze(-1)
-        prod = sigma * dW_K          # (B, nnz) or (B, nnz, 2)
+    def _diffusion(sigma, dW):
+        if sparse:
+            # sigma[b,e] multiplies dW[b, K[e]], broadcasting the single
+            # per-mode real dW across any trailing real/imag channel dim sigma
+            # carries (FFTfields: (B,nnz,2)) -- see transportNoise.py for why a
+            # single real dW per mode is correct here.
+            dW_K = mps_safe_gather(dW, 1, K)              # (B, nnz)
+            if sigma.dim() > dW_K.dim():
+                dW_K = dW_K.unsqueeze(-1)
+            prod = sigma * dW_K          # (B, nnz) or (B, nnz, 2)
 
-        dx = torch.zeros_like(mu)    # (B,n) or (B,n,2) -- matches the state, not dW
-        index = I.unsqueeze(0).expand(dW.size(0), -1)
-        if prod.dim() > 2:
-            index = index.unsqueeze(-1).expand(-1, -1, prod.shape[-1])
-        dx.scatter_add_(1, index, prod)
-
-    else:
-        # sigma is either a dense (B,n,n) diffusion matrix (needs a matvec via
-        # einsum), or an elementwise/diagonal diffusion coefficient the same
-        # shape as dW (just multiply) -- sigma.dim() alone can't distinguish
-        # these once dW/sigma may carry a trailing real/imag channel dim
-        # (FFTfields: (B,n,2)), since an elementwise sigma is then 3D too.
-        if sigma.shape == dW.shape:
-            dx = sigma * dW
+            dx = torch.zeros_like(mu)    # (B,n) or (B,n,2) -- matches the state, not dW
+            index = I.unsqueeze(0).expand(dW.size(0), -1)
+            if prod.dim() > 2:
+                index = index.unsqueeze(-1).expand(-1, -1, prod.shape[-1])
+            mps_safe_scatter_add_(dx, 1, index, prod)
         else:
-            dx = torch.einsum('bij, bj -> bi', sigma, dW)
+            # sigma is either a dense (B,n,n) diffusion matrix (needs a matvec via
+            # einsum), or an elementwise/diagonal diffusion coefficient the same
+            # shape as dW (just multiply) -- sigma.dim() alone can't distinguish
+            # these once dW/sigma may carry a trailing real/imag channel dim
+            # (FFTfields: (B,n,2)), since an elementwise sigma is then 3D too.
+            if sigma.shape == dW.shape:
+                dx = sigma * dW
+            else:
+                dx = torch.einsum('bij, bj -> bi', sigma, dW)
+        return dx
+
+    if isinstance(sigma, tuple):
+        dx = sum(_diffusion(s, w) for s, w in zip(sigma, dW))
+    else:
+        dx = _diffusion(sigma, dW)
 
     return mu * delta + dx
 
@@ -90,6 +122,7 @@ def euler_maruyama_sampler(sde, x_0, num_steps=1000, lmbd=0.,
     ts = torch.linspace(0, 1, num_steps + 1) * T_
     sparseG = sde.base_sde.sparseTensor
     I, J, K = sde.base_sde.IJK()
+    two_noise = sparseG and sde.base_sde.AMSGM
 
     # sample
     x_t = x_0.detach().clone().to(device)
@@ -112,7 +145,7 @@ def euler_maruyama_sampler(sde, x_0, num_steps=1000, lmbd=0.,
             t.fill_(ts[i].item())
             mu = sde.mu(t, x_t, lmbd=lmbd)
             sigma = sde.sigma(t, x_t, lmbd=lmbd, sparse=sparseG)
-            dW = delta ** 0.5 * torch.randn(x_t.shape[:2], device=x_t.device)  # one real scalar per mode, not per channel
+            dW = _sample_dW(x_t, delta, two_noise)
             x_t = x_t + EMstep(mu, delta , sigma , dW, sparse=sparseG, I=I, K=K)
             if norm_correction:
                 ratio = (norm_x_0 / _field_norm(x_t))
@@ -123,16 +156,17 @@ def euler_maruyama_sampler(sde, x_0, num_steps=1000, lmbd=0.,
                 if (i+include_t0) in samplesToKeep:
                     idx_samplesToKeep = (samplesToKeep == (i+include_t0)).flatten()
                     xs[idx_samplesToKeep,:]=x_t[idx_samplesToKeep,:].clone().to('cpu')
+            _mps_cache_clear(device)
 
     if keep_all_samples:
         xs = torch.permute(xs, (xs.dim() - 1,) + tuple(range(xs.dim() - 1)))  # move time axis (last) to front
     elif samplesToKeep is None:
         xs=x_t.clone().to('cpu')
-    
+
     return xs.to('cpu')
 
 @torch.no_grad()
-def heun_sampler(sde, x_0, num_steps=1000, lmbd=0., 
+def heun_sampler(sde, x_0, num_steps=1000, lmbd=0.,
                              keep_all_samples=True, samplesToKeep=None,
                              include_t0=False, T_=-1, norm_correction = False):
     """
@@ -150,6 +184,7 @@ def heun_sampler(sde, x_0, num_steps=1000, lmbd=0.,
     ts = torch.linspace(0, 1, num_steps + 1) * T_
     sparseG = sde.base_sde.sparseTensor
     I, J, K = sde.base_sde.IJK()
+    two_noise = sparseG and sde.base_sde.AMSGM
 
     # Sampling
     x_t = x_0.detach().clone().to(device)
@@ -174,7 +209,7 @@ def heun_sampler(sde, x_0, num_steps=1000, lmbd=0.,
             # Compute mu and sigma at the start of the interval
             mu_1 = sde.mu_Strato(t, x_t, lmbd=lmbd)
             sigma_1 = sde.sigma(t, x_t, lmbd=lmbd, sparse=sparseG)
-            dW = delta**0.5 * torch.randn(x_t.shape[:2], device=x_t.device)  # one real scalar per mode, not per channel
+            dW = _sample_dW(x_t, delta, two_noise)
 
             # Predictor step (Euler)
             x_predict = x_t + EMstep(mu_1, delta , sigma_1 , dW, sparse=sparseG, I=I, K=K)
@@ -186,7 +221,13 @@ def heun_sampler(sde, x_0, num_steps=1000, lmbd=0.,
 
             # Average drift and diffusion terms
             # x_t = x_t + (delta / 2) * (mu_1 + mu_2) + (sigma_1 + sigma_2) * (dW / 2)
-            x_t = x_t + EMstep(mu_1 + mu_2, delta / 2 , sigma_1 + sigma_2 , dW / 2, sparse=sparseG, I=I, K=K)
+            if two_noise:
+                sigma_sum = tuple(s1 + s2 for s1, s2 in zip(sigma_1, sigma_2))
+                dW_half = tuple(w / 2 for w in dW)
+            else:
+                sigma_sum = sigma_1 + sigma_2
+                dW_half = dW / 2
+            x_t = x_t + EMstep(mu_1 + mu_2, delta / 2 , sigma_sum , dW_half, sparse=sparseG, I=I, K=K)
             if norm_correction:
                 ratio = (norm_x_0 / _field_norm(x_t))
                 x_t = x_t * ratio.reshape(x_t.shape[0], *([1] * (x_t.dim() - 1)))
@@ -197,16 +238,17 @@ def heun_sampler(sde, x_0, num_steps=1000, lmbd=0.,
                 if (i+include_t0) in samplesToKeep:
                     idx_samplesToKeep = (samplesToKeep == (i+include_t0)).flatten()
                     xs[idx_samplesToKeep,:]=x_t[idx_samplesToKeep,:].clone().to('cpu')
+            _mps_cache_clear(device)
 
     if keep_all_samples:
         xs = torch.permute(xs, (xs.dim() - 1,) + tuple(range(xs.dim() - 1)))  # move time axis (last) to front
     elif samplesToKeep is None:
         xs=x_t.clone().to('cpu')
-    
+
     return xs.to('cpu')
 
 @torch.no_grad()
-def rk4_stratonovich_sampler(sde, x_0, num_steps=1000, lmbd=0., 
+def rk4_stratonovich_sampler(sde, x_0, num_steps=1000, lmbd=0.,
                              keep_all_samples=True, samplesToKeep=None,
                              include_t0=False, T_=-1, norm_correction = False):
     """
@@ -249,15 +291,15 @@ def rk4_stratonovich_sampler(sde, x_0, num_steps=1000, lmbd=0.,
             raise ValueError('Error: len(samplesToKeep) must correspond to batch size.')
         xs = torch.zeros_like(x_0, device='cpu')
     
-    sqrt_delta = delta**0.5
     sparseG = sde.base_sde.sparseTensor
     I, J, K = sde.base_sde.IJK()
+    two_noise = sparseG and sde.base_sde.AMSGM
 
     with torch.no_grad():
         for i in range(num_steps):
             t.fill_(ts[i].item())
 
-            dW = sqrt_delta * torch.randn(x_t.shape[:2], device=x_t.device)  # one real scalar per mode, see EMstep
+            dW = _sample_dW(x_t, delta, two_noise)  # one real scalar per mode per noise channel, see EMstep
             
             # Stage 1
             mu_Strato_1 = sde.mu_Strato(t, x_t, lmbd=lmbd)
@@ -294,6 +336,7 @@ def rk4_stratonovich_sampler(sde, x_0, num_steps=1000, lmbd=0.,
                 if (i+include_t0) in samplesToKeep:
                     idx_samplesToKeep = (samplesToKeep == (i+include_t0)).flatten()
                     xs[idx_samplesToKeep,:]=x_t[idx_samplesToKeep,:].clone().to('cpu')
+            _mps_cache_clear(device)
 
     if keep_all_samples:
         xs = torch.permute(xs, (xs.dim() - 1,) + tuple(range(xs.dim() - 1)))  # move time axis (last) to front

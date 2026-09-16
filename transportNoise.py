@@ -27,6 +27,40 @@ def spatial_flat_to_fourier(y_sp_flat):
     y_fft_flat = y_fft_img.transpose(1, 2).reshape(B, n)
     return torch.stack([y_fft_flat.real, y_fft_flat.imag], dim=-1)
 
+# MPS raises "Invalid buffer size" on large (B*nnz) gathers/scatters well
+# below actual memory capacity (measured: B=128 ok, B=160 fails at nnz=2.1M).
+# Chunk the index dimension to stay under that; result is unchanged.
+_MPS_SAFE_INDEX_BUDGET = 64 * 2_097_152
+
+def mps_chunk_size(nnz, batch):
+    return max(1, _MPS_SAFE_INDEX_BUDGET // max(batch, 1))
+
+def mps_safe_gather(tensor, dim, index):
+    """torch.index_select, chunked on MPS for large indices (see mps_chunk_size)."""
+    if tensor.device.type != 'mps':
+        return torch.index_select(tensor, dim, index)
+    chunk = mps_chunk_size(index.numel(), tensor.shape[0])
+    if index.numel() <= chunk:
+        return torch.index_select(tensor, dim, index)
+    pieces = [torch.index_select(tensor, dim, index[i:i + chunk]) for i in range(0, index.numel(), chunk)]
+    return torch.cat(pieces, dim=dim)
+
+def mps_safe_scatter_add_(dest, dim, index, src):
+    """dest.scatter_add_, chunked on MPS for large indices (see mps_chunk_size)."""
+    if dest.device.type != 'mps':
+        return dest.scatter_add_(dim, index, src)
+    n = index.shape[dim]
+    chunk = mps_chunk_size(n, dest.shape[0])
+    if n <= chunk:
+        return dest.scatter_add_(dim, index, src)
+    for start in range(0, n, chunk):
+        idx_slice = [slice(None)] * index.dim()
+        idx_slice[dim] = slice(start, start + chunk)
+        src_slice = [slice(None)] * src.dim()
+        src_slice[dim] = slice(start, start + chunk)
+        dest.scatter_add_(dim, index[tuple(idx_slice)], src[tuple(src_slice)])
+    return dest
+
 class grid_k():
     def __init__(self, N=2, Lx=1, L_LS=1, rho_s=5/3, smoothing=False, anti_aliasing = True):
         # % see "New Numerical Results for the Surface Quasi-Geostrophic
@@ -208,20 +242,26 @@ class grid_k():
 
     def build_sparse_G(self):
         """
-        Builds the sparse advection tensor G[I,J,K] (flat index I=p1+p2*N,
-        matching K=k1+k2*N and J=q1+q2*N the same way) from coef_G_KPQ.
-        Each (p,q) pair contributes at both K=(q-p)%N and K=(p-q)%N (i.e.
-        {k,-k} folded together), which makes each G_k slice exactly
-        skew-symmetric (verified: max|Q^T G_k Q| ~ 1e-13 for random Q) --
-        a plain single-delta shift matrix (nonzero only at q=p+k) can't be
-        skew-symmetric on its own, since its (p,q) and (q,p) entries live
-        on disjoint diagonals unless 2k=0.
+        Builds the two sparse advection tensors G^R[I,J,K] and G^I[I,J,K]
+        (flat index I=p1+p2*N, matching K=k1+k2*N and J=q1+q2*N the same
+        way) sharing the same sparsity pattern, from coef_G_KPQ. Each (p,q)
+        pair contributes at both K=(q-p)%N and K=(p-q)%N (i.e. {k,-k}
+        folded together): G^R sums the two contributions (each G^R_k slice
+        is exactly skew-symmetric, verified: max|Q^T G^R_k Q| ~ 1e-13 for
+        random Q), while G^I takes their DIFFERENCE (each G^I_k slice is
+        exactly symmetric instead -- verified the same way). G^R drives the
+        real noise dB^R_t(k) (per-channel, skew), G^I drives the
+        independent real noise dB^I_t(k) (cross-channel-coupling,
+        symmetric); together they make the state genuinely 2-dimensional
+        per Fourier mode, matching the Hermitian-symmetry-constrained
+        dB_hat_t(k) of the real-valued advecting noise.
 
-        Returns (i_list, j_list, k_list, v_list), plain Python lists ready
-        for torch.tensor construction (I,J,K as int64, V as float32).
+        Returns (i_list, j_list, k_list, vR_list, vI_list), plain Python
+        lists ready for torch.tensor construction (I,J,K as int64, V as
+        float32).
         """
         N = self.N
-        i_list, j_list, k_list, v_list = [], [], [], []
+        i_list, j_list, k_list, vR_list, vI_list = [], [], [], [], []
         for p1 in range(N):
             for p2 in range(N):
                 for q1 in range(N):
@@ -231,12 +271,16 @@ class grid_k():
                         K = k1 + k2*N
                         J = q1 + q2*N
                         I = p1 + p2*N
+                        coef1 = self.coef_G_KPQ(k1, k2, p1, p2, q1, q2)
                         i_list.append(I); j_list.append(J); k_list.append(K)
-                        v_list.append(self.coef_G_KPQ(k1, k2, p1, p2, q1, q2))
+                        vR_list.append(coef1)
+                        vI_list.append(coef1)
 
                         k1n, k2n = (N-k1) % N, (N-k2) % N
                         Kn = k1n + k2n*N
+                        coef2 = self.coef_G_KPQ(k1n, k2n, p1, p2, q1, q2)
                         i_list.append(I); j_list.append(J); k_list.append(Kn)
-                        v_list.append(self.coef_G_KPQ(k1n, k2n, p1, p2, q1, q2))
-        return i_list, j_list, k_list, v_list
+                        vR_list.append(coef2)
+                        vI_list.append(-coef2)
+        return i_list, j_list, k_list, vR_list, vI_list
 
