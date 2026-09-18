@@ -57,6 +57,21 @@ beta_max_SGM = 20 # default
 denseTensor = True
 AMSGM = False
 
+# Debug switches for A-MSGM: disable_noise=True keeps only the Stratonovich
+# drift (mean-flow + hyperdiffusion), no stochastic forcing at all -- lets
+# you check the drift alone visually. A_beta=0 disables the mean-flow drift
+# itself. Both are folded into MSGMsde.name_SDE, so results land in
+# separate folders instead of overwriting each other.
+disable_noise = True
+# None => default Taylor-Green 4-vortex pattern (see
+# transportNoise.grid_k.taylor_green_terms); pass a custom
+# [(k1,k2,unit_amplitude),...] list to override.
+k_pattern = None
+# None => auto-sized to the CFL limit (see MSGMsde.sparse_G_advection);
+# pass an explicit number (0 to disable the drift outright) to override.
+V0 = None
+A_beta = None
+
 NNarchi = "MLP"
 num_samples_init_max = int(1e5)
 vtype = 'rademacher'
@@ -540,6 +555,8 @@ if __name__ == '__main__':
                                                             norm_map = norm_map, \
                                                             denseTensor=denseTensor, \
                                                             AMSGM=AMSGM, \
+                                                            disable_noise=disable_noise, \
+                                                            k_pattern=k_pattern, V0=V0, A_beta=A_beta, \
                                                             plot_validate = plot_params.plot_validate)
                                 del x_init
                             else:

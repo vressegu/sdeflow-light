@@ -22,9 +22,11 @@ from scipy.stats import norm
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-from sde_scheme import euler_maruyama_sampler,heun_sampler,rk4_stratonovich_sampler
+from sde_scheme import euler_maruyama_sampler,heun_sampler,rk4_stratonovich_sampler,EMstep
 import gc
-from transportNoise import grid_k, fourier_flat_to_spatial, spatial_flat_to_fourier, mps_safe_gather, mps_safe_scatter_add_
+from transportNoise import fourier_flat_to_spatial, spatial_flat_to_fourier, \
+                           mps_safe_gather, mps_safe_scatter_add_, \
+                           sparse_yJ_products, meanflow_beta_vectors, build_advection_state
 
 
 # class OU_SDE(torch.nn.Module): 
@@ -227,7 +229,8 @@ class MSGMsde(SDE):
     """
     # This class need to be changed since the forward SDE cannot be solved analitically
     def __init__(self, y0, beta_min=0.1, beta_max=20.0, T=1.0, t_epsilon=0.001, \
-                 denseTensor = True, AMSGM = False, anti_aliasing = True, \
+                 denseTensor = True, AMSGM = False, anti_aliasing = True, disable_noise = False, \
+                 k_pattern = None, V0 = None, A_beta = None, \
                  norm_sampler = "ecdf", norm_map = None, kernel = 'gaussian', plot_validate = False, \
                  num_steps_forward = 100, device='cpu', estim_cst_norm_dens_r_T = True):
         super().__init__(beta_min=beta_min, beta_max=beta_max, T=T, t_epsilon=t_epsilon, 
@@ -249,6 +252,14 @@ class MSGMsde(SDE):
         self.AMSGM = AMSGM
         self.FFTfields = AMSGM
         self.anti_aliasing = anti_aliasing
+        self.disable_noise = disable_noise
+        # Deterministic mean-flow drift F Q(t): defaults to a moving
+        # Taylor-Green streamfunction (transportNoise.grid_k.taylor_green_terms),
+        # or pass k_pattern=[(k1,k2,unit_amplitude),...] to override. V0/A_beta
+        # default to CFL-auto-sized (see sparse_G_advection); pass 0 to disable.
+        self.k_pattern = k_pattern
+        self.V0 = V0
+        self.A_beta = A_beta
         if denseTensor:
             if AMSGM:
                 raise NotImplemented("A-MSGM relies on sparse tensor")
@@ -260,6 +271,15 @@ class MSGMsde(SDE):
                 self.beta_min = 1
                 self.beta_max = 1
                 self.sparse_G_advection(self.dim)   # also sets self.L_G to the exact Ito correction
+                if disable_noise:
+                    # Zero the noise's effect (keeping the sparse structure
+                    # intact) to visually check the pure Stratonovich drift alone.
+                    self.G_V.zero_()
+                    self.G_V_I.zero_()
+                    self.L_G.zero_()
+                    self.name_SDE += "_noNoise"
+                if self.A_beta != 0:
+                    self.name_SDE += "_drift"
             else:
                 self.name_SDE += "_sparseTens"
                 # self.sparse_G_full(self.dim) # FOR DEBUG ONLY
@@ -419,91 +439,24 @@ class MSGMsde(SDE):
         del indices, values
 
     def sparse_G_advection(self, n) :
-        # Physics/SPDE-specific construction (spectrum, CFL, hyperdiffusion,
-        # the sparse advection tensor itself) lives in transportNoise.grid_k;
-        # this method just wires the result into the SDE's tensor state.
-        N = int(round(np.sqrt(n)))  # plain Python int: numpy int types here would make
-        grid = grid_k(N=N, anti_aliasing=self.anti_aliasing)  # the resulting index tensors int32, but scatter_add_ needs int64
-
+        # All construction (grid, CFL, hyperdiffusion, G/F sparse tensors,
+        # Ito correction) lives in transportNoise.build_advection_state;
+        # this just wires the result into the SDE's own attributes.
+        N = int(round(np.sqrt(n)))
         T_val = self.T.item() if torch.is_tensor(self.T) else self.T
-        dt = T_val / self.num_steps_forward
-        rescale, a0_before, dt_max = grid.rescale_for_cfl(self.beta_max, dt)
-        if rescale is not None:
-            print(f"Rescaling G amplitude by {rescale:.3g} (a0: {a0_before:.3g} -> {grid.a0():.3g}) "
-                  f"to meet the diffusive CFL condition (dt={dt:.3g} > dt_max={dt_max:.3g} otherwise).")
-
-        print(f"A-MSGM SPDE info: dx={grid.dx:.3g}, L={grid.Lx:.3g}, T={T_val:.3g}, "
-              f"num_steps_forward={self.num_steps_forward}, dt={dt:.3g}, beta={self.beta_max:.3g}, "
-              f"a0={grid.a0():.3g}, dt_max={dt_max:.3g}")
-
-        if self.D_hyper is not None:
-            z_hyper = 1  # less stiff; the integrating-factor treatment (sde_scheme) is stable for any z anyway
-            D_hyper, gamma0 = grid.build_hyperdiffusion(z=z_hyper)
-            self.D_hyper = torch.from_numpy(D_hyper).float().to(self.device)
-            if gamma0 > 0:
-                hyperdiff_dt_max = 1 / gamma0
-                print(f"Hyperdiffusion: z={z_hyper}, gamma0={gamma0:.3g} (1/gamma0={hyperdiff_dt_max:.3g} s), "
-                      f"max D_hyper={D_hyper.max():.3g} (at Nyquist), dt={dt:.3g}"
-                      + (f" -- WARNING: dt > 1/gamma0={hyperdiff_dt_max:.3g}, hyperdiffusion may over-damp high-k content per step"
-                         if dt > hyperdiff_dt_max else ""))
-        else:
-            print("Hyperdiffusion: disabled (gamma0=0)")
-
-        i_list, j_list, k_list, vR_list, vI_list = grid.build_sparse_G()
-        indices = torch.tensor([i_list, j_list, k_list], dtype=torch.int64)   # shape (3, nnz); scatter_add_ requires int64
-        valuesR = torch.tensor(vR_list, dtype=torch.float32)
-        valuesI = torch.tensor(vI_list, dtype=torch.float32)
-
-        # keep a CPU sparse object for debugging/IO if you want (G^R only):
-        try:
-            self.G_sparse_cpu = torch.sparse_coo_tensor(indices, valuesR, size=(n, n, n)).coalesce()
-        except Exception:
-            # if sparse COO creation on CPU fails for some reason, skip storing CPU sparse
-            self.G_sparse_cpu = None
-
-        # move raw arrays to the active device (MPS). G^R and G^I share the
-        # same sparsity pattern (I,J,K); only the values differ.
-        self.G_I = indices[0].to(self.device)   # (nnz,)
-        self.G_J = indices[1].to(self.device)
-        self.G_K = indices[2].to(self.device)
-        self.G_V = valuesR.to(self.device)      # (nnz,) -- G^R (skew, per-channel)
-        self.G_V_I = valuesI.to(self.device)    # (nnz,) -- G^I (symmetric, cross-channel)
-
-        # Ito correction tensor. On the full 2n-dim real state (Re,Im
-        # stacked), the true per-mode generators are Ghat^{k,R} =
-        # blockdiag(G^R_k, G^R_k) (skew, since G^R_k is skew) and Ghat^{k,I}
-        # = [[0,-G^I_k],[G^I_k,0]] (also skew, since G^I_k is symmetric --
-        # verified: Ghat^{k,I,T} = -Ghat^{k,I}). Both being skew, each
-        # contributes a negative-semidefinite (Ghat^k)^2 to the standard
-        # Ito correction 0.5*sum_k (Ghat^k)^2 (see forward_SDE.mu). Squaring
-        # collapses back to block-diagonal: (Ghat^{k,R})^2 =
-        # blockdiag((G^R_k)^2,(G^R_k)^2), (Ghat^{k,I})^2 =
-        # blockdiag(-(G^I_k)^2,-(G^I_k)^2) -- note the MINUS sign, since
-        # G^I_k is symmetric so (G^I_k)^2 is positive-semidefinite. So the
-        # per-channel (n x n) correction is 0.5*sum_k (G^R_k^2 - G^I_k^2),
-        # matching the known Laplacian form L_PQ = -(a0/2)*K^2*delta_PQ
-        # (both terms negative-semidefinite, trace(L_G) < 0). Computed
-        # directly from the sparse data rather than via a roll-based
-        # shortcut: each G_k slice has up to 2 nonzero entries per row (the
-        # {k,-k} fold in grid.build_sparse_G), so a single-shift assumption
-        # doesn't hold. Cheap per mode regardless of N (~3s total at N=32,
-        # a one-time setup cost).
-        L_G = torch.zeros(n, n)
-        for k in range(n):
-            mask = (indices[2] == k)
-            Ik, Jk = indices[0][mask], indices[1][mask]
-            VRk, VIk = valuesR[mask], valuesI[mask]
-            MRk = torch.zeros(n, n)
-            MRk.index_put_((Ik, Jk), VRk, accumulate=True)
-            MIk = torch.zeros(n, n)
-            MIk.index_put_((Ik, Jk), VIk, accumulate=True)
-            L_G += 0.5 * (MRk @ MRk - MIk @ MIk)
-        self.L_G = L_G.to(self.device)
-
-        print(f"trace(L_G) = {torch.trace(self.L_G).item():.3g} "
-              f"(was -0.5*dim = {-0.5*n:.3g} for the placeholder -0.5*I used elsewhere)")
-
-        del indices, valuesR, valuesI
+        state = build_advection_state(N, self.anti_aliasing, T_val, self.num_steps_forward,
+                                       self.beta_max, self.V0, self.A_beta, self.k_pattern,
+                                       self.D_hyper is not None, self.device)
+        self.V0, self.A_beta, self._meanflow_terms = state.V0, state.A_beta, state.meanflow_terms
+        self.D_hyper = state.D_hyper
+        self.G_I, self.G_J, self.G_K = state.G_I, state.G_J, state.G_K
+        self.G_V, self.G_V_I = state.G_V, state.G_V_I
+        self.G_sparse_cpu = state.G_sparse_cpu
+        self.L_G = state.L_G
+        if self.A_beta != 0:
+            self.F_I, self.F_J, self.F_K = state.F_I, state.F_J, state.F_K
+            self.F_V_R, self.F_V_I = state.F_V_R, state.F_V_I
+            self._meanflow_beta_map = state.meanflow_beta_map
 
     def IJK(self):
         if self.sparseTensor:
@@ -528,42 +481,40 @@ class MSGMsde(SDE):
         return fy + self.f_strato(t, y)  # add any extra Stratonovich drift (e.g. hyperdiffusion)
 
     def f_strato(self, t, y):  # stratonovich drift, i.e. the RATE f (dt applied later by the scheme, see sde_scheme)
-        # Hyperdiffusion rate -D_hyper*y, stepped explicitly like any other
-        # drift term here. Note this is a stiff term: dt*D_hyper must stay
-        # within the explicit RK4 stability region (~2.7 for a real negative
-        # eigenvalue) or the highest wavenumbers blow up instead of damping
-        # -- check dt against grid.gamma0()-based diagnostics printed in
-        # sparse_G_advection before trusting a run.
+        result = torch.zeros_like(y)
+        # Hyperdiffusion, stepped explicitly like any other drift term
+        # (already capped for RK4 stability, see build_hyperdiffusion_capped).
         if self.AMSGM and self.D_hyper is not None:
             beta_t = self.beta(t)
             beta_t_b = beta_t.reshape(beta_t.shape[0], *([1] * (y.dim() - 1)))  # broadcast over any trailing channel dim
             scaled_y = beta_t_b * y
             rate = self.D_hyper.reshape(1, -1, *([1] * (scaled_y.dim() - 2)))
-            return - rate * y
-        else:
-            return torch.zeros_like(y)
+            result = result - rate * y
+        if self.AMSGM and self.A_beta != 0:
+            result = result + self._meanflow_drift(t, y)
+        return result
+
+    def _meanflow_drift(self, t, y):
+        """Deterministic mean-flow advection F Q(t) = sum_k beta_t^R(k)
+        F^{k,R} Q + beta_t^I(k) F^{k,I} Q, one term per (k1,k2) in
+        self._meanflow_terms (default: a Taylor-Green moving-vortex
+        streamfunction, see transportNoise.grid_k.taylor_green_terms).
+        Reuses EMstep to combine with beta(t), like g()'s noise output is
+        combined with a random dW."""
+        beta_R, beta_I = meanflow_beta_vectors(t, self._meanflow_beta_map, y.shape[1], y.device, y.dtype)
+        sigma_R, sigma_I = sparse_yJ_products(y, self.F_J, self.F_V_R, self.F_V_I)
+        return EMstep(torch.zeros_like(y), 1.0, (sigma_R, sigma_I), (beta_R, beta_I),
+                      sparse=True, I=self.F_I, K=self.F_K)
 
     def div_Sigma(self, t, y):
         return 2*self.f(t,y)
 
-    def _swap_channels(self, y):
-        """
-        (B,n,2) [re,im] -> (B,n,2) representing multiplication by i:
-        (re,im) -> (-im,re). G^I acts on this swapped state (see g_I): its
-        effect on (Re Q, Im Q) is (-G^I(Im Q), G^I(Re Q)) dB^I_t(k), the
-        same rotation multiplying by i induces on a complex number.
-        """
-        return torch.stack([-y[..., 1], y[..., 0]], dim=-1)
-
     def g(self, t, y, sparse = False):
-        """
-        G^R (skew, per-channel) diffusion coefficient, driven by dB^R_t(k).
-        For AMSGM (sparse + 2-channel Fourier state), also returns G^I
-        (symmetric, cross-channel-coupling), driven by the independent
-        dB^I_t(k) -- see transportNoise.grid_k.build_sparse_G for the
-        derivation of why the state is genuinely 2-dimensional per mode.
-        Returns a single tensor normally, or (g_R, g_I) when AMSGM.
-        """
+        """G^R (skew, per-channel) diffusion coefficient, driven by
+        dB^R_t(k). For AMSGM, also returns G^I (symmetric, cross-channel),
+        driven by the independent dB^I_t(k) -- see
+        transportNoise.grid_k.build_sparse_G. Returns a single tensor
+        normally, or (g_R, g_I) when AMSGM."""
         beta_t = self.beta(t)
         # broadcast beta_t (B,1) against y, which may carry a trailing
         # real/imag channel dim (B,n,2) when FFTfields, not just (B,n)
@@ -571,14 +522,12 @@ class MSGMsde(SDE):
         if sparse:
             # extract sparse G indices
             I, J, K = self.IJK()
-            V = self.G_V.reshape(1, -1, *([1] * (y.dim() - 2)))
-            yJ = (beta_t**0.5) * mps_safe_gather(y, 1, J)   # (B,2n) or (B,2n,2)
-            g_R = V * yJ                              # (B,2n) or (B,2n,2)
+            scaled_y = (beta_t**0.5) * y
             if self.AMSGM:
-                V_I = self.G_V_I.reshape(1, -1, *([1] * (y.dim() - 2)))
-                yJ_I = (beta_t**0.5) * mps_safe_gather(self._swap_channels(y), 1, J)
-                g_I = V_I * yJ_I
+                g_R, g_I = sparse_yJ_products(scaled_y, J, self.G_V, self.G_V_I)
                 return g_R, g_I
+            V = self.G_V.reshape(1, -1, *([1] * (y.dim() - 2)))
+            g_R = V * mps_safe_gather(scaled_y, 1, J)
             return g_R
         else:
             return torch.einsum('ijk, bj -> bik', self.G, (beta_t**0.5) * y  )         # diffusion part
