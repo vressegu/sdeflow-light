@@ -339,7 +339,7 @@ class grid_k():
         if k_pattern is None:
             k_pattern = self.taylor_green_terms(1.0)
         if V0 is None:
-            V0 = self.dx / dt / np.sqrt(2)
+            V0 = self.dx / dt / np.sqrt(2) / 2
         unit_w_max = self.meanflow_w_max(k_pattern)
         if A_beta is None:
             A_beta = (self.dx / dt) / unit_w_max if unit_w_max > 0 else 0.0
