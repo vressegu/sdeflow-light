@@ -356,11 +356,11 @@ class grid_k():
         return V0, A_beta, terms
 
 def build_advection_state(N, anti_aliasing, T, num_steps_forward, beta_max,
-                           V0, A_beta, k_pattern, want_hyperdiffusion, device):
+                           V0, A_beta, k_pattern, device):
     """Builds a grid_k plus every sparse tensor MSGMsde.sparse_G_advection
     needs (noise G, drift F, hyperdiffusion, Ito correction), already on
     `device`. Returns a SimpleNamespace: G_I/J/K/V/V_I, G_sparse_cpu, L_G,
-    D_hyper (or None), V0, A_beta, meanflow_terms, and (only if A_beta!=0)
+    D_hyper, V0, A_beta, meanflow_terms, and (only if A_beta!=0)
     F_I/J/K/V_R/V_I, meanflow_beta_map."""
     grid = grid_k(N=N, anti_aliasing=anti_aliasing)
     dt = T / num_steps_forward
@@ -385,18 +385,18 @@ def build_advection_state(N, anti_aliasing, T, num_steps_forward, beta_max,
         state.F_V_I = torch.tensor(vI, dtype=torch.float32, device=device)
         state.meanflow_beta_map = grid.meanflow_beta(state.meanflow_terms, state.V0)
 
-    # 0 automatically when there's no drift, so this alone (de)activates
-    # hyperdiffusion for the drift-only case too.
+    # Always on: the noise's own gamma0() alone (grid-scale content from
+    # the stochastic advection) needs damping even with no drift, or
+    # aliasing artifacts build up over time steps (gamma0_w adds the
+    # drift's own contribution on top, 0 when there's no drift).
     gamma0_w = grid.meanflow_gamma0(state.meanflow_terms)
-    state.D_hyper = None
-    if want_hyperdiffusion or gamma0_w > 0:
-        D_hyper, gamma0 = grid.build_hyperdiffusion_capped(z=1, extra_gamma0=gamma0_w, dt=dt)
-        state.D_hyper = torch.from_numpy(D_hyper).float().to(device)
-        if gamma0 > 0:
-            hyperdiff_dt_max = 1 / gamma0
-            print(f"Hyperdiffusion: z=1, gamma0={gamma0:.3g} (of which mean-flow gamma0_w={gamma0_w:.3g} pre-cap), "
-                  f"(1/gamma0={hyperdiff_dt_max:.3g} s), max D_hyper={D_hyper.max():.3g} (at Nyquist), dt={dt:.3g}"
-                  + (f" -- WARNING: dt > 1/gamma0={hyperdiff_dt_max:.3g}" if dt > hyperdiff_dt_max else ""))
+    D_hyper, gamma0 = grid.build_hyperdiffusion_capped(z=1, extra_gamma0=gamma0_w, dt=dt)
+    state.D_hyper = torch.from_numpy(D_hyper).float().to(device)
+    if gamma0 > 0:
+        hyperdiff_dt_max = 1 / gamma0
+        print(f"Hyperdiffusion: z=1, gamma0={gamma0:.3g} (of which mean-flow gamma0_w={gamma0_w:.3g} pre-cap), "
+              f"(1/gamma0={hyperdiff_dt_max:.3g} s), max D_hyper={D_hyper.max():.3g} (at Nyquist), dt={dt:.3g}"
+              + (f" -- WARNING: dt > 1/gamma0={hyperdiff_dt_max:.3g}" if dt > hyperdiff_dt_max else ""))
     else:
         print("Hyperdiffusion: disabled (gamma0=0)")
 
