@@ -165,20 +165,25 @@ class grid_k():
 
     def a0(self):
         """Diffusion coefficient of the advecting velocity (Resseguier,
-        Hascoet & Chapron 2024, JFM eq. 4.7), used in the diffusive CFL
-        dt <= dx^2/a0."""
-        return np.sum(self.K**2 * self.alpha2_K) / (2 * self.N**(2*self.dim))
+        Hascoet & Chapron 2024, JFM eq. 4.7); dt<=dx^2/a0. Denominator is
+        N^(2*dim+2), not N^(2*dim) -- verified against L_G's own diagonal
+        (diag(L_G)/K^2 is only N-independent with the extra N^2)."""
+        return np.sum(self.K**2 * self.alpha2_K) / (2 * self.N**(2*self.dim+2))
 
     def gamma0(self):
         """Rate of velocity-gradient creation by the advecting noise (same
         reference, eq. 4.8); calibrates the targeted hyperdiffusion."""
         factor = 1
-        return factor * np.sum(self.K**4 * self.alpha2_K) / (8 * self.N**(2*self.dim))
+        return factor * np.sum(self.K**4 * self.alpha2_K) / (8 * self.N**(2*self.dim+2))
+
+    # Empirical margin below the true instability onset (energy growth
+    # turns severe around cst~0.16-0.2, diverges by cst~0.3); kept low to
+    # favor robustness over maximal noise strength.
+    _DIFFUSIVE_CFL_SAFETY = 0.1
 
     def cfl_dt_max(self, beta):
-        """Diffusive CFL bound dt <= dx^2/(beta*a0) for a diffusion
-        coefficient scaled by beta(t) (see SDEs.MSGMsde.g)."""
-        return self.dx**2 / (beta * self.a0())
+        """Diffusive CFL bound dt <= cst*dx^2/(beta*a0)."""
+        return self._DIFFUSIVE_CFL_SAFETY * self.dx**2 / (beta * self.a0())
 
     def cleanAliasing(self,S1):
         if self.dim == 2 :
@@ -200,7 +205,7 @@ class grid_k():
         a0_before = self.a0()
         dt_max = self.cfl_dt_max(beta_max)
         if dt > dt_max:
-            target_a0 = self.dx**2 / (beta_max * dt)
+            target_a0 = self._DIFFUSIVE_CFL_SAFETY * self.dx**2 / (beta_max * dt)
             rescale = target_a0 / a0_before
             self.alpha2_K *= rescale
             return rescale, a0_before, dt_max
@@ -247,20 +252,12 @@ class grid_k():
 
     def _build_sparse_kpq(self, k_list, weight_by_k=None):
         """Shared {k,-k}-folded (I,J,K) builder for both sparse advection
-        tensors: the noise G (build_sparse_G, weight=sqrt(alpha2_K)) and
-        the drift F (build_sparse_forcing, weight=1, i.e. F^{k,.}=G^{k,.}
-        /alpha(k)) are the same construction from f_Kp_Kq. Each K-slice's
-        R-channel is exactly skew, I-channel exactly symmetric. Called
-        with k_list=ALL (k1,k2) this reproduces the old direct O(N^4)
-        build_sparse_G loop exactly; with a few explicit wavevectors it's
-        build_sparse_forcing's O(N^2)-per-k version.
-
-        The 1/N^3: the advection term is a real-space product v*grad(q),
-        so the discrete Fourier convolution needs 1/N^2 (np.fft's
-        unnormalized convention) plus one more 1/N tied to alpha2_K's own
-        normalization.
-
-        Returns (i_list, j_list, k_list_out, vR_list, vI_list).
+        tensors from f_Kp_Kq: the noise G (build_sparse_G, weight=
+        sqrt(alpha2_K)) and the drift F (build_sparse_forcing, weight=1,
+        i.e. F^{k,.}=G^{k,.}/alpha(k)). Each K-slice's R-channel is exactly
+        skew, I-channel exactly symmetric. k_list=ALL (k1,k2) gives G's
+        full O(N^4) tensor; a few explicit wavevectors gives F's O(N^2)-
+        per-k one. Returns (i_list, j_list, k_list_out, vR_list, vI_list).
         """
         N = self.N
         if weight_by_k is None:
