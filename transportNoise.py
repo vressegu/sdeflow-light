@@ -173,7 +173,7 @@ class grid_k():
     def gamma0(self):
         """Rate of velocity-gradient creation by the advecting noise (same
         reference, eq. 4.8); calibrates the targeted hyperdiffusion."""
-        factor = 1
+        factor = 0.1
         return factor * np.sum(self.K**4 * self.alpha2_K) / (8 * self.N**(2*self.dim+2))
 
     # Empirical margin below the true instability onset (energy growth
@@ -217,9 +217,10 @@ class grid_k():
         over w~||k||*amplitude itself). No extra IFFT2/N^2 factor: amplitude
         is already physical, and ||k||^2*amplitude is already a rate (1/time).
         terms: [(k1,k2,amplitude),...] (e.g. self._meanflow_terms)."""
+        factor = 0.1
         if not terms:
             return 0.0
-        return max(np.hypot(self.KX[k1 % self.N, k2 % self.N], self.KY[k1 % self.N, k2 % self.N])**2 * abs(amp)
+        return factor*max(np.hypot(self.KX[k1 % self.N, k2 % self.N], self.KY[k1 % self.N, k2 % self.N])**2 * abs(amp)
                     for k1, k2, amp in terms)
 
     def build_hyperdiffusion(self, z=1, extra_gamma0=0.0):
@@ -230,7 +231,7 @@ class grid_k():
         needed since the noise's gamma0 alone ignores a deterministic
         advecting velocity). Returns (D_hyper, gamma0), D_hyper flattened
         in 'F' order to match the sparse tensor's I=p1+p2*N convention."""
-        gamma0 = self.gamma0() + extra_gamma0
+        gamma0 =  max(self.gamma0(), extra_gamma0)
         D_hyper = gamma0 * (self.dx * self.K) ** (2 * z)   # (N,N), same (k1,k2) layout as self.K
         return D_hyper.flatten(order='F'), gamma0
 
