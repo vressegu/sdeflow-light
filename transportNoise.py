@@ -416,5 +416,5 @@ def build_advection_state(N, anti_aliasing, T, num_steps_forward, beta_max,
     state.G_V = valuesR.to(device)
     state.G_V_I = valuesI.to(device)
     state.L_G = compute_ito_correction(indices, valuesR, valuesI, n).to(device)
-    print(f"trace(L_G) = {torch.trace(state.L_G).item():.3g} (was -0.5*dim = {-0.5*n:.3g} for the placeholder elsewhere)")
+    print(f"trace(L_G) = {torch.trace(state.L_G/n).item():.3g}*dim (was -0.5*dim = {-0.5*n:.3g} for the placeholder elsewhere)")
     return state
