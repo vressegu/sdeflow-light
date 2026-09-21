@@ -446,7 +446,7 @@ class MSGMsde(SDE):
         T_val = self.T.item() if torch.is_tensor(self.T) else self.T
         state = build_advection_state(N, self.anti_aliasing, T_val, self.num_steps_forward,
                                        self.beta_max, self.V0, self.A_beta, self.k_pattern,
-                                       self.D_hyper is not None, self.device)
+                                       self.device)
         self.V0, self.A_beta, self._meanflow_terms = state.V0, state.A_beta, state.meanflow_terms
         self.D_hyper = state.D_hyper
         self.G_I, self.G_J, self.G_K = state.G_I, state.G_J, state.G_K
