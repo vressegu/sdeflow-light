@@ -229,7 +229,8 @@ class MSGMsde(SDE):
     """
     # This class need to be changed since the forward SDE cannot be solved analitically
     def __init__(self, y0, beta_min=0.1, beta_max=20.0, T=1.0, t_epsilon=0.001, \
-                 denseTensor = True, AMSGM = False, anti_aliasing = True, disable_noise = False, \
+                 denseTensor = True, anti_aliasing = True, disable_noise = False, \
+                 sparse_tensor_type = "ICLR2026", \
                  k_pattern = None, V0 = None, A_beta = None, \
                  norm_sampler = "ecdf", norm_map = None, kernel = 'gaussian', plot_validate = False, \
                  num_steps_forward = 100, device='cpu', estim_cst_norm_dens_r_T = True):
@@ -249,8 +250,12 @@ class MSGMsde(SDE):
         self.dim = y0.shape[1]
         self.name_SDE = "MSGM"
         self.D_hyper = None
-        self.AMSGM = AMSGM
-        self.FFTfields = AMSGM
+        # Sparse G^k choice when denseTensor=False: "ICLR2026" (ring graph),
+        # "star", "chain" (see ICLR2026_sparseTensor/star_G/chain_G), or
+        # "AMSGM" (Fourier advection tensor, sparse_G_advection).
+        self.sparse_tensor_type = sparse_tensor_type
+        self.AMSGM = (sparse_tensor_type == "AMSGM")
+        self.FFTfields = self.AMSGM
         self.anti_aliasing = anti_aliasing
         self.disable_noise = disable_noise
         # Deterministic mean-flow drift F Q(t): defaults to a moving
@@ -261,12 +266,12 @@ class MSGMsde(SDE):
         self.V0 = V0
         self.A_beta = A_beta
         if denseTensor:
-            if AMSGM:
+            if self.AMSGM:
                 raise NotImplemented("A-MSGM relies on sparse tensor")
             self.new_G(self.dim)
             self.L_G = 0.5*torch.einsum('ijk, jmk -> im', self.G, self.G)   # ito correction tensor
         else:
-            if AMSGM:
+            if self.AMSGM:
                 self.name_SDE += "_AMSGM"
                 self.beta_min = 1
                 self.beta_max = 1
@@ -281,10 +286,17 @@ class MSGMsde(SDE):
                 if self.A_beta != 0:
                     self.name_SDE += "_drift"
             else:
-                self.name_SDE += "_sparseTens"
+                self.name_SDE += "_sparseTens_" + sparse_tensor_type
                 # self.sparse_G_full(self.dim) # FOR DEBUG ONLY
-                self.sparse_G(self.dim)
-                self.L_G = 0.5*torch.eye(self.dim, device=self.device)   # ito correction tensor
+                if sparse_tensor_type == "ICLR2026":
+                    self.ICLR2026_sparseTensor(self.dim)
+                elif sparse_tensor_type == "star":
+                    self.star_G(self.dim)
+                elif sparse_tensor_type == "chain":
+                    self.chain_G(self.dim)
+                else:
+                    raise ValueError("Unknown sparse_tensor_type: " + str(sparse_tensor_type))
+                # self.L_G set inside _edges_to_sparse_G
         if not (norm_sampler=="ecdf"):
             self.name_SDE += norm_sampler + kernel
         if norm_map == "log":
@@ -406,21 +418,35 @@ class MSGMsde(SDE):
         del F
         self.G = G
 
-    def sparse_G(self, n) : 
+    def _edges_to_sparse_G(self, n, edges):
+        """Builds the sparse G^k = E^{i,j} = e_i e_j^T - e_j e_i^T tensor
+        from a list of (k, i, j) edges (any k not listed keeps G^k = 0),
+        then rescales G so lambda_max(-L_G) = 1/(10*dt), dt = T/num_steps_forward
+        (L_G = 0.5*sum_k G^k (G^k)^T, Ito drift = -L_G x): same CFL logic as
+        AMSGM (dt < dx^2/(a0/2) = 1/lambda_max(-L_G), Nyquist-mode-limited,
+        L_G=-a0/2*K^2 there), sized from the worst mode not the mean, so G's
+        amplitude stays comparable across ICLR2026_sparseTensor/star_G/chain_G
+        and accurate at any num_steps_forward.
+
+        One off-diagonal edge per G^k => L_G is exactly diagonal, L_G[i,i] =
+        -0.5*sum_{edges at i} v^2, so lambda_max(-L_G) is just its largest
+        entry -- computed via scatter_add, no need to densify (n,n,n)."""
         i_list = []
         j_list = []
         k_list = []
         v_list = []
 
-        for k in range(n):
-            i_list.extend([k, (k+1)%n])
-            j_list.extend([(k+1)%n, k])
+        for k, i, j in edges:
+            i_list.extend([i, j])
+            j_list.extend([j, i])
             k_list.extend([k, k])
-            coef = 0.5 * torch.sqrt(torch.tensor(2, dtype=torch.float32))
-            v_list.extend([coef, -coef])
+            v_list.extend([1.0, -1.0])
 
-        indices = torch.tensor([i_list, j_list, k_list], dtype=torch.int64)   # shape (3, 2n); scatter_add_ requires int64
+        indices = torch.tensor([i_list, j_list, k_list], dtype=torch.int64)   # shape (3, 2*nnz); scatter_add_ requires int64
         values  = torch.tensor(v_list, dtype=torch.float32)
+
+
+        self.L_G = (-0.5 * torch.diag(diag_unscaled) * scale**2).to(self.device)   # exact ito correction tensor
 
         # keep a CPU sparse object for debugging/IO if you want:
         try:
@@ -437,6 +463,23 @@ class MSGMsde(SDE):
 
         # Optionally delete CPU copies to save RAM
         del indices, values
+
+    def ICLR2026_sparseTensor(self, n) :
+        # ring/cycle graph tensor: G^k = E^{k,(k+1) mod d} for every k
+        # (as used in the ICLR2026 submission)
+        edges = [(k, k, (k+1) % n) for k in range(n)]
+        self._edges_to_sparse_G(n, edges)
+
+    def star_G(self, n) :
+        # star graph: G^k = E^{k,d} for k<d (hub = last index), G^d = 0
+        edges = [(k, k, n-1) for k in range(n-1)]
+        self._edges_to_sparse_G(n, edges)
+
+    def chain_G(self, n) :
+        # chain graph: G^k = E^{k,k+1} for k<d, G^d = 0 (ICLR2026's ring
+        # without the wraparound edge)
+        edges = [(k, k, k+1) for k in range(n-1)]
+        self._edges_to_sparse_G(n, edges)
 
     def sparse_G_advection(self, n) :
         # All construction (grid, CFL, hyperdiffusion, G/F sparse tensors,

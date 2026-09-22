@@ -55,7 +55,10 @@ norm_map = "log"
 beta_min_SGM = 0.1 # default
 beta_max_SGM = 20 # default
 denseTensor = True
-AMSGM = False
+# sparse_tensor_type = "AMSGM"
+sparse_tensor_type = "ICLR2026"
+# sparse_tensor_type = "star"
+# sparse_tensor_type = "chain"
 
 # Debug switches for A-MSGM: disable_noise=True keeps only the Stratonovich
 # drift (mean-flow + hyperdiffusion), no stochastic forcing at all -- lets
@@ -361,7 +364,7 @@ if __name__ == '__main__':
 
 
                 if not MSGM:
-                    AMSGM = False
+                    sparse_tensor_type = None
                     normalized_data = True
                     ssm_intT = False
                     premodule = None # default
@@ -395,7 +398,7 @@ if __name__ == '__main__':
                                         smoothing = smoothing,
                                         localized = localized, 
                                         few_data=few_data, 
-                                        FFTfields = AMSGM,
+                                        FFTfields = (sparse_tensor_type == "AMSGM"),
                                         ntrain_max=ntrain_max)
                         plot_params.log_scale_pdf = True
                         plot_params.plot_xlim = 6
@@ -464,7 +467,7 @@ if __name__ == '__main__':
                         std_norm = sampler.get_std()
                     else:
                         std_norm = torch.ones((xtest.shape[1]))
-                    if AMSGM:
+                    if sparse_tensor_type == "AMSGM":
                         std_norm *= sampler.get_norm_fft()
                     if (datatype == 'cauchy') :
                         plot_params.std_test_plot = torch.ones_like(std_test) / std_norm
@@ -472,11 +475,11 @@ if __name__ == '__main__':
                         plot_params.std_test_plot = std_test
 
                     plt.close('all')
-                    plot_params.FFTfields = AMSGM
+                    plot_params.FFTfields = (sparse_tensor_type == "AMSGM")
                     plot_params.dimplot = np.min([plot_params.dimplot_max,xtest.shape[1]])
                     plot_params.columns_plot=range(1+plot_params.offset_dimplot,1+plot_params.offset_dimplot+plot_params.dimplot)
 
-                    if not AMSGM:
+                    if not (sparse_tensor_type == "AMSGM"):
                         # std_norm is a physical-space per-pixel std (data.py's
                         # PIV.get_std()); it doesn't correspond to Fourier-domain
                         # coefficient scale, so this diagnostic isn't meaningful
@@ -538,7 +541,7 @@ if __name__ == '__main__':
                         with torch.no_grad():
                             if MSGM:
                                 x_init = sampler.sample(num_samples_init).to(device)
-                                if AMSGM:
+                                if sparse_tensor_type == "AMSGM":
                                     # A-MSGM's forward SDE is integrated numerically (RK4), unlike
                                     # SGM's analytic solution, so it's subject to a CFL-like stability
                                     # condition (dt < dx^2/a0) tying beta to num_steps_forward -- a
@@ -554,7 +557,7 @@ if __name__ == '__main__':
                                                             norm_sampler = norm_sampler,
                                                             norm_map = norm_map, \
                                                             denseTensor=denseTensor, \
-                                                            AMSGM=AMSGM, \
+                                                            sparse_tensor_type=sparse_tensor_type, \
                                                             disable_noise=disable_noise, \
                                                             k_pattern=k_pattern, V0=V0, A_beta=A_beta, \
                                                             plot_validate = plot_params.plot_validate)
@@ -580,8 +583,8 @@ if __name__ == '__main__':
                         print("name_SDE = " + str(inf_sde.name_SDE) )   
                         if MSGM:
                             print("denseTensor = " + str(denseTensor) )   
-                            print("A-MSGM = " + str(AMSGM) )   
-                        print("FFT field = " + str(AMSGM) )   
+                            print("sparse_tensor_type = " + str(sparse_tensor_type) )   
+                        print("FFT field = " + str((sparse_tensor_type == "AMSGM")) )   
                         print("num_steps_forward = " + str(num_steps_forward))
                         print("beta_min_SGM = " + str(beta_min_SGM))
                         print("beta_min = " + str(beta_min))
