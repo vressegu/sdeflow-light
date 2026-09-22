@@ -445,6 +445,17 @@ class MSGMsde(SDE):
         indices = torch.tensor([i_list, j_list, k_list], dtype=torch.int64)   # shape (3, 2*nnz); scatter_add_ requires int64
         values  = torch.tensor(v_list, dtype=torch.float32)
 
+        T_val = self.T.item() if torch.is_tensor(self.T) else self.T
+        dt = T_val / self.num_steps_forward
+        tau = 10 * dt              # target worst-case Ito-drift time scale, 10x the integration step
+        # tau = 1 * dt              # target worst-case Ito-drift time scale, 1x the integration step
+        target_lambda_max = 1 / tau
+
+        diag_unscaled = torch.zeros(n, dtype=torch.float32)
+        diag_unscaled.scatter_add_(0, indices[0], values**2)
+        lambda_max_unscaled = 0.5 * diag_unscaled.max()
+        scale = torch.sqrt( target_lambda_max / lambda_max_unscaled )
+        values = values * scale
 
         self.L_G = (-0.5 * torch.diag(diag_unscaled) * scale**2).to(self.device)   # exact ito correction tensor
 
