@@ -299,13 +299,18 @@ if not plot_params.plt_show:
     matplotlib.use("Agg")
 
 
-def m_name_simu_root(sampler_name, gen_sde_name_SDE, iterations_ref, batch_size, num_steps_forward, beta_min, beta_max, ssm_intT, fair_comparison):
+def m_name_simu_root(sampler_name, gen_sde_name_SDE, \
+                     iterations_ref, batch_size, num_steps_forward, \
+                     n_slices,\
+                     beta_min, beta_max, ssm_intT, fair_comparison):
     name_simu_root = sampler_name + "/" \
         + gen_sde_name_SDE + "_" + str(iterations_ref) + "iteRefLearning_" \
         + str(num_samples_init) + "InitSples_" \
         + str(batch_size) + "batchSize_" \
         + str(num_steps_forward) + "stepsForw_"
     if MSGM:
+        if n_slices > 1:
+            name_simu_root += str(n_slices) + "slices_"
         name_simu_root += \
             str(beta_min) + "beta_min" \
             + str(beta_max) + "beta_max" 
@@ -573,7 +578,8 @@ if __name__ == '__main__':
                         # for an MPS crash observed with n_slices=sqrt(d)=16 on real data
                         # (crashed in backward(), not in the forward ssm() call itself).
                         # Capped low until confirmed safe; raise cautiously.
-                        n_slices = min(int(round(sampler.dim ** 0.5)), 4) if AMSGM else 1
+                        n_slices = min(int(round(sampler.dim ** 0.5)), 4)
+                        # n_slices = 1
                         gen_sde = PluginReverseSDE(inf_sde, drift_q, T, vtype=vtype, debias=False, ssm_intT=ssm_intT, deviceReverseSDE=device, n_slices=n_slices).to(device)
 
                         print("data = " + sampler.name )
@@ -585,6 +591,7 @@ if __name__ == '__main__':
                             print("denseTensor = " + str(denseTensor) )   
                             print("sparse_tensor_type = " + str(sparse_tensor_type) )   
                         print("FFT field = " + str((sparse_tensor_type == "AMSGM")) )   
+                        print("n_slices = " + str(n_slices))
                         print("num_steps_forward = " + str(num_steps_forward))
                         print("beta_min_SGM = " + str(beta_min_SGM))
                         print("beta_min = " + str(beta_min))
@@ -603,6 +610,7 @@ if __name__ == '__main__':
 
                         name_simu_root = m_name_simu_root(sampler.name, gen_sde.base_sde.name_SDE, \
                                                             iterations_ref, batch_size, num_steps_forward, \
+                                                            n_slices,\
                                                             beta_min, beta_max, ssm_intT, fair_comparison)
                         
                         if delayed:
