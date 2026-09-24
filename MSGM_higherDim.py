@@ -59,6 +59,7 @@ denseTensor = True
 sparse_tensor_type = "ICLR2026"
 # sparse_tensor_type = "star"
 # sparse_tensor_type = "chain"
+# sparse_tensor_type = "2Dchain"
 
 # Debug switches for A-MSGM: disable_noise=True keeps only the Stratonovich
 # drift (mean-flow + hyperdiffusion), no stochastic forcing at all -- lets

@@ -67,6 +67,7 @@ class SDE(torch.nn.Module):
         self.sparseTensor = False
         self.FFTfields = False
         self.AMSGM = False
+        self.two_noise = False
 
     def to(self, device):
         new = super().to(device)
@@ -250,11 +251,13 @@ class MSGMsde(SDE):
         self.dim = y0.shape[1]
         self.name_SDE = "MSGM"
         self.D_hyper = None
-        # Sparse G^k choice when denseTensor=False: "ICLR2026" (ring graph),
-        # "star", "chain" (see ICLR2026_sparseTensor/star_G/chain_G), or
-        # "AMSGM" (Fourier advection tensor, sparse_G_advection).
+        # sparse G^k: "ICLR2026"/"star"/"chain"/"2Dchain" (see their own
+        # methods) or "AMSGM" (sparse_G_advection).
         self.sparse_tensor_type = sparse_tensor_type
         self.AMSGM = (sparse_tensor_type == "AMSGM")
+        # two independent noise channels per node instead of one; AMSGM's
+        # share (I,J,K), 2Dchain's don't (own G_I_v/G_J_v/G_V_v).
+        self.two_noise = sparse_tensor_type in ("AMSGM", "2Dchain")
         self.FFTfields = self.AMSGM
         self.anti_aliasing = anti_aliasing
         self.disable_noise = disable_noise
@@ -294,6 +297,8 @@ class MSGMsde(SDE):
                     self.star_G(self.dim)
                 elif sparse_tensor_type == "chain":
                     self.chain_G(self.dim)
+                elif sparse_tensor_type == "2Dchain":
+                    self.chain2D_G(self.dim)
                 else:
                     raise ValueError("Unknown sparse_tensor_type: " + str(sparse_tensor_type))
                 # self.L_G set inside _edges_to_sparse_G
@@ -360,6 +365,10 @@ class MSGMsde(SDE):
             new.G_V = self.G_V.to(device)
             if self.AMSGM:
                 new.G_V_I = self.G_V_I.to(device)
+            if self.sparse_tensor_type == "2Dchain":
+                new.G_I_v = self.G_I_v.to(device)
+                new.G_J_v = self.G_J_v.to(device)
+                new.G_V_v = self.G_V_v.to(device)
         else:
             new.G = self.G.to(device)
         return new
@@ -418,62 +427,55 @@ class MSGMsde(SDE):
         del F
         self.G = G
 
-    def _edges_to_sparse_G(self, n, edges):
-        """Builds the sparse G^k = E^{i,j} = e_i e_j^T - e_j e_i^T tensor
-        from a list of (k, i, j) edges (any k not listed keeps G^k = 0),
-        then rescales G so lambda_max(-L_G) = 1/(10*dt), dt = T/num_steps_forward
-        (L_G = 0.5*sum_k G^k (G^k)^T, Ito drift = -L_G x): same CFL logic as
-        AMSGM (dt < dx^2/(a0/2) = 1/lambda_max(-L_G), Nyquist-mode-limited,
-        L_G=-a0/2*K^2 there), sized from the worst mode not the mean, so G's
-        amplitude stays comparable across ICLR2026_sparseTensor/star_G/chain_G
-        and accurate at any num_steps_forward.
-
-        One off-diagonal edge per G^k => L_G is exactly diagonal, L_G[i,i] =
-        -0.5*sum_{edges at i} v^2, so lambda_max(-L_G) is just its largest
-        entry -- computed via scatter_add, no need to densify (n,n,n)."""
-        i_list = []
-        j_list = []
-        k_list = []
-        v_list = []
-
+    def _raw_edges(self, edges):
+        # unnormalized (v=+-1) COO arrays G^k = E^{i,j} for one noise channel
+        i_list, j_list, k_list, v_list = [], [], [], []
         for k, i, j in edges:
             i_list.extend([i, j])
             j_list.extend([j, i])
             k_list.extend([k, k])
             v_list.extend([1.0, -1.0])
-
-        indices = torch.tensor([i_list, j_list, k_list], dtype=torch.int64)   # shape (3, 2*nnz); scatter_add_ requires int64
+        indices = torch.tensor([i_list, j_list, k_list], dtype=torch.int64)   # (3, 2*nnz)
         values  = torch.tensor(v_list, dtype=torch.float32)
+        return indices, values
 
+    def _finalize_sparse_G(self, n, channels):
+        # rescales 1-2 raw channels so beta_max*lambda_max(-L_G)*dt = 1/10
+        # (RK4 stability margin, worst mode, worst beta_t -- see AMSGM's own
+        # rescale_for_cfl). L_G is exactly diagonal here (one off-diag edge
+        # per G^k, so cross terms vanish, incl. across the 2 channels):
+        # L_G[i,i] = -0.5*sum_{edges at i} v^2, read off via scatter_add.
         T_val = self.T.item() if torch.is_tensor(self.T) else self.T
         dt = T_val / self.num_steps_forward
-        tau = 10 * dt              # target worst-case Ito-drift time scale, 10x the integration step
-        # tau = 1 * dt              # target worst-case Ito-drift time scale, 1x the integration step
+        tau = 10 * dt * self.beta_max
         target_lambda_max = 1 / tau
 
         diag_unscaled = torch.zeros(n, dtype=torch.float32)
-        diag_unscaled.scatter_add_(0, indices[0], values**2)
+        for indices, values in channels:
+            diag_unscaled.scatter_add_(0, indices[0], values**2)
         lambda_max_unscaled = 0.5 * diag_unscaled.max()
         scale = torch.sqrt( target_lambda_max / lambda_max_unscaled )
-        values = values * scale
 
         self.L_G = (-0.5 * torch.diag(diag_unscaled) * scale**2).to(self.device)   # exact ito correction tensor
 
-        # keep a CPU sparse object for debugging/IO if you want:
-        try:
-            self.G_sparse_cpu = torch.sparse_coo_tensor(indices, values, size=(n, n, n)).coalesce()
-        except Exception:
-            # if sparse COO creation on CPU fails for some reason, skip storing CPU sparse
-            self.G_sparse_cpu = None
+        stored = []
+        for indices, values in channels:
+            values = values * scale
+            try:
+                G_sparse_cpu = torch.sparse_coo_tensor(indices, values, size=(n, n, n)).coalesce()
+            except Exception:
+                G_sparse_cpu = None   # if sparse COO creation on CPU fails for some reason, skip it
+            stored.append((indices[0].to(self.device), indices[1].to(self.device),
+                            indices[2].to(self.device), values.to(self.device), G_sparse_cpu))
 
-        # move raw arrays to the active device (MPS)
-        self.G_I = indices[0].to(self.device)   # (nnz,)
-        self.G_J = indices[1].to(self.device)
-        self.G_K = indices[2].to(self.device)
-        self.G_V = values.to(self.device)       # (nnz,)
+        self.G_I, self.G_J, self.G_K, self.G_V, self.G_sparse_cpu = stored[0]
+        if len(stored) > 1:
+            # 2nd channel's K matches the 1st's by construction (chain2D_G)
+            assert torch.equal(channels[0][0][2], channels[1][0][2])
+            self.G_I_v, self.G_J_v, _, self.G_V_v, _ = stored[1]
 
-        # Optionally delete CPU copies to save RAM
-        del indices, values
+    def _edges_to_sparse_G(self, n, edges):
+        self._finalize_sparse_G(n, [self._raw_edges(edges)])
 
     def ICLR2026_sparseTensor(self, n) :
         # ring/cycle graph tensor: G^k = E^{k,(k+1) mod d} for every k
@@ -491,6 +493,16 @@ class MSGMsde(SDE):
         # without the wraparound edge)
         edges = [(k, k, k+1) for k in range(n-1)]
         self._edges_to_sparse_G(n, edges)
+
+    def chain2D_G(self, n) :
+        # periodic 2D grid graph: NxN image (N=sqrt(n), flat index
+        # I=p1+p2*N), ICLR2026's ring applied along both axes independently
+        N = int(round(n ** 0.5))
+        if N * N != n:
+            raise ValueError("chain2D_G needs a perfect-square n (image pixel count), got n=" + str(n))
+        edges_h = [(k, k, (k % N + 1) % N + (k // N) * N) for k in range(n)]
+        edges_v = [(k, k, (k % N) + ((k // N + 1) % N) * N) for k in range(n)]
+        self._finalize_sparse_G(n, [self._raw_edges(edges_h), self._raw_edges(edges_v)])
 
     def sparse_G_advection(self, n) :
         # All construction (grid, CFL, hyperdiffusion, G/F sparse tensors,
@@ -564,11 +576,9 @@ class MSGMsde(SDE):
         return 2*self.f(t,y)
 
     def g(self, t, y, sparse = False):
-        """G^R (skew, per-channel) diffusion coefficient, driven by
-        dB^R_t(k). For AMSGM, also returns G^I (symmetric, cross-channel),
-        driven by the independent dB^I_t(k) -- see
-        transportNoise.grid_k.build_sparse_G. Returns a single tensor
-        normally, or (g_R, g_I) when AMSGM."""
+        """Diffusion coefficient. Single tensor normally, (g_R,g_I) for
+        AMSGM (shared J, see sparse_yJ_products), (g_h,g_v) for 2Dchain
+        (own J each, gathered separately)."""
         beta_t = self.beta(t)
         # broadcast beta_t (B,1) against y, which may carry a trailing
         # real/imag channel dim (B,n,2) when FFTfields, not just (B,n)
@@ -582,6 +592,10 @@ class MSGMsde(SDE):
                 return g_R, g_I
             V = self.G_V.reshape(1, -1, *([1] * (y.dim() - 2)))
             g_R = V * mps_safe_gather(scaled_y, 1, J)
+            if self.sparse_tensor_type == "2Dchain":
+                V_v = self.G_V_v.reshape(1, -1, *([1] * (y.dim() - 2)))
+                g_v = V_v * mps_safe_gather(scaled_y, 1, self.G_J_v)
+                return g_R, g_v
             return g_R
         else:
             return torch.einsum('ijk, bj -> bik', self.G, (beta_t**0.5) * y  )         # diffusion part
@@ -766,16 +780,26 @@ class PluginReverseSDE(torch.nn.Module):
                 aK_R = mps_safe_gather(a_fft[..., 0], 1, K)
                 aK_I = mps_safe_gather(a_fft[..., 1], 1, K)
                 prod = g_R * aK_R.unsqueeze(-1) + g_I * aK_I.unsqueeze(-1)  # (B,nnz,2)
+                prod_I = [(prod, I)]
+            elif self.base_sde.sparse_tensor_type == "2Dchain":
+                # h/v channels share K (a is gathered once) but scatter
+                # through their OWN I (different target neighbors -- see g())
+                g_h, g_v = g
+                aK = mps_safe_gather(a, 1, K)
+                if g_h.dim() > aK.dim():
+                    aK = aK.unsqueeze(-1)
+                prod_I = [(g_h * aK, self.base_sde.G_I), (g_v * aK, self.base_sde.G_I_v)]
             else:
                 aK = mps_safe_gather(a, 1, K)                   # (B,nnz) real
                 if g.dim() > aK.dim():
                     aK = aK.unsqueeze(-1)      # broadcast the real scalar across g's (re,im) channels
-                prod = g * aK                # (B,nnz) or (B,nnz,2)
-            dx_fft = torch.zeros(y_fft.shape[0], y_fft.shape[1], *y_fft.shape[2:], device=y_fft.device, dtype=prod.dtype)
-            index = I.unsqueeze(0).expand(y_fft.shape[0], -1)
-            if prod.dim() > 2:
-                index = index.unsqueeze(-1).expand(-1, -1, prod.shape[-1])
-            mps_safe_scatter_add_(dx_fft, 1, index, prod)
+                prod_I = [(g * aK, I)]          # (B,nnz) or (B,nnz,2)
+            dx_fft = torch.zeros(y_fft.shape[0], y_fft.shape[1], *y_fft.shape[2:], device=y_fft.device, dtype=prod_I[0][0].dtype)
+            for prod, idx in prod_I:
+                index = idx.unsqueeze(0).expand(y_fft.shape[0], -1)
+                if prod.dim() > 2:
+                    index = index.unsqueeze(-1).expand(-1, -1, prod.shape[-1])
+                mps_safe_scatter_add_(dx_fft, 1, index, prod)
         else:
             # g is either a dense (B,n,n) diffusion matrix (needs a matvec via
             # einsum), or an elementwise/diagonal diffusion coefficient the

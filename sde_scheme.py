@@ -52,22 +52,20 @@ def _sample_dW(x_t, delta, two_noise):
 @torch.no_grad()
 def EMstep(mu, delta, sigma, dW, sparse=False, I=None, K=None):
     """
-    sigma, dW: either a single tensor each (one-noise case), or a
-    (sigma_R, sigma_I)/(dW_R, dW_I) pair -- the two independent real noises
-    dB^R_t(k), dB^I_t(k) driving A-MSGM's 2-dimensional-per-mode advection
-    tensor (G^R skew/per-channel, G^I symmetric/cross-channel; see
-    transportNoise.py). Each pair's diffusion contribution is computed
-    identically to the one-noise case and the two are summed.
+    sigma, dW: single tensor each, or a (sigma_1,sigma_2)/(dW_1,dW_2) pair
+    for a two-noise sparse tensor (AMSGM, 2Dchain), summed after computing
+    each like the one-noise case.
 
     sigma:
        dense case  -> (B,n,n)
        sparse case -> (B,nnz) or (B,nnz,2) with a trailing real/imag channel
                        (FFTfields), same indexing as G_sparse.values()
     dW: (B,n), one real scalar Wiener increment per mode (not per channel)
-    I,K: sparse indices
+    I,K: sparse indices. I may be an (I_1,I_2) pair for independent scatter
+    targets per channel (2Dchain); K is always shared.
     """
 
-    def _diffusion(sigma, dW):
+    def _diffusion(sigma, dW, I):
         if sparse:
             # sigma[b,e] multiplies dW[b, K[e]], broadcasting the single
             # per-mode real dW across any trailing real/imag channel dim sigma
@@ -96,9 +94,10 @@ def EMstep(mu, delta, sigma, dW, sparse=False, I=None, K=None):
         return dx
 
     if isinstance(sigma, tuple):
-        dx = sum(_diffusion(s, w) for s, w in zip(sigma, dW))
+        I_pair = I if isinstance(I, tuple) else (I, I)
+        dx = sum(_diffusion(s, w, Ii) for s, w, Ii in zip(sigma, dW, I_pair))
     else:
-        dx = _diffusion(sigma, dW)
+        dx = _diffusion(sigma, dW, I)
 
     return mu * delta + dx
 
@@ -122,7 +121,9 @@ def euler_maruyama_sampler(sde, x_0, num_steps=1000, lmbd=0.,
     ts = torch.linspace(0, 1, num_steps + 1) * T_
     sparseG = sde.base_sde.sparseTensor
     I, J, K = sde.base_sde.IJK()
-    two_noise = sparseG and sde.base_sde.AMSGM
+    two_noise = sparseG and sde.base_sde.two_noise
+    if two_noise and sde.base_sde.sparse_tensor_type == "2Dchain":
+        I = (sde.base_sde.G_I, sde.base_sde.G_I_v)   # independent scatter targets per channel
 
     # sample
     x_t = x_0.detach().clone().to(device)
@@ -184,7 +185,9 @@ def heun_sampler(sde, x_0, num_steps=1000, lmbd=0.,
     ts = torch.linspace(0, 1, num_steps + 1) * T_
     sparseG = sde.base_sde.sparseTensor
     I, J, K = sde.base_sde.IJK()
-    two_noise = sparseG and sde.base_sde.AMSGM
+    two_noise = sparseG and sde.base_sde.two_noise
+    if two_noise and sde.base_sde.sparse_tensor_type == "2Dchain":
+        I = (sde.base_sde.G_I, sde.base_sde.G_I_v)   # independent scatter targets per channel
 
     # Sampling
     x_t = x_0.detach().clone().to(device)
@@ -293,7 +296,9 @@ def rk4_stratonovich_sampler(sde, x_0, num_steps=1000, lmbd=0.,
     
     sparseG = sde.base_sde.sparseTensor
     I, J, K = sde.base_sde.IJK()
-    two_noise = sparseG and sde.base_sde.AMSGM
+    two_noise = sparseG and sde.base_sde.two_noise
+    if two_noise and sde.base_sde.sparse_tensor_type == "2Dchain":
+        I = (sde.base_sde.G_I, sde.base_sde.G_I_v)   # independent scatter targets per channel
 
     with torch.no_grad():
         for i in range(num_steps):
