@@ -65,7 +65,7 @@ sparse_tensor_type = "ICLR2026"
 # you check the drift alone visually. A_beta=0 disables the mean-flow drift
 # itself. Both are folded into MSGMsde.name_SDE, so results land in
 # separate folders instead of overwriting each other.
-disable_noise = True
+disable_noise = False
 # None => default Taylor-Green 4-vortex pattern (see
 # transportNoise.grid_k.taylor_green_terms); pass a custom
 # [(k1,k2,unit_amplitude),...] list to override.
