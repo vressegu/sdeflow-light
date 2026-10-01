@@ -768,11 +768,16 @@ class PluginReverseSDE(torch.nn.Module):
         This mirrors exactly how EMstep (sde_scheme.py) broadcasts the two
         real dW_R/dW_I across sigma_R/sigma_I.
         """
-        is_fourier = (y.dim() == 3 and y.shape[-1] == 2)
-        y_fft = y if is_fourier else spatial_flat_to_fourier(y)
-        g = self.base_sde.g(s, y_fft, self.base_sde.sparseTensor)
         a = self._eval_a(y, s.squeeze())                # (B,n) always real, spatial
         if self.base_sde.sparseTensor:
+            # only the sparse g()/IJK() machinery is written for the (B,n,2)
+            # re/im-channel layout; the dense case below must stay on the
+            # real y untouched (SGMsde/dense-MSGM never carry that channel)
+            # Only AMSGM (FFTfields) lives in Fourier space; the pixel-graph
+            # tensors (ICLR2026/star/chain/2Dchain) act on the spatial y as is.
+            to_fourier = self.base_sde.FFTfields and not (y.dim() == 3 and y.shape[-1] == 2)
+            y_fft = spatial_flat_to_fourier(y) if to_fourier else y
+            g = self.base_sde.g(s, y_fft, True)
             I, J, K = self.base_sde.IJK()
             if self.base_sde.AMSGM:
                 g_R, g_I = g
@@ -800,15 +805,17 @@ class PluginReverseSDE(torch.nn.Module):
                 if prod.dim() > 2:
                     index = index.unsqueeze(-1).expand(-1, -1, prod.shape[-1])
                 mps_safe_scatter_add_(dx_fft, 1, index, prod)
+            dx = fourier_flat_to_spatial(dx_fft) if to_fourier else dx_fft
         else:
+            # dense: no Fourier roundtrip, g/a act on the real y directly.
             # g is either a dense (B,n,n) diffusion matrix (needs a matvec via
             # einsum), or an elementwise/diagonal diffusion coefficient the
             # same shape as `a` (just multiply).
+            g = self.base_sde.g(s, y, False)
             if g.shape == a.shape:
-                dx_fft = g * a
+                dx = g * a
             else:
-                dx_fft = torch.einsum('bij, bj -> bi', g, a)
-        dx = dx_fft if is_fourier else fourier_flat_to_spatial(dx_fft)
+                dx = torch.einsum('bij, bj -> bi', g, a)
         return (dx, a) if return_a else dx
 
 
@@ -874,13 +881,13 @@ class PluginReverseSDE(torch.nn.Module):
         Computes (mu_to_div, a) for the SSM loss.
         mu_to_div = ga(t,y) - f(t,y) + 0.5*div_Sigma(t,y) always (this is
         ga_m_drift(t,y,0.) - 0.5*div_Sigma(t,y) simplified -- see ga_m_drift).
-        y may be spatial (B,n, FFTfields) or Fourier (B,n,2, otherwise);
-        ga() handles both directly. f/div_Sigma are Fourier-domain-only
-        operators, so for spatial y they're evaluated on its Fourier
-        conversion and brought back to spatial to match.
+        y may be spatial (B,n) or Fourier (B,n,2). Only AMSGM's f/div_Sigma
+        (hyperdiffusion/mean-flow) actually need Fourier-domain input; every
+        other SDE (dense or sparse) is dimension-agnostic and must stay on
+        the real y untouched (SGMsde breaks on a (B,n,2) input).
         """
         ga_val, a = self.ga(t_, y, return_a=True)
-        if y.dim() == 2:
+        if y.dim() == 2 and self.base_sde.FFTfields:
             y_fft = spatial_flat_to_fourier(y)
             f = fourier_flat_to_spatial(self.base_sde.f(t_, y_fft))
             div_sigma = fourier_flat_to_spatial(self.base_sde.div_Sigma(t_, y_fft))
