@@ -105,7 +105,7 @@ def EMstep(mu, delta, sigma, dW, sparse=False, I=None, K=None):
 @torch.no_grad()
 def euler_maruyama_sampler(sde, x_0, num_steps=1000, lmbd=0., 
                              keep_all_samples=True, samplesToKeep=None,
-                             include_t0=False, T_=-1, norm_correction = False):
+                             include_t0=False, T_=-1):
     """
     Euler Maruyama method with a step size delta
     """
@@ -127,7 +127,7 @@ def euler_maruyama_sampler(sde, x_0, num_steps=1000, lmbd=0.,
 
     # sample
     x_t = x_0.detach().clone().to(device)
-    if norm_correction:
+    if sde.base_sde.norm_correction:
         norm_x_0 = _field_norm(x_t)
     if keep_all_samples :
         if (not include_t0) :
@@ -148,7 +148,7 @@ def euler_maruyama_sampler(sde, x_0, num_steps=1000, lmbd=0.,
             sigma = sde.sigma(t, x_t, lmbd=lmbd, sparse=sparseG)
             dW = _sample_dW(x_t, delta, two_noise)
             x_t = x_t + EMstep(mu, delta , sigma , dW, sparse=sparseG, I=I, K=K)
-            if norm_correction:
+            if sde.base_sde.norm_correction:
                 ratio = (norm_x_0 / _field_norm(x_t))
                 x_t = x_t * ratio.reshape(x_t.shape[0], *([1] * (x_t.dim() - 1)))
             if keep_all_samples:
@@ -169,7 +169,7 @@ def euler_maruyama_sampler(sde, x_0, num_steps=1000, lmbd=0.,
 @torch.no_grad()
 def heun_sampler(sde, x_0, num_steps=1000, lmbd=0.,
                              keep_all_samples=True, samplesToKeep=None,
-                             include_t0=False, T_=-1, norm_correction = False):
+                             include_t0=False, T_=-1):
     """
     Heun method (Runge-Kutta 2) for SDEs in Stratonovich form.
     """
@@ -191,7 +191,7 @@ def heun_sampler(sde, x_0, num_steps=1000, lmbd=0.,
 
     # Sampling
     x_t = x_0.detach().clone().to(device)
-    if norm_correction:
+    if sde.base_sde.norm_correction:
         norm_x_0 = _field_norm(x_t)
     t = torch.zeros(batch_size, *([1] * ndim), device=device)
     if keep_all_samples :
@@ -231,7 +231,7 @@ def heun_sampler(sde, x_0, num_steps=1000, lmbd=0.,
                 sigma_sum = sigma_1 + sigma_2
                 dW_half = dW / 2
             x_t = x_t + EMstep(mu_1 + mu_2, delta / 2 , sigma_sum , dW_half, sparse=sparseG, I=I, K=K)
-            if norm_correction:
+            if sde.base_sde.norm_correction:
                 ratio = (norm_x_0 / _field_norm(x_t))
                 x_t = x_t * ratio.reshape(x_t.shape[0], *([1] * (x_t.dim() - 1)))
 
@@ -253,7 +253,7 @@ def heun_sampler(sde, x_0, num_steps=1000, lmbd=0.,
 @torch.no_grad()
 def rk4_stratonovich_sampler(sde, x_0, num_steps=1000, lmbd=0.,
                              keep_all_samples=True, samplesToKeep=None,
-                             include_t0=False, T_=-1, norm_correction = False):
+                             include_t0=False, T_=-1):
     """
     Runge-Kutta 4th order method for Stratonovich SDEs with skew-symmetric noise.
     
@@ -280,7 +280,7 @@ def rk4_stratonovich_sampler(sde, x_0, num_steps=1000, lmbd=0.,
     ts = torch.linspace(0, 1, num_steps + 1) * T_
 
     x_t = x_0.detach().clone().to(device)
-    if norm_correction:
+    if sde.base_sde.norm_correction:
         norm_x_0 = _field_norm(x_t)
     t = torch.zeros(batch_size, *([1] * ndim), device=device)
     if keep_all_samples :
@@ -331,7 +331,7 @@ def rk4_stratonovich_sampler(sde, x_0, num_steps=1000, lmbd=0.,
             
             # Combine stages (weighted sum)
             x_t = x_t + (K1 + 2 * K2 + 2 * K3 + K4) / 6
-            if norm_correction:
+            if sde.base_sde.norm_correction:
                 ratio = (norm_x_0 / _field_norm(x_t))
                 x_t = x_t * ratio.reshape(x_t.shape[0], *([1] * (x_t.dim() - 1)))
 

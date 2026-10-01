@@ -633,7 +633,7 @@ if __name__ == '__main__':
                                     chunk = xtest_dev[start:start + safe_chunk]
                                     xs_chunk = rk4_stratonovich_sampler(for_sde, chunk, num_steps_forward,
                                                                         lmbd=0., keep_all_samples=True,
-                                                                        include_t0=True, norm_correction=MSGM)
+                                                                        include_t0=True)
                                     chunks.append(xs_chunk.to('cpu'))
                                     if device == 'mps':
                                         torch.mps.empty_cache()
@@ -642,7 +642,7 @@ if __name__ == '__main__':
                             else:
                                 xs_forward = rk4_stratonovich_sampler(for_sde, xtest_dev, num_steps_forward,  \
                                                                     lmbd=0., keep_all_samples=True, \
-                                                                    include_t0=True, norm_correction = MSGM) # sample
+                                                                    include_t0=True) # sample
 
                             preprocessing(xtest, xs_forward, num_steps_forward, name_simu_root,
                                             plot_params, folder_results, std_norm, 'cpu')
