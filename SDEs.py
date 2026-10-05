@@ -302,6 +302,7 @@ class MSGMsde(SDE):
                 else:
                     raise ValueError("Unknown sparse_tensor_type: " + str(sparse_tensor_type))
                 # self.L_G set inside _edges_to_sparse_G
+        self.print_ito_diagnostics()
         if not (norm_sampler=="ecdf"):
             self.name_SDE += norm_sampler + kernel
         if norm_map == "log":
@@ -352,6 +353,22 @@ class MSGMsde(SDE):
         if estim_cst_norm_dens_r_T:
             del log_dens, dens, r_plot 
         gc.collect()
+
+    def print_ito_diagnostics(self):
+        # Ito drift is beta(t)*L_G*y, so its stiffest rate is beta_max*lambda_max(-L_G);
+        # beta_max*lambda_max*dt is the per-step RK4 number (_finalize_sparse_G targets 1/10).
+        n = self.dim
+        L = self.L_G.detach().cpu().double()   # cpu first: MPS has no float64
+        eig = torch.linalg.eigvalsh(0.5*(L + L.T))
+        lam_max, lam_min = -eig[0].item(), -eig[-1].item()
+        T_val = self.T.item() if torch.is_tensor(self.T) else self.T
+        dt = T_val / self.num_steps_forward
+        beta_int = 0.5*(self.beta_min + self.beta_max)*T_val   # int_0^T beta(t) dt
+        print(f"trace(L_G) = {torch.trace(L).item()/n:.3g}*dim (ICLR2026 placeholder was -0.5*dim = {-0.5*n:.3g}), "
+              f"eig(-L_G) in [{lam_min:.3g}, {lam_max:.3g}]")
+        print(f"dt={dt:.3g}, beta_max*lambda_max*dt = {self.beta_max*lam_max*dt:.3g} "
+              f"(fastest Ito time scale = {1/(self.beta_max*lam_max)/dt:.3g}*dt), "
+              f"mean decay at T: exp(-lambda_max*int beta) = exp(-{lam_max*beta_int:.3g})")
 
     def to(self, device):
         new = super().to(device)
@@ -440,15 +457,16 @@ class MSGMsde(SDE):
         return indices, values
 
     def _finalize_sparse_G(self, n, channels):
-        # rescales 1-2 raw channels so beta_max*lambda_max(-L_G)*dt = 1/10
-        # (RK4 stability margin, worst mode, worst beta_t -- see AMSGM's own
-        # rescale_for_cfl). L_G is exactly diagonal here (one off-diag edge
-        # per G^k, so cross terms vanish, incl. across the 2 channels):
-        # L_G[i,i] = -0.5*sum_{edges at i} v^2, read off via scatter_add.
-        T_val = self.T.item() if torch.is_tensor(self.T) else self.T
-        dt = T_val / self.num_steps_forward
-        tau = 10 * dt * self.beta_max
-        target_lambda_max = 1 / tau
+        # rescales 1-2 raw channels so lambda_max(-L_G) = 0.5, i.e. L_G = -0.5*I
+        # for the ICLR2026 ring as in the original code (coef = sqrt(2)/2),
+        # independent of dt/beta_max (with beta_max=160, dt=1/128:
+        # beta_max*lambda_max*dt = 0.625). L_G is exactly diagonal here (one
+        # off-diag edge per G^k, so cross terms vanish, incl. across the 2
+        # channels): L_G[i,i] = -0.5*sum_{edges at i} v^2, read off via scatter_add.
+        target_lambda_max = 0.5
+        # previous rule: beta_max*lambda_max*dt = 1/10 (RK4 margin, see AMSGM's rescale_for_cfl)
+        # T_val = self.T.item() if torch.is_tensor(self.T) else self.T
+        # target_lambda_max = 1 / (10 * (T_val / self.num_steps_forward) * self.beta_max)
 
         diag_unscaled = torch.zeros(n, dtype=torch.float32)
         for indices, values in channels:
