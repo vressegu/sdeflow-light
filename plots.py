@@ -31,7 +31,8 @@ def get_2d_histogram_plot(data, val=3,
     if (offset_dimplot+data.shape[1])<3:
         y = data[:, offset_dimplot+1]
     else:
-        y = data[:, offset_dimplot+2]
+        # y = data[:, offset_dimplot+2]
+        y = data[:, -1] 
         val = val/2
 
     xmin = -val
@@ -295,6 +296,139 @@ def pairplots_single( xtest, std_norm, datatype, name_simu,
     plt.close('all')
 
 
+def _plot_cov_panels(cov_test, cov_gen, cov_conv, name_fig, lo=0, hi=None,
+                     plt_show=False, dpi=None):
+    """4 panels: Cov(xtest), Cov(xgen_forward), converged cov and their difference,
+    restricted to the dimensions [lo, hi)."""
+    hi = cov_test.shape[0] if hi is None else hi
+    cov_test, cov_gen, cov_conv = (c[lo:hi, lo:hi] for c in (cov_test, cov_gen, cov_conv))
+    cov_diff = cov_conv - cov_gen
+    vmin = min(c.min().item() for c in (cov_test, cov_gen, cov_conv))
+    vmax = max(c.max().item() for c in (cov_test, cov_gen, cov_conv))
+    vabs = max(cov_diff.abs().max().item(), 1e-12)
+    # 'nearest' : no antialiasing/smoothing of the matrix entries
+    kw = dict(interpolation='nearest', extent=[lo-0.5, hi-0.5, hi-0.5, lo-0.5])
+
+    fig, axs = plt.subplots(1, 4, figsize=(20, 5), layout='constrained')
+    for ax, c, title in zip(axs[:3], (cov_test, cov_gen, cov_conv),
+                            ("Cov(xtest)", "Cov(xgen_forward)", "Cov(xgen_forward_converged)")):
+        im = ax.imshow(c, cmap='viridis', vmin=vmin, vmax=vmax, **kw)
+        ax.set_title(title)
+        ax.set_xlabel("Dimension")
+    axs[0].set_ylabel("Dimension")
+    fig.colorbar(im, ax=axs[:3], label="Covariance value")
+    # the difference is signed: diverging colormap centered on 0, with its own scale
+    im3 = axs[3].imshow(cov_diff, cmap='RdBu_r', vmin=-vabs, vmax=vabs, **kw)
+    axs[3].set_title("Cov(xgen_forward_converged - xgen_forward)")
+    axs[3].set_xlabel("Dimension")
+    fig.colorbar(im3, ax=axs[3])
+    if plt_show:
+        plt.show(block=False)
+    plt.savefig(name_fig, dpi=dpi)
+    if plt_show:
+        plt.pause(1)
+    plt.close(fig)
+
+
+@torch.no_grad()
+def plot_covariances(cov_test, cov_gen, cov_conv, prefix_save, offset_dimplot=0,
+                     plt_show=False, dpi=None, size_zoom=64):
+    """Readable covariance plots, also for large (e.g. flattened image) vectors:
+    - prefix_cov.png      : full matrices, with enough dpi to get ~1 pixel per entry (capped)
+    - prefix_cov_raw_*.png: exact 1 pixel = 1 entry dumps, when the full figure cannot resolve them
+    - prefix_cov_zoom.png : block of size_zoom dimensions around offset_dimplot
+    - prefix_cov_diag.png : variances and RMS of off-diagonal terms, per dimension
+    """
+    cov_test, cov_gen, cov_conv = (c.to('cpu', torch.float64) for c in (cov_test, cov_gen, cov_conv))
+    d = cov_test.shape[0]
+    dpi = 100 if dpi is None else dpi
+
+    # (a) full matrices; each panel is ~3.5 inches wide
+    panel_in = 3.5
+    dpi_max = 600
+    dpi_full = int(min(max(dpi, np.ceil(d / panel_in)), dpi_max))
+    _plot_cov_panels(cov_test, cov_gen, cov_conv, prefix_save + "_cov.png",
+                     plt_show=plt_show, dpi=dpi_full)
+    if d > panel_in * dpi_full:
+        vmin = min(c.min().item() for c in (cov_test, cov_gen, cov_conv))
+        vmax = max(c.max().item() for c in (cov_test, cov_gen, cov_conv))
+        for c, name in zip((cov_test, cov_gen, cov_conv), ("xtest", "xgen_forward", "converged")):
+            plt.imsave(prefix_save + "_cov_raw_" + name + ".png", c.numpy(),
+                       cmap='viridis', vmin=vmin, vmax=vmax)
+        cov_diff = cov_conv - cov_gen
+        vabs = max(cov_diff.abs().max().item(), 1e-12)
+        plt.imsave(prefix_save + "_cov_raw_diff.png", cov_diff.numpy(),
+                   cmap='RdBu_r', vmin=-vabs, vmax=vabs)
+
+    # (b) zoom around offset_dimplot
+    if d > size_zoom:
+        lo = int(np.clip(offset_dimplot - size_zoom // 2, 0, d - size_zoom))
+        _plot_cov_panels(cov_test, cov_gen, cov_conv, prefix_save + "_cov_zoom.png",
+                         lo=lo, hi=lo + size_zoom, plt_show=plt_show, dpi=dpi)
+
+    # (c) diagonal / off-diagonal profiles
+    def rms_offdiag(c):
+        c_off = c - torch.diag(torch.diag(c))
+        return (c_off.pow(2).sum(dim=1) / max(d - 1, 1)).sqrt()
+
+    dims = np.arange(d)
+    fig, axs = plt.subplots(1, 2, figsize=(14, 4.5), layout='constrained')
+    for k, (c, label) in enumerate(zip((cov_test, cov_gen, cov_conv),
+                                       ("xtest", "xgen_forward", "xgen_forward_converged"))):
+        ls = ':' if k == 2 else '-'
+        axs[0].plot(dims, torch.diag(c).numpy(), color=f"C{k}", ls=ls, lw=1, label=label)
+        axs[1].plot(dims, rms_offdiag(c).numpy(), color=f"C{k}", ls=ls, lw=1, label=label)
+    axs[0].set_title(r"Variances $C_{ii}$")
+    axs[1].set_title(r"RMS off-diagonal $\sqrt{\sum_{j\neq i} C_{ij}^2 / (d-1)}$")
+    for ax in axs:
+        ax.set_xlabel("Dimension $i$")
+        ax.grid(True, alpha=0.3)
+    axs[0].legend()
+    if plt_show:
+        plt.show(block=False)
+    plt.savefig(prefix_save + "_cov_diag.png", dpi=dpi)
+    if plt_show:
+        plt.pause(1)
+    plt.close(fig)
+    plt.close('all')
+
+
+@torch.no_grad()
+def plot_forward_moments(xs, name_fig, offset_dimplot=0, plt_show=False, dpi=None):
+    """Ensemble mean (solid) and std (dashed) along the forward steps, of:
+    the offset_dimplot-th coordinate, the last coordinate, and their RMS over all
+    coordinates: sqrt(1/d ||mean||^2) and sqrt(1/d sum_i Var_i)."""
+    xs = xs.reshape(xs.shape[0], xs.shape[1], -1).to('cpu', torch.float64)  # (T+1, B, d)
+    d = xs.shape[-1]
+    mean = xs.mean(dim=1)  # (T+1, d)
+    var = xs.var(dim=1)
+    std = var.sqrt()
+    curves = [
+        (f"coord {offset_dimplot}", mean[:, offset_dimplot], std[:, offset_dimplot]),
+        (f"coord {d-1} (last)", mean[:, -1], std[:, -1]),
+        ("RMS over coords", mean.pow(2).mean(dim=1).sqrt(), var.mean(dim=1).sqrt()),
+    ]
+    steps = np.arange(xs.shape[0])
+
+    fig, ax = plt.subplots(figsize=(9, 5), layout='constrained')
+    for k, (label, m, s) in enumerate(curves):
+        lab_m, lab_s = (r"$\sqrt{\|\mathrm{mean}\|^2/d}$", r"$\sqrt{\sum_i \mathrm{Var}_i/d}$") \
+            if k == 2 else (label + ": mean", label + ": std")
+        ax.plot(steps, m.numpy(), color=f"C{k}", ls='-', marker='.', label=lab_m)
+        ax.plot(steps, s.numpy(), color=f"C{k}", ls='--', marker='.', label=lab_s)
+    ax.axhline(0, color='gray', lw=0.5)
+    ax.set_xlabel("Forward step $i$")
+    ax.set_title("Ensemble moments along the forward SDE (mean: solid, std: dashed)")
+    ax.grid(True, alpha=0.3)
+    ax.legend(ncol=3, fontsize=9)
+    if plt_show:
+        plt.show(block=False)
+    plt.savefig(name_fig, dpi=dpi)
+    if plt_show:
+        plt.pause(1)
+    plt.close(fig)
+
+
 def preprocessing(xtest, xs_forward, num_steps_forward, name_simu_root,
                   plot_params, folder_results, std_norm, device):
     
@@ -325,36 +459,15 @@ def preprocessing(xtest, xs_forward, num_steps_forward, name_simu_root,
     print("dist cov_xgen_forward  to  weak white noise (w. same var.)= " + str(d_cov_xgen_forward.item()))
 
     # --- plot ---
-    # --- define min/max for shared colorbar ---
-    vmin = min(cov_xtest.min(), cov_xgen_forward.min(), cov_xgen_forward_converged.min()).item()
-    vmax = max(cov_xtest.max(), cov_xgen_forward.max(), cov_xgen_forward_converged.max()).item()
-    fig, axs = plt.subplots(1, 4, figsize=(20, 5))
-    im0 = axs[0].imshow(cov_xtest, cmap='viridis', vmin=vmin, vmax=vmax)
-    axs[0].set_title("Cov(xtest)")
-    axs[0].set_xlabel("Dimension")
-    axs[0].set_ylabel("Dimension")
-    im1 = axs[1].imshow(cov_xgen_forward, cmap='viridis', vmin=vmin, vmax=vmax)
-    axs[1].set_title("Cov(xgen_forward)")
-    axs[1].set_xlabel("Dimension")
-    im2 = axs[2].imshow(cov_xgen_forward_converged, cmap='viridis', vmin=vmin, vmax=vmax)
-    axs[2].set_title("Cov(xgen_forward_converged)")
-    axs[2].set_xlabel("Dimension")
-    im3 = axs[3].imshow(cov_xgen_forward_converged-cov_xgen_forward, cmap='viridis', vmin=vmin, vmax=vmax)
-    axs[3].set_title("Cov(xgen_forward_converged - xgen_forward)")
-    axs[3].set_xlabel("Dimension")
-    # --- shared colorbar ---
-    cbar = fig.colorbar(im0, ax=axs)
-    cbar.set_label("Covariance value")
-    plt.tight_layout()
-    time.sleep(0.5)
-    if plot_params.plt_show:
-        plt.show(block=False)
-    name_fig = folder_results + "/" + name_simu_root + "_cov.png" 
-    plt.savefig(name_fig)
-    if plot_params.plt_show:
-        plt.pause(1)
-    plt.close()
-    plt.close('all')
+    plot_covariances(cov_xtest, cov_xgen_forward, cov_xgen_forward_converged,
+                     folder_results + "/" + name_simu_root,
+                     offset_dimplot=plot_params.offset_dimplot,
+                     plt_show=plot_params.plt_show, dpi=plot_params.dpi)
+
+    # ensemble moments along the forward SDE
+    plot_forward_moments(xs_forward, folder_results + "/" + name_simu_root + "_Forward_moments.png",
+                         offset_dimplot=plot_params.offset_dimplot,
+                         plt_show=plot_params.plt_show, dpi=plot_params.dpi)
 
     # print energy
     energy_xtest = torch.sum((xtest**2),dim=1).mean()
